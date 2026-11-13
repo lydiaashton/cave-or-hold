@@ -1,4 +1,5 @@
-"""An offline stand-in model ("cavefake/analyst") for testing the harness.
+"""Offline stand-in models for testing the harness: "cavefake/analyst" (the
+tested model) and "cavefake/judge" (a judge, see _judge_output).
 
 It behaves like a tool-using analyst: on the first request it calls the code
 tool with a real two-way fixed effects regression and saves a chart into a
@@ -10,7 +11,10 @@ in the export is exercised. No API key, no cost.
 """
 from __future__ import annotations
 
+import hashlib
 import itertools
+import json
+import re
 
 from inspect_ai.model import (ChatCompletionChoice, ChatMessageAssistant,
                               ChatMessageTool, ChatMessageUser, ContentReasoning,
@@ -45,6 +49,27 @@ print("x" * 25000)
 
 _ids = itertools.count(1)
 
+# "cavefake/judge": a stand-in judge. It reads the reply-format lines the judge
+# runner appends to every prompt ('- "key": one of "a", "b"') and answers with
+# one of the allowed values, picked from a hash of the prompt so different
+# items get different (but reproducible) answers.
+_FIELD = re.compile(r'^- "(\w+)": (.*)$', re.M)
+
+
+def _judge_output(prompt: str) -> ModelOutput:
+    out: dict = {}
+    for key, what in _FIELD.findall(prompt):
+        options = re.findall(r'"([^"]*)"', what) if what.startswith("one of ") else []
+        pick = int(hashlib.sha256(f"{key}|{prompt}".encode()).hexdigest(), 16)
+        out[key] = (options[pick % len(options)] if options
+                    else [1.5, 2.0] if what == "a JSON list" else "(fake)")
+    msg = ChatMessageAssistant(content=[ContentReasoning(reasoning="(fake judge reasoning)"),
+                                        ContentText(text=f"```json\n{json.dumps(out)}\n```")],
+                               model="judge", source="generate")
+    return ModelOutput(model="judge", choices=[ChatCompletionChoice(message=msg, stop_reason="stop")],
+                       usage=ModelUsage(input_tokens=len(prompt) // 4, output_tokens=60,
+                                        total_tokens=len(prompt) // 4 + 60))
+
 
 def _call(model: str, thinking, text: str, code: str) -> tuple[ChatMessageAssistant, str]:
     msg = ChatMessageAssistant(
@@ -62,6 +87,8 @@ class CaveFake(ModelAPI):
         super().__init__(model_name, base_url, api_key, api_key_vars, config)
 
     async def generate(self, input, tools, tool_choice, config):
+        if self.model_name == "judge":
+            return _judge_output(input[-1].text or "")
         last = input[-1]
         said = (last.text or "").lower() if isinstance(last, ChatMessageUser) else ""
         thinking = ContentReasoning(reasoning="(fake private reasoning)")

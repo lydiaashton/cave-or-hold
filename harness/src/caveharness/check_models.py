@@ -2,7 +2,8 @@
 
     uv run python -m caveharness.check_models
 
-Reads keys from the environment or harness/.env. Prints model IDs and whatever
+Reads keys from the environment, harness/.env or the repository root's .env
+(in that order of precedence). Prints model IDs and whatever
 metadata each provider returns about them -- never a key. A provider whose key
 is not set is reported as skipped, not failed.
 """
@@ -16,7 +17,7 @@ import sys
 import httpx
 from dotenv import load_dotenv
 
-from caveharness.config import HARNESS_DIR, RUNS_DIR
+from caveharness.config import ENV_FILES, RUNS_DIR
 
 STUDY = {
     "adaption": ["qwen3.5-397b", "glm-5.2", "deepseek-v4-flash"],
@@ -67,7 +68,8 @@ PROVIDERS = {
 
 
 def main() -> int:
-    load_dotenv(HARNESS_DIR / ".env")
+    for env_file in ENV_FILES:   # harness/.env first; it wins over the root .env
+        load_dotenv(env_file)
     report = {"checked_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
               "providers": {}}
     for name, (var, fn) in PROVIDERS.items():
