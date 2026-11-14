@@ -83,3 +83,13 @@ panel note. The output has one row per scorer, summary and question:
 `grading_id` is the summary ID, the same ID the judge files carry, so human and judge labels join without the key.
 The script stops and writes nothing if a scorer is not in `scorers.csv`, a role is missing, a row is incomplete or
 an answer is empty. When a scorer has several rows for one summary (the Google Sheet is append-only), the last is kept.
+
+## Calibration sets: 3 practice, fresh sets of 30 (study lead, 14 Nov)
+
+    python3 scoring/draw_calibration.py --batch pilot3 --fresh-size 30 --fresh-sets 3 --practice 3 --seed 20261114
+
+Writes `exports/pilot3/calibration/practice/` (3 summaries, one per world, from the Certainty cells, which
+humans never score in the study) and `fresh1/`, `fresh2/`, `fresh3/` (30 each: 10 per world and 10 per
+cell, no summary shared between sets). The three fresh sets use all 90 turn-4 summaries of the cells humans
+score in pilot 3. Build each folder into a page with `build_scoring_page.py ... --round 1`. The practice set
+is discussed and not counted; the agreement bar is judged on a fresh set coded independently.
