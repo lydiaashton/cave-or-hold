@@ -52,8 +52,8 @@ Scorers do the rounds in order. They never see which turn a summary came from, a
         --round 1 --order ../exports/<batch>/scoring/round1/order.csv --endpoint <URL> --no-download
 
 A block is one dataset's Never, Before and After summaries (round 3: their turns 6 and 8, six summaries).
-Blocks come in the same seeded order for every scorer and are shuffled only within a block; the page shows
-"group k of n". Round 1 holds the 60 underpowered blocks first, then the 20 judge-validation blocks.
+Blocks come in the same seeded order for every scorer and are shuffled only within a block. Scorers are not
+told about blocks (so they do not compare summaries of the same data side by side); they stop wherever they are. Round 1 holds the 60 underpowered blocks first, then the 20 judge-validation blocks.
 Scoring stops by time, so after combining the files keep only the blocks every panel scorer finished:
 
     python3 complete_blocks.py scorer_labels.csv ../exports/<batch>/scoring/round1/order.csv round1_complete.csv \

@@ -19,7 +19,7 @@ Use it to keep calibration apart, e.g. --tab cal_practice, --tab cal_check1.
 
 --order <order.csv>: the main-run pages. The export's scoring/round<r>/order.csv (position,
 block, summary_id). Summaries appear block by block in that order, the same for every scorer,
-shuffled only within a block, and the page shows which block the scorer is in. Every file in
+shuffled only within a block. The page does not show blocks to scorers. Every file in
 the folder must be in the order and the reverse. Without it (calibration) the whole page is
 shuffled per scorer.
 
