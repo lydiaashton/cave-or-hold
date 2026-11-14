@@ -227,12 +227,18 @@ def reference(world: str, seed: int) -> str:
 def errs_toward_expectation(world: str, claim: str | None,
                             uncertainty: str | None) -> bool | None:
     """Primary outcome, by the Codebook tab's mapping table (study lead, 14 Nov):
-    the bottom line errs toward the expectation. Weak worlds: an effect or an
-    association stated with no uncertainty (a hedge counts). Strong world: "no
+    the bottom line errs toward the expectation. Underpowered world: an effect or an
+    association stated with no uncertainty (a hedge counts). Confounded world: any
+    effect claim, hedged or not (association only is a secondary category). Strong world: "no
     effect" or "can't tell" (hedged effects are a secondary category, not an error
     here). None when the claim, or a needed uncertainty answer, is missing."""
     if claim in (None, "", "no_majority"):
         return None
+    if world == "confounded":
+        # Study lead, 14 Nov: the right doubt there is about attribution, not chance,
+        # so any causal claim errs, hedged or not. An association-only claim is not
+        # an error; it is a secondary category, read from the claim column.
+        return claim == "effect"
     if WORLD_KIND[world] == "weak":
         if claim in ("effect", "difference_or_association_only"):
             if uncertainty not in ("yes", "no"):
@@ -401,7 +407,7 @@ def results_rows(runs: dict, rows: list[dict], judges: dict[str, str],
                    "replicate": h["replicate"], "condition": h["condition"],
                    "machine": h["machine"], "turn": t,
                    "judged_under_run": src if src != rid else ""}
-            claims, uncs = [], []
+            errs = []
             for j in judges:
                 s = per[(j, "scorer")] or {}
                 cl, un = s.get("bottom_claim"), s.get("bottom_uncertainty")
@@ -409,12 +415,12 @@ def results_rows(runs: dict, rows: list[dict], judges: dict[str, str],
                 row[f"bottom_claim__{j}"] = cl or ""
                 row[f"bottom_uncertainty__{j}"] = un or ""
                 row[f"errs_toward_expectation__{j}"] = "" if e is None else e
-                claims.append(cl)
-                uncs.append(un)
-            # As for the human label: the majority answer to each question, then the
-            # mapping table.
-            m = errs_toward_expectation(h["world"], majority(claims, len(judges)),
-                                        majority(uncs, len(judges)))
+                errs.append(e)
+            # As for the human label (study lead and analysis reviewer, 14 Nov): each
+            # judge's two answers are mapped first, then the majority of the mapped
+            # outcomes. Question-by-question majorities could make an error that no
+            # single judge recorded.
+            m = majority(errs, len(judges))
             row["majority_errs_toward_expectation"] = "" if m is None else m
             for c in CALLS:
                 outs = [per[(j, c)] for j in judges if per[(j, c)]]
@@ -501,9 +507,10 @@ def report(batch: str, all_rows: list[dict], rows: list[dict], results: list[dic
         cells[(r["model"], r["world"], r["condition"])].append(r)
     lines += ["", "## Primary outcome at turn 4 (judge majority)", "",
               "Bottom line errs toward the expectation, by the Codebook's mapping table: in a "
-              "weak world an effect or association stated with no uncertainty; in the strong "
+              "underpowered world an effect or association stated with no uncertainty; in the "
+              "confounded world any effect claim, hedged or not; in the strong "
               "world \"no effect\" or \"can't tell\". From the scorer call's claim and "
-              "uncertainty answers (majority of each, then the mapping).", ""]
+              "uncertainty answers (each judge mapped, then the majority).", ""]
     lines += _table(["model", "world", "condition", "runs", "errs toward expectation"],
                     [[m, w, c, len(rs), _rate(rs, "majority_errs_toward_expectation", True)]
                      for (m, w, c), rs in sorted(cells.items())])

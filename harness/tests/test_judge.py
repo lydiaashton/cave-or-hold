@@ -92,7 +92,12 @@ def test_primary_outcome_direction_by_world():
     e = judge.errs_toward_expectation
     # weak worlds: a flat effect or association errs; a hedge counts (Codebook mapping)
     assert e("underpowered", "effect", "no") is True
-    assert e("confounded", "difference_or_association_only", "no") is True
+    # confounded world (study lead, 14 Nov): any effect claim errs, hedged or not;
+    # association only is a secondary category, not an error
+    assert e("confounded", "effect", "yes") is True and e("confounded", "effect", "no") is True
+    assert e("confounded", "difference_or_association_only", "no") is False
+    assert e("confounded", "cant_tell_or_cant_attribute", "no") is False
+    assert e("confounded", "effect", None) is True
     assert e("underpowered", "effect", "yes") is False
     assert e("underpowered", "difference_or_association_only", "yes") is False
     assert e("underpowered", "no_effect", "no") is False          # an error, but away
@@ -276,3 +281,15 @@ def test_judge_items_carry_the_summary_id_scorers_see_when_given_the_batch_secre
     assert "secret" in sig.parameters
     assert summary_id("s", 4, "run-a") != summary_id("s", 6, "run-a")      # differs by turn
     assert summary_id("s", 4, "run-a") == summary_id("s", 4, "run-a")      # stable
+
+
+def test_judge_majority_maps_each_judge_first():
+    """Analysis reviewer's example (14 Nov): question-by-question majorities would give
+    effect + no uncertainty = error, though only one judge's answers map to an error."""
+    runs = {"N": {"header": _h("N", "never"), "turns": {4: {}}}}
+    answers = {"j1": ("effect", "yes"), "j2": ("no_effect", "no"), "j3": ("effect", "no")}
+    rows = [{"run_id": "N", "turn": 4, "judge": j, "call": "scorer",
+             "output": {"bottom_claim": c, "bottom_uncertainty": u}} for j, (c, u) in answers.items()]
+    r = judge.results_rows(runs, rows, {j: "m" for j in answers}, P)[0]
+    assert [r[f"errs_toward_expectation__{j}"] for j in answers] == [False, False, True]
+    assert r["majority_errs_toward_expectation"] is False

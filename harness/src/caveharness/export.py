@@ -377,20 +377,43 @@ def write_scoring_sets(runs: dict, key: list[dict], root: Path, secret: str,
     scoring/batch1/summaries/ holds turn 4; scoring/batch2/summaries/ turns 6
     and 8 of the same runs, released only after every scorer finishes batch 1.
     Files and IDs are the T4/T6/T8 ones, so nothing new needs keying. With
-    per_cell, an equal number of runs per world x cell is drawn, in an order
-    fixed by the batch secret (the same draw on every re-export). Returns the
-    rows for key/scoring_sets.csv."""
+    per_cell, the draw is pair-aware (analysis reviewer, 14 Nov): per world, the
+    first per_cell datasets in an order fixed by the batch secret are taken, and
+    for each of them the Never, before_<wording> and after_<wording> runs all go
+    in, so the paired tests (After vs Never, After vs Before) keep every pair on
+    human labels. Only datasets with a gradeable turn 4 in all three cells are
+    eligible; the rest are skipped and counted. The same draw comes out on every
+    re-export. Returns the rows for key/scoring_sets.csv."""
     cells = ("never", f"before_{wording}", f"after_{wording}")
-    pool: dict[tuple[str, str], list[str]] = defaultdict(list)
+    ids = {(k["run_id"], k["turn"]): k["summary_id"] for k in key}
+    # one "match" = one dataset (and replicate) in one world, holding one run per cell
+    matches: dict[tuple, dict[str, str]] = defaultdict(dict)
     for rid, run in runs.items():
         h = run["header"]
         if h["model"] == primary_model and h["condition"] in cells:
-            pool[(h["world"], h["condition"])].append(rid)
-    draw = lambda rid: hmac.new(secret.encode(), f"draw|{rid}".encode(), hashlib.sha256).hexdigest()
-    drawn = set()
-    for k in sorted(pool):
-        ranked = sorted(pool[k], key=draw)
-        drawn |= set(ranked[:per_cell] if per_cell else ranked)
+            m = (h["world"], h["dataset_seed"], h["replicate"])
+            if h["condition"] in matches[m]:
+                raise ValueError(f"two {h['condition']} runs for {m}: {matches[m][h['condition']]} and {rid}")
+            matches[m][h["condition"]] = rid
+    if not per_cell:
+        drawn = {rid for m in matches.values() for rid in m.values()}
+    else:
+        draw = lambda m: hmac.new(secret.encode(), f"draw|{m[0]}|{m[1]}|{m[2]}".encode(),
+                                  hashlib.sha256).hexdigest()
+        drawn = set()
+        for world in sorted({m[0] for m in matches}):
+            ranked = sorted((m for m in matches if m[0] == world), key=draw)
+            complete = [m for m in ranked if all(c in matches[m] and (matches[m][c], 4) in ids
+                                                 for c in cells)]
+            take = complete[:per_cell]
+            skipped = sum(1 for m in ranked[:ranked.index(take[-1]) + 1] if m not in complete) if take else 0
+            if len(take) < per_cell:
+                print(f"scoring draw, {world}: only {len(take)} datasets have a gradeable turn 4 "
+                      f"in all three cells (asked for {per_cell})")
+            elif skipped:
+                print(f"scoring draw, {world}: skipped {skipped} incomplete dataset(s) in the draw order")
+            for m in take:
+                drawn |= set(matches[m][c] for c in cells)
     ids = {(k["run_id"], k["turn"]): k["summary_id"] for k in key}
     rows = []
     for batch, turns in ((1, (4,)), (2, (6, 8))):
@@ -405,7 +428,7 @@ def write_scoring_sets(runs: dict, key: list[dict], root: Path, secret: str,
                 h = runs[rid]["header"]
                 rows.append({"summary_id": sid, "scoring_batch": batch, "turn": t, "run_id": rid,
                              "condition": h["condition"], "world": h["world"],
-                             "dataset_seed": h["dataset_seed"]})
+                             "dataset_seed": h["dataset_seed"], "replicate": h["replicate"]})
     return sorted(rows, key=lambda r: (r["scoring_batch"], r["summary_id"]))
 
 
@@ -528,7 +551,7 @@ def main() -> None:
     ap.add_argument("--scoring-wording", default="B",
                     help="the wording whose Before/After cells humans score (others: judges only)")
     ap.add_argument("--scoring-per-cell", type=int, default=0,
-                    help="runs per world x cell for human scoring (0 = all)")
+                    help="datasets per world for human scoring; each brings its Never, before and after runs, so pairs stay matched (0 = all)")
     a = ap.parse_args()
 
     runs = load_runs(a.batch)

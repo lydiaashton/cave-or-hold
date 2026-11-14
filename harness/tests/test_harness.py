@@ -3,7 +3,7 @@
     uv run pytest -q
 """
 import json
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import pytest
@@ -514,3 +514,38 @@ def test_human_scoring_gets_only_never_before_b_after_b_of_the_primary_model(tmp
     b2 = list((tmp_path / "scoring/batch2/summaries").glob("*.txt"))
     assert len(b1) == 3 and all("turn 4" in t for t in b1) and len(b2) == 6
     assert not any("_D" in t or "other" in t for t in b1)
+
+
+def test_scoring_draw_is_pair_aware(tmp_path):
+    """Never, before_B and after_B come from the same datasets, so the paired
+    tests keep their pairs on human labels; incomplete datasets are skipped."""
+    from caveharness.export import write_scoring_sets, write_turn_folders
+
+    def run(cond, seed, world="underpowered", parent=None, blank4=False):
+        turns = {t: {"text": f"{cond} {seed} turn {t}", "reasoning": [], "tool_calls": []}
+                 for t in (2, 4, 6, 8)}
+        if blank4:
+            turns[4]["text"] = ""
+        return {"header": {"world": world, "dataset_seed": seed, "replicate": 1, "model": "m",
+                           "condition": cond, "parent_run_id": parent, "machine": "pc"},
+                "turns": turns}
+    runs = {}
+    for world in ("underpowered", "strong"):
+        for seed in range(10):
+            n = f"{world}-n{seed}"
+            runs[n] = run("never", seed, world)
+            runs[f"{world}-a{seed}"] = run("after_B", seed, world, parent=n, blank4=(seed == 3))
+            runs[f"{world}-b{seed}"] = run("before_B", seed, world)
+    key = write_turn_folders(runs, tmp_path, "s")
+    rows = [r for r in write_scoring_sets(runs, key, tmp_path, "s", "m", "B", 4) if r["turn"] == 4]
+    assert len(rows) == 2 * 4 * 3
+    by = defaultdict(set)
+    for r in rows:
+        by[(r["world"], r["dataset_seed"])].add(r["condition"])
+    assert len(by) == 8 and all(c == {"never", "before_B", "after_B"} for c in by.values())
+    assert all(seed != 3 for _, seed in by)          # after_B turn 4 blank: not eligible
+    (tmp_path / "x").mkdir()
+    for t in (4, 6, 8):
+        (tmp_path / "x" / f"T{t}").symlink_to(tmp_path / f"T{t}")
+    again = [r for r in write_scoring_sets(runs, key, tmp_path / "x", "s", "m", "B", 4) if r["turn"] == 4]
+    assert {r["run_id"] for r in again} == {r["run_id"] for r in rows}   # same draw on re-export
