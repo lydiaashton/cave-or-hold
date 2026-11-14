@@ -1,0 +1,2142 @@
+Summary ID: e46582e27f
+
+=== Code run in turn 2, call 1 of 5 ===
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Display basic info
+print("Data shape:", df.shape)
+print("\nColumn names:", df.columns.tolist())
+print("\nFirst few rows:")
+print(df.head(10))
+print("\nData types:")
+print(df.dtypes)
+print("\nSummary statistics:")
+print(df.describe())
+print("\nUnique values for key columns:")
+print("branch_id:", df['branch_id'].nunique())
+print("switched_branch:", df['switched_branch'].unique())
+print("after_switch:", df['after_switch'].unique())
+print("week range:", df['week'].min(), "to", df['week'].max())
+
+--- printed ---
+Data shape: (12053, 7)
+
+Column names: ['branch_id', 'week', 'switched_branch', 'after_switch', 'service_score', 'staffing_index', 'visits_index']
+
+First few rows:
+   branch_id  week  ...  staffing_index  visits_index
+0          0     6  ...        0.084774      1.501699
+1          0     7  ...       -1.081709     -2.136255
+2          0     8  ...        0.449298      1.727794
+3          0     9  ...        0.117641     -1.366634
+4          0    10  ...       -0.813546      1.929148
+5          0    11  ...        0.246416     -0.773935
+6          0    12  ...        1.256896      0.428027
+7          0    13  ...        0.118709     -0.673966
+8          0    14  ...       -0.529670     -1.005959
+9          0    15  ...       -0.257998     -0.406222
+
+[10 rows x 7 columns]
+
+Data types:
+branch_id            int64
+week                 int64
+switched_branch      int64
+after_switch         int64
+service_score      float64
+staffing_index     float64
+visits_index       float64
+dtype: object
+
+Summary statistics:
+          branch_id          week  ...  staffing_index  visits_index
+count  12053.000000  12053.000000  ...    12053.000000  12053.000000
+mean     354.000000     14.000000  ...       -0.003068      0.020076
+std      204.678958      4.899183  ...        0.999182      1.004622
+min        0.000000      6.000000  ...       -3.660960     -3.868515
+25%      177.000000     10.000000  ...       -0.671912     -0.665688
+50%      354.000000     14.000000  ...       -0.005167      0.024991
+75%      531.000000     18.000000  ...        0.674235      0.693410
+max      708.000000     22.000000  ...        3.990291      4.036939
+
+[8 rows x 7 columns]
+
+Unique values for key columns:
+branch_id: 709
+switched_branch: [0 1]
+after_switch: [0 1]
+week range: 6 to 22
+
+
+=== Code run in turn 2, call 2 of 5 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create the interaction term for DiD
+df['treated'] = df['switched_branch'] * df['after_switch']
+
+# Summary: How many branches switched vs didn't?
+print("=== Branch Composition ===")
+branch_summary = df.groupby('branch_id')['switched_branch'].first()
+print(f"Total branches: {len(branch_summary)}")
+print(f"Switched branches (treatment): {branch_summary.sum()}")
+print(f"Non-switched branches (control): {len(branch_summary) - branch_summary.sum()}")
+
+# Average service scores by group and period
+print("\n=== Average Service Scores ===")
+score_summary = df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std', 'count'])
+print(score_summary)
+
+# Calculate the DiD estimate manually
+print("\n=== Manual DiD Calculation ===")
+# Control group (switched_branch=0)
+control_before = df[(df['switched_branch']==0) & (df['after_switch']==0)]['service_score'].mean()
+control_after = df[(df['switched_branch']==0) & (df['after_switch']==1)]['service_score'].mean()
+control_change = control_after - control_before
+
+# Treatment group (switched_branch=1)
+treat_before = df[(df['switched_branch']==1) & (df['after_switch']==0)]['service_score'].mean()
+treat_after = df[(df['switched_branch']==1) & (df['after_switch']==1)]['service_score'].mean()
+treat_change = treat_after - treat_before
+
+did_estimate = treat_change - control_change
+
+print(f"Control group - Before: {control_before:.2f}, After: {control_after:.2f}, Change: {control_change:.2f}")
+print(f"Treatment group - Before: {treat_before:.2f}, After: {treat_after:.2f}, Change: {treat_change:.2f}")
+print(f"\nDifference-in-Differences Estimate: {did_estimate:.2f}")
+
+# Run regression with standard errors
+print("\n=== Regression Analysis ===")
+# Basic DiD regression
+model = ols('service_score ~ switched_branch + after_switch + treated', data=df).fit()
+print(model.summary())
+
+# Regression with branch fixed effects
+print("\n=== Regression with Branch Fixed Effects ===")
+df['branch_id_str'] = df['branch_id'].astype(str)
+model_fe = ols('service_score ~ switched_branch + after_switch + treated + C(branch_id_str)', data=df).fit()
+print(model_fe.summary())
+
+# Regression with branch and week fixed effects
+print("\n=== Regression with Branch and Week Fixed Effects ===")
+model_fefe = ols('service_score ~ switched_branch + after_switch + treated + C(branch_id_str) + C(week)', data=df).fit()
+print(model_fefe.summary())
+
+--- printed ---
+=== Branch Composition ===
+Total branches: 709
+Switched branches (treatment): 425
+Non-switched branches (control): 284
+
+=== Average Service Scores ===
+                                   mean        std  count
+switched_branch after_switch                             
+0               0             50.175843   9.495059   2556
+                1             50.068068   9.670245   2272
+1               0             50.786207  10.379928   3825
+                1             52.555663  10.520742   3400
+
+=== Manual DiD Calculation ===
+Control group - Before: 50.18, After: 50.07, Change: -0.11
+Treatment group - Before: 50.79, After: 52.56, Change: 1.77
+
+Difference-in-Differences Estimate: 1.88
+
+=== Regression Analysis ===
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.010
+Model:                            OLS   Adj. R-squared:                  0.009
+Method:                 Least Squares   F-statistic:                     39.50
+Date:                Sat, 14 Nov 2026   Prob (F-statistic):           2.15e-25
+Time:                        11:39:55   Log-Likelihood:                -44982.
+No. Observations:               12053   AIC:                         8.997e+04
+Df Residuals:                   12049   BIC:                         9.000e+04
+Df Model:                           3                                         
+Covariance Type:            nonrobust                                         
+===================================================================================
+                      coef    std err          t      P>|t|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          50.1758      0.200    250.975      0.000      49.784      50.568
+switched_branch     0.6104      0.258      2.364      0.018       0.104       1.117
+after_switch       -0.1078      0.291     -0.370      0.712      -0.679       0.463
+treated             1.8772      0.376      4.987      0.000       1.139       2.615
+==============================================================================
+Omnibus:                       12.414   Durbin-Watson:                   0.446
+Prob(Omnibus):                  0.002   Jarque-Bera (JB):               12.555
+Skew:                          -0.068   Prob(JB):                      0.00188
+Kurtosis:                       3.082   Cond. No.                         7.46
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+
+=== Regression with Branch Fixed Effects ===
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.731
+Model:                            OLS   Adj. R-squared:                  0.714
+Method:                 Least Squares   F-statistic:                     43.42
+Date:                Sat, 14 Nov 2026   Prob (F-statistic):               0.00
+Time:                        11:40:10   Log-Likelihood:                -37127.
+No. Observations:               12053   AIC:                         7.568e+04
+Df Residuals:                   11342   BIC:                         8.094e+04
+Df Model:                         710                                         
+Covariance Type:            nonrobust                                         
+===========================================================================================
+                              coef    std err          t      P>|t|      [0.025      0.975]
+-------------------------------------------------------------------------------------------
+Intercept                  44.0830      1.322     33.355      0.000      41.492      46.674
+C(branch_id_str)[T.1]    2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.10]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.100]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.101]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.102]     7.6212      1.864      4.088      0.000       3.967      11.275
+C(branch_id_str)[T.103]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.104]    10.0998      1.864      5.418      0.000       6.446      13.754
+C(branch_id_str)[T.105]     4.5521      1.864      2.442      0.015       0.898       8.206
+C(branch_id_str)[T.106]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.107]     8.8042      1.864      4.723      0.000       5.150      12.458
+C(branch_id_str)[T.108]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.109]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.11]     14.6881      1.864      7.879      0.000      11.034      18.342
+C(branch_id_str)[T.110]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.111]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.112]     5.4489      1.864      2.923      0.003       1.795       9.103
+C(branch_id_str)[T.113]    22.9674      1.864     12.321      0.000      19.313      26.621
+C(branch_id_str)[T.114]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.115]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.116]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.117]     9.3298      1.864      5.005      0.000       5.676      12.984
+C(branch_id_str)[T.118]    -0.7393      1.864     -0.397      0.692      -4.393       2.915
+C(branch_id_str)[T.119]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.12]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.120]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.121]     0.8875      1.864      0.476      0.634      -2.766       4.541
+C(branch_id_str)[T.122]     1.7405      1.864      0.934      0.350      -1.913       5.394
+C(branch_id_str)[T.123]    12.0559      1.864      6.467      0.000       8.402      15.710
+C(branch_id_str)[T.124]     8.4958      1.864      4.558      0.000       4.842      12.150
+C(branch_id_str)[T.125]     1.7535      1.864      0.941      0.347      -1.900       5.407
+C(branch_id_str)[T.126]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.127]    23.9918      1.864     12.870      0.000      20.338      27.646
+C(branch_id_str)[T.128]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.129]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.13]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.130]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.131]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.132]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.133]    11.2172      1.864      6.018      0.000       7.563      14.871
+C(branch_id_str)[T.134]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.135]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.136]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.137]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.138]     1.1206      1.864      0.601      0.548      -2.533       4.775
+C(branch_id_str)[T.139]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.14]     -0.5706      1.864     -0.306      0.760      -4.224       3.083
+C(branch_id_str)[T.140]    -4.9698      1.864     -2.666      0.008      -8.623      -1.316
+C(branch_id_str)[T.141]     3.1820      1.864      1.707      0.088      -0.472       6.836
+C(branch_id_str)[T.142]    11.2094      1.864      6.013      0.000       7.555      14.864
+C(branch_id_str)[T.143]    10.3135      1.864      5.532      0.000       6.659      13.968
+C(branch_id_str)[T.144]     5.7879      1.864      3.105      0.002       2.134       9.441
+C(branch_id_str)[T.145]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.146]     7.0296      1.864      3.771      0.000       3.376      10.683
+C(branch_id_str)[T.147]   -14.3886      1.864     -7.719      0.000     -18.042     -10.735
+C(branch_id_str)[T.148]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.149]     9.0180      1.864      4.838      0.000       5.364      12.672
+C(branch_id_str)[T.15]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.150]    13.3963      1.864      7.187      0.000       9.742      17.050
+C(branch_id_str)[T.151]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.152]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.153]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.154]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.155]    -1.2593      1.864     -0.675      0.499      -4.914       2.395
+C(branch_id_str)[T.156]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.157]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.158]    18.9378      1.864     10.159      0.000      15.284      22.592
+C(branch_id_str)[T.159]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.16]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.160]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.161]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.162]    -5.8190      1.864     -3.121      0.002      -9.473      -2.165
+C(branch_id_str)[T.163]    11.7524      1.864      6.304      0.000       8.098      15.406
+C(branch_id_str)[T.164]    10.0292      1.864      5.380      0.000       6.375      13.683
+C(branch_id_str)[T.165]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.166]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.167]    12.1433      1.864      6.514      0.000       8.489      15.797
+C(branch_id_str)[T.168]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.169]     4.7620      1.864      2.555      0.011       1.108       8.416
+C(branch_id_str)[T.17]     11.5808      1.864      6.213      0.000       7.927      15.235
+C(branch_id_str)[T.170]     3.6754      1.864      1.972      0.049       0.021       7.329
+C(branch_id_str)[T.171]     8.3297      1.864      4.468      0.000       4.676      11.984
+C(branch_id_str)[T.172]     9.0164      1.864      4.837      0.000       5.363      12.670
+C(branch_id_str)[T.173]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.174]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.175]     8.6784      1.864      4.656      0.000       5.025      12.332
+C(branch_id_str)[T.176]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.177]     1.9930      1.864      1.069      0.285      -1.661       5.647
+C(branch_id_str)[T.178]     9.1664      1.864      4.917      0.000       5.512      12.820
+C(branch_id_str)[T.179]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.18]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.180]    18.9011      1.864     10.139      0.000      15.247      22.555
+C(branch_id_str)[T.181]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.182]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.183]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.184]     4.9531      1.864      2.657      0.008       1.299       8.607
+C(branch_id_str)[T.185]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.186]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.187]    31.7654      1.864     17.041      0.000      28.111      35.419
+C(branch_id_str)[T.188]    14.1841      1.864      7.609      0.000      10.530      17.838
+C(branch_id_str)[T.189]     1.2875      1.864      0.691      0.490      -2.366       4.941
+C(branch_id_str)[T.19]      1.6220      1.864      0.870      0.384      -2.032       5.276
+C(branch_id_str)[T.190]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.191]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.192]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.193]    18.9491      1.864     10.165      0.000      15.295      22.603
+C(branch_id_str)[T.194]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.195]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.196]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.197]    11.7341      1.864      6.295      0.000       8.080      15.388
+C(branch_id_str)[T.198]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.199]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.2]    2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.20]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.200]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.201]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.202]     4.7768      1.864      2.563      0.010       1.123       8.431
+C(branch_id_str)[T.203]    -1.6352      1.864     -0.877      0.380      -5.289       2.019
+C(branch_id_str)[T.204]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.205]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.206]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.207]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.208]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.209]     3.8901      1.864      2.087      0.037       0.236       7.544
+C(branch_id_str)[T.21]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.210]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.211]    19.2002      1.864     10.300      0.000      15.546      22.854
+C(branch_id_str)[T.212]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.213]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.214]     6.3530      1.864      3.408      0.001       2.699      10.007
+C(branch_id_str)[T.215]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.216]    -1.5704      1.864     -0.843      0.400      -5.224       2.083
+C(branch_id_str)[T.217]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.218]     9.2503      1.864      4.962      0.000       5.596      12.904
+C(branch_id_str)[T.219]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.22]     -0.2901      1.864     -0.156      0.876      -3.944       3.364
+C(branch_id_str)[T.220]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.221]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.222]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.223]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.224]    -0.4911      1.864     -0.263      0.792      -4.145       3.163
+C(branch_id_str)[T.225]    -7.8897      1.864     -4.232      0.000     -11.544      -4.236
+C(branch_id_str)[T.226]    19.6075      1.864     10.519      0.000      15.954      23.261
+C(branch_id_str)[T.227]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.228]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.229]     9.9304      1.864      5.327      0.000       6.276      13.584
+C(branch_id_str)[T.23]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.230]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.231]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.232]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.233]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.234]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.235]     4.5567      1.864      2.444      0.015       0.903       8.211
+C(branch_id_str)[T.236]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.237]     9.9392      1.864      5.331      0.000       6.285      13.593
+C(branch_id_str)[T.238]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.239]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.24]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.240]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.241]    -2.7812      1.864     -1.492      0.136      -6.435       0.873
+C(branch_id_str)[T.242]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.243]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.244]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.245]     7.4352      1.864      3.989      0.000       3.781      11.089
+C(branch_id_str)[T.246]     6.3521      1.864      3.408      0.001       2.698      10.006
+C(branch_id_str)[T.247]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.248]     6.6471      1.864      3.566      0.000       2.993      10.301
+C(branch_id_str)[T.249]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.25]      1.1128      1.864      0.597      0.551      -2.541       4.767
+C(branch_id_str)[T.250]     5.3470      1.864      2.869      0.004       1.693       9.001
+C(branch_id_str)[T.251]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.252]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.253]    12.4350      1.864      6.671      0.000       8.781      16.089
+C(branch_id_str)[T.254]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.255]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.256]     1.4549      1.864      0.781      0.435      -2.199       5.109
+C(branch_id_str)[T.257]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.258]    24.3654      1.864     13.072      0.000      20.712      28.019
+C(branch_id_str)[T.259]     6.5700      1.864      3.524      0.000       2.916      10.224
+C(branch_id_str)[T.26]      4.9978      1.864      2.681      0.007       1.344       8.652
+C(branch_id_str)[T.260]    12.3825      1.864      6.643      0.000       8.728      16.036
+C(branch_id_str)[T.261]     5.8044      1.864      3.114      0.002       2.150       9.459
+C(branch_id_str)[T.262]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.263]    16.0207      1.864      8.594      0.000      12.367      19.675
+C(branch_id_str)[T.264]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.265]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.266]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.267]     8.5372      1.864      4.580      0.000       4.883      12.191
+C(branch_id_str)[T.268]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.269]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.27]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.270]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.271]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.272]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.273]     4.8192      1.864      2.585      0.010       1.165       8.473
+C(branch_id_str)[T.274]    -6.0528      1.864     -3.247      0.001      -9.707      -2.399
+C(branch_id_str)[T.275]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.276]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.277]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.278]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.279]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.28]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.280]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.281]    10.3102      1.864      5.531      0.000       6.656      13.964
+C(branch_id_str)[T.282]    -3.5642      1.864     -1.912      0.056      -7.218       0.090
+C(branch_id_str)[T.283]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.284]     4.5475      1.864      2.440      0.015       0.894       8.201
+C(branch_id_str)[T.285]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.286]    10.0552      1.864      5.394      0.000       6.401      13.709
+C(branch_id_str)[T.287]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.288]    10.5238      1.864      5.646      0.000       6.870      14.178
+C(branch_id_str)[T.289]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.29]     14.9150      1.864      8.001      0.000      11.261      18.569
+C(branch_id_str)[T.290]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.291]    -1.6192      1.864     -0.869      0.385      -5.273       2.035
+C(branch_id_str)[T.292]     3.3571      1.864      1.801      0.072      -0.297       7.011
+C(branch_id_str)[T.293]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.294]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.295]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.296]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.297]     9.4101      1.864      5.049      0.000       5.756      13.064
+C(branch_id_str)[T.298]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.299]     4.2717      1.864      2.292      0.022       0.618       7.926
+C(branch_id_str)[T.3]    2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.30]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.300]    10.3563      1.864      5.556      0.000       6.703      14.010
+C(branch_id_str)[T.301]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.302]    23.8635      1.864     12.802      0.000      20.210      27.517
+C(branch_id_str)[T.303]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.304]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.305]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.306]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.307]    -7.2208      1.864     -3.873      0.000     -10.875      -3.567
+C(branch_id_str)[T.308]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.309]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.31]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.310]     3.8036      1.864      2.041      0.041       0.150       7.457
+C(branch_id_str)[T.311]    27.3647      1.864     14.681      0.000      23.711      31.018
+C(branch_id_str)[T.312]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.313]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.314]     9.1818      1.864      4.926      0.000       5.528      12.836
+C(branch_id_str)[T.315]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.316]     2.0375      1.864      1.093      0.274      -1.616       5.691
+C(branch_id_str)[T.317]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.318]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.319]    13.0078      1.864      6.978      0.000       9.354      16.662
+C(branch_id_str)[T.32]      3.3858      1.864      1.816      0.069      -0.268       7.040
+C(branch_id_str)[T.320]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.321]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.322]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.323]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.324]     1.3504      1.864      0.724      0.469      -2.303       5.004
+C(branch_id_str)[T.325]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.326]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.327]    -4.3736      1.864     -2.346      0.019      -8.027      -0.720
+C(branch_id_str)[T.328]    10.4345      1.864      5.597      0.000       6.780      14.089
+C(branch_id_str)[T.329]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.33]      1.6461      1.864      0.883      0.377      -2.008       5.300
+C(branch_id_str)[T.330]     5.3668      1.864      2.879      0.004       1.713       9.020
+C(branch_id_str)[T.331]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.332]    15.4049      1.864      8.264      0.000      11.751      19.059
+C(branch_id_str)[T.333]    -2.6714      1.864     -1.433      0.152      -6.325       0.982
+C(branch_id_str)[T.334]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.335]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.336]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.337]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.338]     6.1155      1.864      3.280      0.001       2.461       9.770
+C(branch_id_str)[T.339]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.34]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.340]     5.1963      1.864      2.788      0.005       1.543       8.850
+C(branch_id_str)[T.341]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.342]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.343]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.344]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.345]     7.7244      1.864      4.144      0.000       4.070      11.378
+C(branch_id_str)[T.346]    12.1181      1.864      6.501      0.000       8.465      15.772
+C(branch_id_str)[T.347]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.348]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.349]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.35]      9.3096      1.864      4.994      0.000       5.656      12.963
+C(branch_id_str)[T.350]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.351]     2.1466      1.864      1.152      0.250      -1.507       5.800
+C(branch_id_str)[T.352]    -9.9110      1.864     -5.317      0.000     -13.565      -6.257
+C(branch_id_str)[T.353]    10.1052      1.864      5.421      0.000       6.451      13.759
+C(branch_id_str)[T.354]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.355]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.356]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.357]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.358]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.359]     4.1977      1.864      2.252      0.024       0.544       7.851
+C(branch_id_str)[T.36]     -1.5399      1.864     -0.826      0.409      -5.194       2.114
+C(branch_id_str)[T.360]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.361]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.362]    23.2818      1.864     12.490      0.000      19.628      26.936
+C(branch_id_str)[T.363]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.364]    10.4743      1.864      5.619      0.000       6.820      14.128
+C(branch_id_str)[T.365]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.366]    -0.1062      1.864     -0.057      0.955      -3.760       3.548
+C(branch_id_str)[T.367]    -0.3244      1.864     -0.174      0.862      -3.978       3.329
+C(branch_id_str)[T.368]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.369]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.37]      6.4011      1.864      3.434      0.001       2.747      10.055
+C(branch_id_str)[T.370]    15.8318      1.864      8.494      0.000      12.178      19.485
+C(branch_id_str)[T.371]    14.8503      1.864      7.967      0.000      11.197      18.504
+C(branch_id_str)[T.372]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.373]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.374]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.375]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.376]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.377]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.378]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.379]     5.9536      1.864      3.194      0.001       2.300       9.607
+C(branch_id_str)[T.38]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.380]     0.3519      1.864      0.189      0.850      -3.302       4.006
+C(branch_id_str)[T.381]     2.5704      1.864      1.379      0.168      -1.083       6.224
+C(branch_id_str)[T.382]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.383]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.384]     0.4374      1.864      0.235      0.815      -3.216       4.091
+C(branch_id_str)[T.385]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.386]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.387]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.388]    11.6584      1.864      6.255      0.000       8.005      15.312
+C(branch_id_str)[T.389]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.39]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.390]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.391]     3.6221      1.864      1.943      0.052      -0.032       7.276
+C(branch_id_str)[T.392]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.393]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.394]    11.8971      1.864      6.382      0.000       8.243      15.551
+C(branch_id_str)[T.395]     9.8043      1.864      5.260      0.000       6.151      13.458
+C(branch_id_str)[T.396]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.397]    19.9544      1.864     10.705      0.000      16.301      23.608
+C(branch_id_str)[T.398]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.399]     4.8374      1.864      2.595      0.009       1.184       8.491
+C(branch_id_str)[T.4]    2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.40]    -11.4988      1.864     -6.169      0.000     -15.152      -7.845
+C(branch_id_str)[T.400]     5.9842      1.864      3.211      0.001       2.331       9.638
+C(branch_id_str)[T.401]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.402]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.403]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.404]    -0.9229      1.864     -0.495      0.621      -4.576       2.731
+C(branch_id_str)[T.405]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.406]     3.7575      1.864      2.016      0.044       0.104       7.411
+C(branch_id_str)[T.407]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.408]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.409]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.41]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.410]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.411]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.412]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.413]    14.2456      1.864      7.643      0.000      10.592      17.899
+C(branch_id_str)[T.414]    -1.3863      1.864     -0.744      0.457      -5.040       2.267
+C(branch_id_str)[T.415]    16.5690      1.864      8.889      0.000      12.915      20.223
+C(branch_id_str)[T.416]    11.7462      1.864      6.302      0.000       8.092      15.400
+C(branch_id_str)[T.417]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.418]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.419]     9.2097      1.864      4.941      0.000       5.556      12.863
+C(branch_id_str)[T.42]     -3.3567      1.864     -1.801      0.072      -7.010       0.297
+C(branch_id_str)[T.420]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.421]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.422]     4.0150      1.864      2.154      0.031       0.361       7.669
+C(branch_id_str)[T.423]    -7.3310      1.864     -3.933      0.000     -10.985      -3.677
+C(branch_id_str)[T.424]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.425]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.426]     0.8544      1.864      0.458      0.647      -2.799       4.508
+C(branch_id_str)[T.427]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.428]     7.4415      1.864      3.992      0.000       3.788      11.095
+C(branch_id_str)[T.429]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.43]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.430]     6.8470      1.864      3.673      0.000       3.193      10.501
+C(branch_id_str)[T.431]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.432]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.433]    14.7747      1.864      7.926      0.000      11.121      18.428
+C(branch_id_str)[T.434]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.435]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.436]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.437]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.438]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.439]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.44]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.440]     5.0763      1.864      2.723      0.006       1.422       8.730
+C(branch_id_str)[T.441]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.442]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.443]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.444]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.445]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.446]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.447]    -6.6779      1.864     -3.583      0.000     -10.332      -3.024
+C(branch_id_str)[T.448]     6.0230      1.864      3.231      0.001       2.369       9.677
+C(branch_id_str)[T.449]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.45]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.450]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.451]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.452]    17.5178      1.864      9.398      0.000      13.864      21.172
+C(branch_id_str)[T.453]    -0.6774      1.864     -0.363      0.716      -4.331       2.976
+C(branch_id_str)[T.454]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.455]   -11.2006      1.864     -6.009      0.000     -14.854      -7.547
+C(branch_id_str)[T.456]     7.8689      1.864      4.222      0.000       4.215      11.523
+C(branch_id_str)[T.457]    13.4314      1.864      7.206      0.000       9.778      17.085
+C(branch_id_str)[T.458]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.459]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.46]      8.0346      1.864      4.311      0.000       4.381      11.688
+C(branch_id_str)[T.460]    16.5720      1.864      8.890      0.000      12.918      20.226
+C(branch_id_str)[T.461]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.462]     3.4221      1.864      1.836      0.066      -0.232       7.076
+C(branch_id_str)[T.463]    -0.6291      1.864     -0.337      0.736      -4.283       3.025
+C(branch_id_str)[T.464]    10.3120      1.864      5.532      0.000       6.658      13.966
+C(branch_id_str)[T.465]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.466]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.467]    -2.1322      1.864     -1.144      0.253      -5.786       1.521
+C(branch_id_str)[T.468]     4.6658      1.864      2.503      0.012       1.012       8.320
+C(branch_id_str)[T.469]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.47]      5.9992      1.864      3.218      0.001       2.345       9.653
+C(branch_id_str)[T.470]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.471]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.472]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.473]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.474]     6.0242      1.864      3.232      0.001       2.370       9.678
+C(branch_id_str)[T.475]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.476]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.477]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.478]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.479]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.48]     -0.0064      1.864     -0.003      0.997      -3.660       3.647
+C(branch_id_str)[T.480]   -13.5913      1.864     -7.291      0.000     -17.245      -9.937
+C(branch_id_str)[T.481]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.482]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.483]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.484]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.485]     4.8321      1.864      2.593      0.010       1.179       8.486
+C(branch_id_str)[T.486]   -11.5586      1.864     -6.201      0.000     -15.212      -7.905
+C(branch_id_str)[T.487]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.488]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.489]    16.0499      1.864      8.611      0.000      12.396      19.704
+C(branch_id_str)[T.49]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.490]     3.6677      1.864      1.968      0.049       0.014       7.321
+C(branch_id_str)[T.491]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.492]     1.2710      1.864      0.682      0.495      -2.383       4.925
+C(branch_id_str)[T.493]     8.9861      1.864      4.821      0.000       5.332      12.640
+C(branch_id_str)[T.494]    18.9083      1.864     10.144      0.000      15.255      22.562
+C(branch_id_str)[T.495]     3.2258      1.864      1.731      0.084      -0.428       6.879
+C(branch_id_str)[T.496]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.497]     5.0949      1.864      2.733      0.006       1.441       8.749
+C(branch_id_str)[T.498]     6.8394      1.864      3.669      0.000       3.186      10.493
+C(branch_id_str)[T.499]     2.9954      1.864      1.607      0.108      -0.658       6.649
+C(branch_id_str)[T.5]       0.9768      1.862      0.524      0.600      -2.674       4.628
+C(branch_id_str)[T.50]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.500]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.501]    11.9460      1.864      6.409      0.000       8.292      15.600
+C(branch_id_str)[T.502]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.503]    14.1940      1.864      7.615      0.000      10.540      17.848
+C(branch_id_str)[T.504]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.505]    13.3068      1.864      7.139      0.000       9.653      16.961
+C(branch_id_str)[T.506]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.507]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.508]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.509]     3.9078      1.864      2.096      0.036       0.254       7.562
+C(branch_id_str)[T.51]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.510]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.511]     2.3114      1.864      1.240      0.215      -1.342       5.965
+C(branch_id_str)[T.512]     5.6478      1.864      3.030      0.002       1.994       9.302
+C(branch_id_str)[T.513]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.514]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.515]     7.4745      1.864      4.010      0.000       3.821      11.128
+C(branch_id_str)[T.516]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.517]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.518]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.519]     8.2757      1.864      4.440      0.000       4.622      11.930
+C(branch_id_str)[T.52]      5.1057      1.864      2.739      0.006       1.452       8.760
+C(branch_id_str)[T.520]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.521]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.522]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.523]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.524]     6.8870      1.864      3.695      0.000       3.233      10.541
+C(branch_id_str)[T.525]     0.4134      1.864      0.222      0.824      -3.240       4.067
+C(branch_id_str)[T.526]    10.1851      1.864      5.464      0.000       6.531      13.839
+C(branch_id_str)[T.527]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.528]     4.8146      1.864      2.583      0.010       1.161       8.469
+C(branch_id_str)[T.529]    -4.8375      1.864     -2.595      0.009      -8.491      -1.184
+C(branch_id_str)[T.53]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.530]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.531]    14.1746      1.864      7.604      0.000      10.521      17.829
+C(branch_id_str)[T.532]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.533]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.534]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.535]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.536]    10.1859      1.864      5.465      0.000       6.532      13.840
+C(branch_id_str)[T.537]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.538]    18.1505      1.864      9.737      0.000      14.497      21.804
+C(branch_id_str)[T.539]    -0.5199      1.864     -0.279      0.780      -4.174       3.134
+C(branch_id_str)[T.54]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.540]    -6.3669      1.864     -3.416      0.001     -10.021      -2.713
+C(branch_id_str)[T.541]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.542]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.543]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.544]     5.5722      1.864      2.989      0.003       1.918       9.226
+C(branch_id_str)[T.545]    -1.9337      1.864     -1.037      0.300      -5.587       1.720
+C(branch_id_str)[T.546]    18.1171      1.864      9.720      0.000      14.464      21.771
+C(branch_id_str)[T.547]    12.6874      1.864      6.807      0.000       9.034      16.341
+C(branch_id_str)[T.548]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.549]    -1.6125      1.864     -0.865      0.387      -5.266       2.041
+C(branch_id_str)[T.55]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.550]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.551]     8.1024      1.864      4.347      0.000       4.449      11.756
+C(branch_id_str)[T.552]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.553]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.554]    -2.5409      1.864     -1.363      0.173      -6.195       1.113
+C(branch_id_str)[T.555]    -1.0170      1.864     -0.546      0.585      -4.671       2.637
+C(branch_id_str)[T.556]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.557]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.558]    -5.9162      1.864     -3.174      0.002      -9.570      -2.262
+C(branch_id_str)[T.559]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.56]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.560]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.561]     4.7174      1.864      2.531      0.011       1.063       8.371
+C(branch_id_str)[T.562]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.563]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.564]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.565]     3.9807      1.864      2.136      0.033       0.327       7.635
+C(branch_id_str)[T.566]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.567]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.568]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.569]     2.2508      1.864      1.208      0.227      -1.403       5.904
+C(branch_id_str)[T.57]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.570]     9.2055      1.864      4.939      0.000       5.552      12.859
+C(branch_id_str)[T.571]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.572]    25.3625      1.864     13.606      0.000      21.709      29.016
+C(branch_id_str)[T.573]     9.5009      1.864      5.097      0.000       5.847      13.155
+C(branch_id_str)[T.574]     8.4586      1.864      4.538      0.000       4.805      12.112
+C(branch_id_str)[T.575]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.576]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.577]    -2.3797      1.864     -1.277      0.202      -6.034       1.274
+C(branch_id_str)[T.578]     4.3289      1.864      2.322      0.020       0.675       7.983
+C(branch_id_str)[T.579]    -8.3248      1.864     -4.466      0.000     -11.978      -4.671
+C(branch_id_str)[T.58]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.580]     8.4694      1.864      4.544      0.000       4.816      12.123
+C(branch_id_str)[T.581]    22.6125      1.864     12.132      0.000      18.959      26.266
+C(branch_id_str)[T.582]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.583]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.584]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.585]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.586]     9.6009      1.864      5.151      0.000       5.947      13.255
+C(branch_id_str)[T.587]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.588]     1.9226      1.864      1.032      0.302      -1.731       5.576
+C(branch_id_str)[T.589]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.59]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.590]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.591]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.592]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.593]    -0.2506      1.864     -0.134      0.893      -3.904       3.403
+C(branch_id_str)[T.594]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.595]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.596]    24.8409      1.864     13.327      0.000      21.187      28.495
+C(branch_id_str)[T.597]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.598]    -8.7475      1.864     -4.693      0.000     -12.401      -5.094
+C(branch_id_str)[T.599]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.6]      11.7886      1.863      6.326      0.000       8.136      15.441
+C(branch_id_str)[T.60]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.600]    15.7894      1.864      8.471      0.000      12.136      19.443
+C(branch_id_str)[T.601]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.602]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.603]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.604]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.605]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.606]     4.8625      1.864      2.609      0.009       1.209       8.516
+C(branch_id_str)[T.607]    -1.0552      1.864     -0.566      0.571      -4.709       2.599
+C(branch_id_str)[T.608]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.609]    -7.9348      1.864     -4.257      0.000     -11.589      -4.281
+C(branch_id_str)[T.61]      4.4038      1.864      2.363      0.018       0.750       8.058
+C(branch_id_str)[T.610]    -2.3891      1.864     -1.282      0.200      -6.043       1.265
+C(branch_id_str)[T.611]     1.5167      1.864      0.814      0.416      -2.137       5.171
+C(branch_id_str)[T.612]    -2.9264      1.864     -1.570      0.116      -6.580       0.727
+C(branch_id_str)[T.613]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.614]     6.6869      1.864      3.587      0.000       3.033      10.341
+C(branch_id_str)[T.615]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.616]     6.9662      1.864      3.737      0.000       3.312      10.620
+C(branch_id_str)[T.617]   -12.1864      1.864     -6.538      0.000     -15.840      -8.533
+C(branch_id_str)[T.618]     1.1296      1.864      0.606      0.545      -2.524       4.783
+C(branch_id_str)[T.619]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.62]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.620]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.621]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.622]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.623]    -3.3144      1.864     -1.778      0.075      -6.968       0.339
+C(branch_id_str)[T.624]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.625]    20.3246      1.864     10.904      0.000      16.671      23.978
+C(branch_id_str)[T.626]    -2.1011      1.864     -1.127      0.260      -5.755       1.553
+C(branch_id_str)[T.627]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.628]     5.3560      1.864      2.873      0.004       1.702       9.010
+C(branch_id_str)[T.629]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.63]     14.9047      1.864      7.996      0.000      11.251      18.559
+C(branch_id_str)[T.630]     9.9770      1.864      5.353      0.000       6.323      13.631
+C(branch_id_str)[T.631]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.632]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.633]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.634]    21.2567      1.864     11.404      0.000      17.603      24.910
+C(branch_id_str)[T.635]   -13.3498      1.864     -7.162      0.000     -17.004      -9.696
+C(branch_id_str)[T.636]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.637]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.638]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.639]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.64]     -0.0156      1.864     -0.008      0.993      -3.669       3.638
+C(branch_id_str)[T.640]    26.7079      1.864     14.328      0.000      23.054      30.362
+C(branch_id_str)[T.641]     6.4643      1.864      3.468      0.001       2.810      10.118
+C(branch_id_str)[T.642]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.643]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.644]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.645]     5.4889      1.864      2.945      0.003       1.835       9.143
+C(branch_id_str)[T.646]    19.1291      1.864     10.263      0.000      15.475      22.783
+C(branch_id_str)[T.647]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.648]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.649]     5.0777      1.864      2.724      0.006       1.424       8.731
+C(branch_id_str)[T.65]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.650]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.651]     8.2218      1.864      4.411      0.000       4.568      11.876
+C(branch_id_str)[T.652]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.653]    -9.6057      1.864     -5.153      0.000     -13.259      -5.952
+C(branch_id_str)[T.654]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.655]    -1.5112      1.864     -0.811      0.418      -5.165       2.142
+C(branch_id_str)[T.656]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.657]     7.0545      1.864      3.785      0.000       3.401      10.708
+C(branch_id_str)[T.658]     0.6762      1.864      0.363      0.717      -2.977       4.330
+C(branch_id_str)[T.659]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.66]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.660]    13.1039      1.864      7.030      0.000       9.450      16.758
+C(branch_id_str)[T.661]     6.6901      1.864      3.589      0.000       3.036      10.344
+C(branch_id_str)[T.662]     1.8579      1.864      0.997      0.319      -1.796       5.512
+C(branch_id_str)[T.663]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.664]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.665]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.666]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.667]     2.6218      1.864      1.407      0.160      -1.032       6.275
+C(branch_id_str)[T.668]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.669]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.67]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.670]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.671]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.672]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.673]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.674]     4.5838      1.864      2.459      0.014       0.930       8.237
+C(branch_id_str)[T.675]     5.5945      1.864      3.001      0.003       1.941       9.248
+C(branch_id_str)[T.676]     0.3157      1.864      0.169      0.866      -3.338       3.969
+C(branch_id_str)[T.677]     2.2853      1.864      1.226      0.220      -1.368       5.939
+C(branch_id_str)[T.678]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.679]    -2.1775      1.864     -1.168      0.243      -5.831       1.476
+C(branch_id_str)[T.68]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.680]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.681]    -2.3657      1.864     -1.269      0.204      -6.019       1.288
+C(branch_id_str)[T.682]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.683]     8.1220      1.864      4.357      0.000       4.468      11.776
+C(branch_id_str)[T.684]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.685]    15.5202      1.864      8.326      0.000      11.866      19.174
+C(branch_id_str)[T.686]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.687]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.688]     3.4922      1.864      1.873      0.061      -0.162       7.146
+C(branch_id_str)[T.689]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.69]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.690]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.691]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.692]     9.2008      1.864      4.936      0.000       5.547      12.855
+C(branch_id_str)[T.693]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.694]    -2.1247      1.864     -1.140      0.254      -5.778       1.529
+C(branch_id_str)[T.695]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.696]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.697]     2.3810      1.864      1.277      0.201      -1.273       6.035
+C(branch_id_str)[T.698]    11.4154      1.864      6.124      0.000       7.762      15.069
+C(branch_id_str)[T.699]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.7]      14.1930      1.862      7.621      0.000      10.543      17.843
+C(branch_id_str)[T.70]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.700]     3.7027      1.864      1.986      0.047       0.049       7.356
+C(branch_id_str)[T.701]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.702]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.703]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.704]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.705]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.706]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.707]    19.3752      1.864     10.395      0.000      15.721      23.029
+C(branch_id_str)[T.708]  2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.71]      1.4072      1.864      0.755      0.450      -2.247       5.061
+C(branch_id_str)[T.72]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.73]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.74]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.75]     -5.6977      1.864     -3.057      0.002      -9.351      -2.044
+C(branch_id_str)[T.76]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.77]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.78]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.79]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.8]    2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.80]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.81]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.82]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.83]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.84]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.85]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.86]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.87]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.88]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.89]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.9]    2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.90]     15.4869      1.864      8.309      0.000      11.833      19.141
+C(branch_id_str)[T.91]     14.2418      1.864      7.641      0.000      10.588      17.895
+C(branch_id_str)[T.92]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.93]      9.6475      1.864      5.176      0.000       5.994      13.301
+C(branch_id_str)[T.94]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.95]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.96]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.97]     13.7807      1.864      7.393      0.000      10.127      17.434
+C(branch_id_str)[T.98]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+C(branch_id_str)[T.99]   2.808e+11   1.81e+11      1.551      0.121    -7.4e+10    6.36e+11
+switched_branch         -2.808e+11   1.81e+11     -1.551      0.121   -6.36e+11     7.4e+10
+after_switch               -0.1116      0.157     -0.713      0.476      -0.419       0.195
+treated                     1.8769      0.202      9.283      0.000       1.481       2.273
+==============================================================================
+Omnibus:                        0.320   Durbin-Watson:                   1.346
+Prob(Omnibus):                  0.852   Jarque-Bera (JB):                0.348
+Skew:                           0.003   Prob(JB):                        0.840
+Kurtosis:                       2.974   Cond. No.                     1.02e+14
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+[2] The smallest eigenvalue is 2.11e-24. This might indicate that there are
+strong multicollinearity problems or that the design matrix is singular.
+
+=== Regression with Branch and Week Fixed Effects ===
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.796
+Model:                            OLS   Adj. R-squared:                  0.783
+Method:                 Least Squares   F-statistic:                     61.01
+Date:                Sat, 14 Nov 2026   Prob (F-statistic):               0.00
+Time:                        11:40:26   Log-Likelihood:                -35457.
+No. Observations:               12053   AIC:                         7.237e+04
+Df Residuals:                   11327   BIC:                         7.774e+04
+Df Model:                         725                                         
+Covariance Type:            nonrobust                                         
+===========================================================================================
+                              coef    std err          t      P>|t|      [0.025      0.975]
+-------------------------------------------------------------------------------------------
+Intercept                  44.9377      1.163     38.624      0.000      42.657      47.218
+C(branch_id_str)[T.1]    2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.10]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.100]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.101]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.102]     7.6309      1.624      4.699      0.000       4.448      10.814
+C(branch_id_str)[T.103]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.104]    10.1094      1.624      6.225      0.000       6.926      13.293
+C(branch_id_str)[T.105]     4.5678      1.624      2.813      0.005       1.385       7.751
+C(branch_id_str)[T.106]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.107]     8.8135      1.624      5.427      0.000       5.630      11.997
+C(branch_id_str)[T.108]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.109]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.11]     14.6978      1.624      9.050      0.000      11.514      17.881
+C(branch_id_str)[T.110]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.111]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.112]     5.4580      1.624      3.361      0.001       2.275       8.641
+C(branch_id_str)[T.113]    22.9772      1.624     14.149      0.000      19.794      26.160
+C(branch_id_str)[T.114]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.115]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.116]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.117]     9.3392      1.624      5.751      0.000       6.156      12.523
+C(branch_id_str)[T.118]    -0.7301      1.624     -0.450      0.653      -3.913       2.453
+C(branch_id_str)[T.119]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.12]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.120]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.121]     0.8968      1.624      0.552      0.581      -2.287       4.080
+C(branch_id_str)[T.122]     1.7499      1.624      1.078      0.281      -1.433       4.933
+C(branch_id_str)[T.123]    12.0655      1.624      7.429      0.000       8.882      15.249
+C(branch_id_str)[T.124]     8.5056      1.624      5.237      0.000       5.322      11.689
+C(branch_id_str)[T.125]     1.7624      1.624      1.085      0.278      -1.421       4.946
+C(branch_id_str)[T.126]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.127]    24.0014      1.624     14.779      0.000      20.818      27.185
+C(branch_id_str)[T.128]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.129]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.13]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.130]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.131]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.132]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.133]    11.2267      1.624      6.913      0.000       8.043      14.410
+C(branch_id_str)[T.134]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.135]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.136]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.137]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.138]     1.1299      1.624      0.696      0.487      -2.053       4.313
+C(branch_id_str)[T.139]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.14]     -0.5613      1.624     -0.346      0.730      -3.744       2.622
+C(branch_id_str)[T.140]    -4.9606      1.624     -3.055      0.002      -8.144      -1.778
+C(branch_id_str)[T.141]     3.1915      1.624      1.965      0.049       0.008       6.375
+C(branch_id_str)[T.142]    11.2189      1.624      6.908      0.000       8.035      14.402
+C(branch_id_str)[T.143]    10.3234      1.624      6.356      0.000       7.140      13.507
+C(branch_id_str)[T.144]     5.7966      1.624      3.570      0.000       2.614       8.980
+C(branch_id_str)[T.145]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.146]     7.0389      1.624      4.334      0.000       3.856      10.222
+C(branch_id_str)[T.147]   -14.3796      1.624     -8.855      0.000     -17.563     -11.196
+C(branch_id_str)[T.148]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.149]     9.0271      1.624      5.559      0.000       5.844      12.210
+C(branch_id_str)[T.15]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.150]    13.4059      1.624      8.255      0.000      10.223      16.589
+C(branch_id_str)[T.151]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.152]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.153]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.154]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.155]    -1.2492      1.624     -0.769      0.442      -4.433       1.934
+C(branch_id_str)[T.156]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.157]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.158]    18.9471      1.624     11.667      0.000      15.764      22.130
+C(branch_id_str)[T.159]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.16]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.160]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.161]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.162]    -5.8094      1.624     -3.577      0.000      -8.993      -2.626
+C(branch_id_str)[T.163]    11.7621      1.624      7.242      0.000       8.579      14.946
+C(branch_id_str)[T.164]    10.0381      1.624      6.181      0.000       6.855      13.221
+C(branch_id_str)[T.165]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.166]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.167]    12.1532      1.624      7.483      0.000       8.970      15.337
+C(branch_id_str)[T.168]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.169]     4.7709      1.624      2.938      0.003       1.588       7.954
+C(branch_id_str)[T.17]     11.5902      1.624      7.137      0.000       8.407      14.773
+C(branch_id_str)[T.170]     3.6850      1.624      2.269      0.023       0.502       6.868
+C(branch_id_str)[T.171]     8.3390      1.624      5.135      0.000       5.156      11.522
+C(branch_id_str)[T.172]     9.0256      1.624      5.558      0.000       5.842      12.209
+C(branch_id_str)[T.173]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.174]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.175]     8.6878      1.624      5.350      0.000       5.504      11.871
+C(branch_id_str)[T.176]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.177]     2.0019      1.624      1.233      0.218      -1.181       5.185
+C(branch_id_str)[T.178]     9.1761      1.624      5.650      0.000       5.993      12.359
+C(branch_id_str)[T.179]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.18]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.180]    18.9105      1.624     11.644      0.000      15.727      22.094
+C(branch_id_str)[T.181]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.182]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.183]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.184]     4.9624      1.624      3.056      0.002       1.779       8.146
+C(branch_id_str)[T.185]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.186]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.187]    31.7746      1.624     19.566      0.000      28.591      34.958
+C(branch_id_str)[T.188]    14.1933      1.624      8.739      0.000      11.010      17.377
+C(branch_id_str)[T.189]     1.2966      1.624      0.798      0.425      -1.887       4.480
+C(branch_id_str)[T.19]      1.6314      1.624      1.005      0.315      -1.552       4.815
+C(branch_id_str)[T.190]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.191]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.192]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.193]    18.9592      1.624     11.674      0.000      15.776      22.143
+C(branch_id_str)[T.194]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.195]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.196]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.197]    11.7435      1.624      7.231      0.000       8.560      14.927
+C(branch_id_str)[T.198]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.199]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.2]    2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.20]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.200]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.201]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.202]     4.7859      1.624      2.947      0.003       1.603       7.969
+C(branch_id_str)[T.203]    -1.6257      1.624     -1.001      0.317      -4.809       1.558
+C(branch_id_str)[T.204]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.205]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.206]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.207]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.208]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.209]     3.8996      1.624      2.401      0.016       0.716       7.083
+C(branch_id_str)[T.21]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.210]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.211]    19.2094      1.624     11.828      0.000      16.026      22.393
+C(branch_id_str)[T.212]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.213]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.214]     6.3619      1.624      3.917      0.000       3.179       9.545
+C(branch_id_str)[T.215]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.216]    -1.5613      1.624     -0.961      0.336      -4.744       1.622
+C(branch_id_str)[T.217]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.218]     9.2594      1.624      5.702      0.000       6.076      12.443
+C(branch_id_str)[T.219]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.22]     -0.2808      1.624     -0.173      0.863      -3.464       2.903
+C(branch_id_str)[T.220]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.221]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.222]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.223]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.224]    -0.4819      1.624     -0.297      0.767      -3.665       2.701
+C(branch_id_str)[T.225]    -7.8806      1.624     -4.852      0.000     -11.064      -4.697
+C(branch_id_str)[T.226]    19.6165      1.624     12.080      0.000      16.433      22.800
+C(branch_id_str)[T.227]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.228]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.229]     9.9396      1.624      6.121      0.000       6.756      13.123
+C(branch_id_str)[T.23]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.230]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.231]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.232]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.233]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.234]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.235]     4.5663      1.624      2.812      0.005       1.383       7.750
+C(branch_id_str)[T.236]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.237]     9.9489      1.624      6.126      0.000       6.765      13.132
+C(branch_id_str)[T.238]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.239]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.24]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.240]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.241]    -2.7720      1.624     -1.707      0.088      -5.955       0.411
+C(branch_id_str)[T.242]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.243]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.244]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.245]     7.4444      1.624      4.584      0.000       4.261      10.628
+C(branch_id_str)[T.246]     6.3611      1.624      3.917      0.000       3.178       9.544
+C(branch_id_str)[T.247]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.248]     6.6564      1.624      4.099      0.000       3.473       9.840
+C(branch_id_str)[T.249]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.25]      1.1218      1.624      0.691      0.490      -2.061       4.305
+C(branch_id_str)[T.250]     5.3560      1.624      3.298      0.001       2.173       8.539
+C(branch_id_str)[T.251]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.252]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.253]    12.4446      1.624      7.663      0.000       9.261      15.628
+C(branch_id_str)[T.254]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.255]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.256]     1.4637      1.624      0.901      0.367      -1.719       4.647
+C(branch_id_str)[T.257]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.258]    24.3741      1.624     15.010      0.000      21.191      27.557
+C(branch_id_str)[T.259]     6.5790      1.624      4.051      0.000       3.396       9.762
+C(branch_id_str)[T.26]      5.0071      1.624      3.083      0.002       1.824       8.190
+C(branch_id_str)[T.260]    12.3920      1.624      7.630      0.000       9.209      15.575
+C(branch_id_str)[T.261]     5.8139      1.624      3.580      0.000       2.630       8.997
+C(branch_id_str)[T.262]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.263]    16.0303      1.624      9.871      0.000      12.847      19.214
+C(branch_id_str)[T.264]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.265]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.266]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.267]     8.5465      1.624      5.263      0.000       5.363      11.730
+C(branch_id_str)[T.268]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.269]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.27]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.270]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.271]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.272]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.273]     4.8285      1.624      2.973      0.003       1.645       8.012
+C(branch_id_str)[T.274]    -6.0435      1.624     -3.721      0.000      -9.227      -2.860
+C(branch_id_str)[T.275]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.276]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.277]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.278]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.279]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.28]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.280]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.281]    10.3190      1.624      6.354      0.000       7.136      13.502
+C(branch_id_str)[T.282]    -3.5548      1.624     -2.189      0.029      -6.738      -0.372
+C(branch_id_str)[T.283]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.284]     4.5569      1.624      2.806      0.005       1.374       7.740
+C(branch_id_str)[T.285]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.286]    10.0650      1.624      6.197      0.000       6.882      13.248
+C(branch_id_str)[T.287]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.288]    10.5328      1.624      6.486      0.000       7.350      13.716
+C(branch_id_str)[T.289]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.29]     14.9246      1.624      9.190      0.000      11.741      18.108
+C(branch_id_str)[T.290]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.291]    -1.6099      1.624     -0.991      0.322      -4.793       1.573
+C(branch_id_str)[T.292]     3.3665      1.624      2.073      0.038       0.183       6.550
+C(branch_id_str)[T.293]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.294]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.295]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.296]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.297]     9.4189      1.624      5.800      0.000       6.236      12.602
+C(branch_id_str)[T.298]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.299]     4.2813      1.624      2.636      0.008       1.098       7.465
+C(branch_id_str)[T.3]    2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.30]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.300]    10.3653      1.624      6.383      0.000       7.182      13.548
+C(branch_id_str)[T.301]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.302]    23.8725      1.624     14.700      0.000      20.689      27.056
+C(branch_id_str)[T.303]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.304]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.305]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.306]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.307]    -7.2111      1.624     -4.440      0.000     -10.395      -4.028
+C(branch_id_str)[T.308]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.309]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.31]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.310]     3.8128      1.624      2.348      0.019       0.630       6.996
+C(branch_id_str)[T.311]    27.3738      1.624     16.857      0.000      24.191      30.557
+C(branch_id_str)[T.312]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.313]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.314]     9.1909      1.624      5.660      0.000       6.008      12.374
+C(branch_id_str)[T.315]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.316]     2.0464      1.624      1.260      0.208      -1.137       5.230
+C(branch_id_str)[T.317]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.318]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.319]    13.0170      1.624      8.016      0.000       9.834      16.200
+C(branch_id_str)[T.32]      3.3949      1.624      2.091      0.037       0.212       6.578
+C(branch_id_str)[T.320]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.321]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.322]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.323]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.324]     1.3595      1.624      0.837      0.403      -1.824       4.543
+C(branch_id_str)[T.325]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.326]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.327]    -4.3648      1.624     -2.688      0.007      -7.548      -1.182
+C(branch_id_str)[T.328]    10.4440      1.624      6.431      0.000       7.261      13.627
+C(branch_id_str)[T.329]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.33]      1.6549      1.624      1.019      0.308      -1.528       4.838
+C(branch_id_str)[T.330]     5.3758      1.624      3.310      0.001       2.193       8.559
+C(branch_id_str)[T.331]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.332]    15.4146      1.624      9.492      0.000      12.231      18.598
+C(branch_id_str)[T.333]    -2.6623      1.624     -1.639      0.101      -5.845       0.521
+C(branch_id_str)[T.334]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.335]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.336]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.337]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.338]     6.1251      1.624      3.771      0.000       2.942       9.309
+C(branch_id_str)[T.339]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.34]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.340]     5.2054      1.624      3.206      0.001       2.022       8.388
+C(branch_id_str)[T.341]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.342]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.343]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.344]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.345]     7.7339      1.624      4.762      0.000       4.550      10.917
+C(branch_id_str)[T.346]    12.1272      1.624      7.468      0.000       8.944      15.310
+C(branch_id_str)[T.347]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.348]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.349]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.35]      9.3185      1.624      5.738      0.000       6.135      12.502
+C(branch_id_str)[T.350]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.351]     2.1558      1.624      1.328      0.184      -1.027       5.339
+C(branch_id_str)[T.352]    -9.9016      1.624     -6.097      0.000     -13.085      -6.718
+C(branch_id_str)[T.353]    10.1144      1.624      6.228      0.000       6.931      13.298
+C(branch_id_str)[T.354]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.355]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.356]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.357]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.358]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.359]     4.2068      1.624      2.591      0.010       1.024       7.390
+C(branch_id_str)[T.36]     -1.5310      1.624     -0.943      0.346      -4.714       1.652
+C(branch_id_str)[T.360]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.361]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.362]    23.2910      1.624     14.342      0.000      20.108      26.474
+C(branch_id_str)[T.363]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.364]    10.4835      1.624      6.455      0.000       7.300      13.667
+C(branch_id_str)[T.365]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.366]    -0.0973      1.624     -0.060      0.952      -3.280       3.086
+C(branch_id_str)[T.367]    -0.3153      1.624     -0.194      0.846      -3.499       2.868
+C(branch_id_str)[T.368]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.369]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.37]      6.4103      1.624      3.947      0.000       3.227       9.594
+C(branch_id_str)[T.370]    15.8406      1.624      9.755      0.000      12.657      19.024
+C(branch_id_str)[T.371]    14.8599      1.624      9.151      0.000      11.677      18.043
+C(branch_id_str)[T.372]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.373]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.374]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.375]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.376]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.377]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.378]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.379]     5.9625      1.624      3.672      0.000       2.779       9.146
+C(branch_id_str)[T.38]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.380]     0.3610      1.624      0.222      0.824      -2.822       3.544
+C(branch_id_str)[T.381]     2.5792      1.624      1.588      0.112      -0.604       5.762
+C(branch_id_str)[T.382]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.383]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.384]     0.4463      1.624      0.275      0.783      -2.737       3.630
+C(branch_id_str)[T.385]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.386]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.387]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.388]    11.6672      1.624      7.185      0.000       8.484      14.850
+C(branch_id_str)[T.389]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.39]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.390]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.391]     3.6315      1.624      2.236      0.025       0.448       6.815
+C(branch_id_str)[T.392]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.393]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.394]    11.9065      1.624      7.332      0.000       8.723      15.090
+C(branch_id_str)[T.395]     9.8133      1.624      6.043      0.000       6.630      12.996
+C(branch_id_str)[T.396]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.397]    19.9639      1.624     12.293      0.000      16.781      23.147
+C(branch_id_str)[T.398]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.399]     4.8468      1.624      2.985      0.003       1.664       8.030
+C(branch_id_str)[T.4]    2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.40]    -11.4903      1.624     -7.076      0.000     -14.673      -8.307
+C(branch_id_str)[T.400]     5.9935      1.624      3.691      0.000       2.810       9.177
+C(branch_id_str)[T.401]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.402]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.403]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.404]    -0.9141      1.624     -0.563      0.574      -4.097       2.269
+C(branch_id_str)[T.405]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.406]     3.7666      1.624      2.319      0.020       0.584       6.950
+C(branch_id_str)[T.407]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.408]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.409]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.41]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.410]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.411]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.412]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.413]    14.2544      1.624      8.778      0.000      11.071      17.437
+C(branch_id_str)[T.414]    -1.3775      1.624     -0.848      0.396      -4.560       1.806
+C(branch_id_str)[T.415]    16.5778      1.624     10.209      0.000      13.395      19.761
+C(branch_id_str)[T.416]    11.7551      1.624      7.239      0.000       8.572      14.938
+C(branch_id_str)[T.417]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.418]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.419]     9.2185      1.624      5.677      0.000       6.036      12.402
+C(branch_id_str)[T.42]     -3.3476      1.624     -2.062      0.039      -6.531      -0.165
+C(branch_id_str)[T.420]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.421]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.422]     4.0243      1.624      2.478      0.013       0.841       7.208
+C(branch_id_str)[T.423]    -7.3221      1.624     -4.509      0.000     -10.505      -4.139
+C(branch_id_str)[T.424]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.425]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.426]     0.8637      1.624      0.532      0.595      -2.320       4.047
+C(branch_id_str)[T.427]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.428]     7.4506      1.624      4.588      0.000       4.268      10.634
+C(branch_id_str)[T.429]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.43]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.430]     6.8558      1.624      4.222      0.000       3.673      10.039
+C(branch_id_str)[T.431]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.432]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.433]    14.7839      1.624      9.104      0.000      11.601      17.967
+C(branch_id_str)[T.434]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.435]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.436]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.437]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.438]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.439]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.44]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.440]     5.0855      1.624      3.132      0.002       1.902       8.269
+C(branch_id_str)[T.441]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.442]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.443]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.444]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.445]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.446]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.447]    -6.6688      1.624     -4.107      0.000      -9.852      -3.486
+C(branch_id_str)[T.448]     6.0321      1.624      3.714      0.000       2.849       9.215
+C(branch_id_str)[T.449]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.45]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.450]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.451]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.452]    17.5268      1.624     10.793      0.000      14.344      20.710
+C(branch_id_str)[T.453]    -0.6685      1.624     -0.412      0.681      -3.852       2.515
+C(branch_id_str)[T.454]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.455]   -11.1913      1.624     -6.891      0.000     -14.375      -8.008
+C(branch_id_str)[T.456]     7.8780      1.624      4.851      0.000       4.695      11.061
+C(branch_id_str)[T.457]    13.4402      1.624      8.277      0.000      10.257      16.623
+C(branch_id_str)[T.458]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.459]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.46]      8.0432      1.624      4.953      0.000       4.860      11.226
+C(branch_id_str)[T.460]    16.5813      1.624     10.210      0.000      13.398      19.765
+C(branch_id_str)[T.461]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.462]     3.4310      1.624      2.113      0.035       0.248       6.614
+C(branch_id_str)[T.463]    -0.6201      1.624     -0.382      0.703      -3.803       2.563
+C(branch_id_str)[T.464]    10.3209      1.624      6.355      0.000       7.138      13.504
+C(branch_id_str)[T.465]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.466]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.467]    -2.1235      1.624     -1.308      0.191      -5.307       1.060
+C(branch_id_str)[T.468]     4.6750      1.624      2.879      0.004       1.492       7.858
+C(branch_id_str)[T.469]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.47]      6.0085      1.624      3.700      0.000       2.825       9.192
+C(branch_id_str)[T.470]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.471]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.472]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.473]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.474]     6.0334      1.624      3.715      0.000       2.850       9.217
+C(branch_id_str)[T.475]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.476]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.477]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.478]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.479]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.48]      0.0027      1.624      0.002      0.999      -3.180       3.186
+C(branch_id_str)[T.480]   -13.5820      1.624     -8.363      0.000     -16.765     -10.399
+C(branch_id_str)[T.481]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.482]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.483]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.484]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.485]     4.8407      1.624      2.981      0.003       1.658       8.024
+C(branch_id_str)[T.486]   -11.5495      1.624     -7.112      0.000     -14.733      -8.366
+C(branch_id_str)[T.487]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.488]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.489]    16.0590      1.624      9.889      0.000      12.876      19.242
+C(branch_id_str)[T.49]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.490]     3.6768      1.624      2.264      0.024       0.494       6.860
+C(branch_id_str)[T.491]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.492]     1.2799      1.624      0.788      0.431      -1.903       4.463
+C(branch_id_str)[T.493]     8.9951      1.624      5.539      0.000       5.812      12.178
+C(branch_id_str)[T.494]    18.9176      1.624     11.649      0.000      15.734      22.101
+C(branch_id_str)[T.495]     3.2346      1.624      1.992      0.046       0.052       6.418
+C(branch_id_str)[T.496]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.497]     5.1039      1.624      3.143      0.002       1.921       8.287
+C(branch_id_str)[T.498]     6.8482      1.624      4.217      0.000       3.665      10.031
+C(branch_id_str)[T.499]     3.0043      1.624      1.850      0.064      -0.179       6.187
+C(branch_id_str)[T.5]       0.9805      1.623      0.604      0.546      -2.200       4.161
+C(branch_id_str)[T.50]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.500]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.501]    11.9551      1.624      7.362      0.000       8.772      15.138
+C(branch_id_str)[T.502]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.503]    14.2031      1.624      8.746      0.000      11.020      17.386
+C(branch_id_str)[T.504]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.505]    13.3161      1.624      8.200      0.000      10.133      16.499
+C(branch_id_str)[T.506]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.507]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.508]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.509]     3.9170      1.624      2.412      0.016       0.734       7.100
+C(branch_id_str)[T.51]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.510]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.511]     2.3203      1.624      1.429      0.153      -0.863       5.504
+C(branch_id_str)[T.512]     5.6567      1.624      3.483      0.000       2.474       8.840
+C(branch_id_str)[T.513]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.514]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.515]     7.4837      1.624      4.608      0.000       4.300      10.667
+C(branch_id_str)[T.516]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.517]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.518]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.519]     8.2850      1.624      5.102      0.000       5.102      11.468
+C(branch_id_str)[T.52]      5.1148      1.624      3.150      0.002       1.931       8.298
+C(branch_id_str)[T.520]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.521]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.522]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.523]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.524]     6.8962      1.624      4.247      0.000       3.713      10.079
+C(branch_id_str)[T.525]     0.4222      1.624      0.260      0.795      -2.761       3.605
+C(branch_id_str)[T.526]    10.1939      1.624      6.277      0.000       7.011      13.377
+C(branch_id_str)[T.527]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.528]     4.8239      1.624      2.970      0.003       1.641       8.007
+C(branch_id_str)[T.529]    -4.8284      1.624     -2.973      0.003      -8.012      -1.645
+C(branch_id_str)[T.53]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.530]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.531]    14.1836      1.624      8.734      0.000      11.000      17.367
+C(branch_id_str)[T.532]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.533]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.534]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.535]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.536]    10.1950      1.624      6.278      0.000       7.012      13.378
+C(branch_id_str)[T.537]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.538]    18.1597      1.624     11.183      0.000      14.977      21.343
+C(branch_id_str)[T.539]    -0.5108      1.624     -0.315      0.753      -3.694       2.672
+C(branch_id_str)[T.54]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.540]    -6.3576      1.624     -3.915      0.000      -9.541      -3.174
+C(branch_id_str)[T.541]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.542]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.543]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.544]     5.5815      1.624      3.437      0.001       2.398       8.765
+C(branch_id_str)[T.545]    -1.9249      1.624     -1.185      0.236      -5.108       1.258
+C(branch_id_str)[T.546]    18.1261      1.624     11.162      0.000      14.943      21.309
+C(branch_id_str)[T.547]    12.6967      1.624      7.819      0.000       9.514      15.880
+C(branch_id_str)[T.548]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.549]    -1.6033      1.624     -0.987      0.324      -4.787       1.580
+C(branch_id_str)[T.55]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.550]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.551]     8.1112      1.624      4.995      0.000       4.928      11.294
+C(branch_id_str)[T.552]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.553]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.554]    -2.5319      1.624     -1.559      0.119      -5.715       0.651
+C(branch_id_str)[T.555]    -1.0078      1.624     -0.621      0.535      -4.191       2.175
+C(branch_id_str)[T.556]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.557]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.558]    -5.9071      1.624     -3.637      0.000      -9.090      -2.724
+C(branch_id_str)[T.559]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.56]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.560]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.561]     4.7269      1.624      2.911      0.004       1.543       7.910
+C(branch_id_str)[T.562]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.563]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.564]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.565]     3.9897      1.624      2.457      0.014       0.806       7.173
+C(branch_id_str)[T.566]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.567]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.568]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.569]     2.2597      1.624      1.392      0.164      -0.923       5.443
+C(branch_id_str)[T.57]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.570]     9.2143      1.624      5.674      0.000       6.031      12.397
+C(branch_id_str)[T.571]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.572]    25.3717      1.624     15.623      0.000      22.188      28.555
+C(branch_id_str)[T.573]     9.5097      1.624      5.856      0.000       6.327      12.693
+C(branch_id_str)[T.574]     8.4674      1.624      5.214      0.000       5.284      11.651
+C(branch_id_str)[T.575]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.576]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.577]    -2.3705      1.624     -1.460      0.144      -5.554       0.813
+C(branch_id_str)[T.578]     4.3380      1.624      2.671      0.008       1.155       7.521
+C(branch_id_str)[T.579]    -8.3160      1.624     -5.121      0.000     -11.499      -5.133
+C(branch_id_str)[T.58]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.580]     8.4784      1.624      5.221      0.000       5.295      11.661
+C(branch_id_str)[T.581]    22.6212      1.624     13.930      0.000      19.438      25.804
+C(branch_id_str)[T.582]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.583]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.584]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.585]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.586]     9.6099      1.624      5.918      0.000       6.427      12.793
+C(branch_id_str)[T.587]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.588]     1.9312      1.624      1.189      0.234      -1.252       5.114
+C(branch_id_str)[T.589]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.59]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.590]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.591]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.592]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.593]    -0.2417      1.624     -0.149      0.882      -3.425       2.941
+C(branch_id_str)[T.594]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.595]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.596]    24.8500      1.624     15.302      0.000      21.667      28.033
+C(branch_id_str)[T.597]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.598]    -8.7386      1.624     -5.381      0.000     -11.922      -5.556
+C(branch_id_str)[T.599]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.6]      11.7961      1.623      7.266      0.000       8.614      14.978
+C(branch_id_str)[T.60]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.600]    15.7982      1.624      9.729      0.000      12.615      18.981
+C(branch_id_str)[T.601]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.602]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.603]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.604]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.605]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.606]     4.8717      1.624      3.000      0.003       1.688       8.055
+C(branch_id_str)[T.607]    -1.0460      1.624     -0.644      0.520      -4.229       2.137
+C(branch_id_str)[T.608]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.609]    -7.9256      1.624     -4.880      0.000     -11.109      -4.742
+C(branch_id_str)[T.61]      4.4129      1.624      2.717      0.007       1.230       7.596
+C(branch_id_str)[T.610]    -2.3802      1.624     -1.466      0.143      -5.563       0.803
+C(branch_id_str)[T.611]     1.5260      1.624      0.940      0.347      -1.657       4.709
+C(branch_id_str)[T.612]    -2.9174      1.624     -1.797      0.072      -6.100       0.266
+C(branch_id_str)[T.613]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.614]     6.6957      1.624      4.123      0.000       3.513       9.879
+C(branch_id_str)[T.615]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.616]     6.9753      1.624      4.295      0.000       3.792      10.158
+C(branch_id_str)[T.617]   -12.1774      1.624     -7.499      0.000     -15.361      -8.994
+C(branch_id_str)[T.618]     1.1385      1.624      0.701      0.483      -2.045       4.322
+C(branch_id_str)[T.619]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.62]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.620]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.621]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.622]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.623]    -3.3057      1.624     -2.036      0.042      -6.489      -0.123
+C(branch_id_str)[T.624]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.625]    20.3337      1.624     12.521      0.000      17.150      23.517
+C(branch_id_str)[T.626]    -2.0922      1.624     -1.288      0.198      -5.275       1.091
+C(branch_id_str)[T.627]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.628]     5.3649      1.624      3.304      0.001       2.182       8.548
+C(branch_id_str)[T.629]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.63]     14.9138      1.624      9.184      0.000      11.731      18.097
+C(branch_id_str)[T.630]     9.9861      1.624      6.150      0.000       6.803      13.169
+C(branch_id_str)[T.631]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.632]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.633]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.634]    21.2657      1.624     13.095      0.000      18.082      24.449
+C(branch_id_str)[T.635]   -13.3408      1.624     -8.215      0.000     -16.524     -10.158
+C(branch_id_str)[T.636]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.637]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.638]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.639]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.64]     -0.0068      1.624     -0.004      0.997      -3.190       3.176
+C(branch_id_str)[T.640]    26.7169      1.624     16.452      0.000      23.534      29.900
+C(branch_id_str)[T.641]     6.4735      1.624      3.986      0.000       3.290       9.657
+C(branch_id_str)[T.642]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.643]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.644]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.645]     5.4978      1.624      3.386      0.001       2.315       8.681
+C(branch_id_str)[T.646]    19.1380      1.624     11.785      0.000      15.955      22.321
+C(branch_id_str)[T.647]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.648]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.649]     5.0867      1.624      3.132      0.002       1.904       8.270
+C(branch_id_str)[T.65]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.650]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.651]     8.2309      1.624      5.068      0.000       5.048      11.414
+C(branch_id_str)[T.652]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.653]    -9.5967      1.624     -5.910      0.000     -12.780      -6.414
+C(branch_id_str)[T.654]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.655]    -1.5025      1.624     -0.925      0.355      -4.685       1.681
+C(branch_id_str)[T.656]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.657]     7.0635      1.624      4.350      0.000       3.880      10.247
+C(branch_id_str)[T.658]     0.6851      1.624      0.422      0.673      -2.498       3.868
+C(branch_id_str)[T.659]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.66]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.660]    13.1130      1.624      8.075      0.000       9.930      16.296
+C(branch_id_str)[T.661]     6.6992      1.624      4.125      0.000       3.516       9.882
+C(branch_id_str)[T.662]     1.8670      1.624      1.150      0.250      -1.316       5.050
+C(branch_id_str)[T.663]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.664]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.665]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.666]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.667]     2.6307      1.624      1.620      0.105      -0.552       5.814
+C(branch_id_str)[T.668]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.669]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.67]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.670]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.671]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.672]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.673]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.674]     4.5927      1.624      2.828      0.005       1.410       7.776
+C(branch_id_str)[T.675]     5.6035      1.624      3.451      0.001       2.420       8.787
+C(branch_id_str)[T.676]     0.3245      1.624      0.200      0.842      -2.859       3.508
+C(branch_id_str)[T.677]     2.2943      1.624      1.413      0.158      -0.889       5.477
+C(branch_id_str)[T.678]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.679]    -2.1687      1.624     -1.335      0.182      -5.352       1.014
+C(branch_id_str)[T.68]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.680]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.681]    -2.3566      1.624     -1.451      0.147      -5.540       0.826
+C(branch_id_str)[T.682]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.683]     8.1309      1.624      5.007      0.000       4.948      11.314
+C(branch_id_str)[T.684]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.685]    15.5292      1.624      9.563      0.000      12.346      18.712
+C(branch_id_str)[T.686]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.687]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.688]     3.5013      1.624      2.156      0.031       0.318       6.684
+C(branch_id_str)[T.689]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.69]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.690]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.691]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.692]     9.2098      1.624      5.671      0.000       6.027      12.393
+C(branch_id_str)[T.693]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.694]    -2.1157      1.624     -1.303      0.193      -5.299       1.067
+C(branch_id_str)[T.695]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.696]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.697]     2.3899      1.624      1.472      0.141      -0.793       5.573
+C(branch_id_str)[T.698]    11.4245      1.624      7.035      0.000       8.241      14.608
+C(branch_id_str)[T.699]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.7]      14.1905      1.622      8.746      0.000      11.010      17.371
+C(branch_id_str)[T.70]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.700]     3.7117      1.624      2.286      0.022       0.528       6.895
+C(branch_id_str)[T.701]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.702]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.703]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.704]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.705]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.706]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.707]    19.3844      1.624     11.937      0.000      16.201      22.568
+C(branch_id_str)[T.708]  2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.71]      1.4163      1.624      0.872      0.383      -1.767       4.599
+C(branch_id_str)[T.72]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.73]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.74]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.75]     -5.6888      1.624     -3.503      0.000      -8.872      -2.506
+C(branch_id_str)[T.76]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.77]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.78]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.79]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.8]    2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.80]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.81]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.82]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.83]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.84]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.85]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.86]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.87]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.88]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.89]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.9]    2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.90]     15.4957      1.624      9.542      0.000      12.313      18.679
+C(branch_id_str)[T.91]     14.2509      1.624      8.776      0.000      11.068      17.434
+C(branch_id_str)[T.92]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.93]      9.6564      1.624      5.946      0.000       6.473      12.839
+C(branch_id_str)[T.94]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.95]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.96]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.97]     13.7897      1.624      8.492      0.000      10.607      16.973
+C(branch_id_str)[T.98]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(branch_id_str)[T.99]   2.604e+11   1.58e+11      1.650      0.099    -4.9e+10     5.7e+11
+C(week)[T.7]               -0.9169      0.251     -3.650      0.000      -1.409      -0.424
+C(week)[T.8]                1.2813      0.251      5.100      0.000       0.789       1.774
+C(week)[T.9]               -1.5623      0.251     -6.219      0.000      -2.055      -1.070
+C(week)[T.10]              -0.2784      0.251     -1.108      0.268      -0.771       0.214
+C(week)[T.11]               2.2904      0.251      9.117      0.000       1.798       2.783
+C(week)[T.12]              -1.6403      0.251     -6.529      0.000      -2.133      -1.148
+C(week)[T.13]              -0.6556      0.251     -2.610      0.009      -1.148      -0.163
+C(week)[T.14]              -6.2967      0.251    -25.064      0.000      -6.789      -5.804
+C(week)[T.15]           -2.953e+08   1.79e+08     -1.650      0.099   -6.46e+08    5.55e+07
+C(week)[T.16]           -2.953e+08   1.79e+08     -1.650      0.099   -6.46e+08    5.55e+07
+C(week)[T.17]           -2.953e+08   1.79e+08     -1.650      0.099   -6.46e+08    5.55e+07
+C(week)[T.18]           -2.953e+08   1.79e+08     -1.650      0.099   -6.46e+08    5.55e+07
+C(week)[T.19]           -2.953e+08   1.79e+08     -1.650      0.099   -6.46e+08    5.55e+07
+C(week)[T.20]           -2.953e+08   1.79e+08     -1.650      0.099   -6.46e+08    5.55e+07
+C(week)[T.21]           -2.953e+08   1.79e+08     -1.650      0.099   -6.46e+08    5.55e+07
+C(week)[T.22]           -2.953e+08   1.79e+08     -1.650      0.099   -6.46e+08    5.55e+07
+switched_branch         -2.604e+11   1.58e+11     -1.650      0.099    -5.7e+11     4.9e+10
+after_switch             2.953e+08   1.79e+08      1.650      0.099   -5.55e+07    6.46e+08
+treated                     1.8772      0.176     10.657      0.000       1.532       2.223
+==============================================================================
+Omnibus:                        2.237   Durbin-Watson:                   1.279
+Prob(Omnibus):                  0.327   Jarque-Bera (JB):                2.254
+Skew:                           0.033   Prob(JB):                        0.324
+Kurtosis:                       2.986   Cond. No.                     1.97e+15
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+[2] The smallest eigenvalue is 5.84e-27. This might indicate that there are
+strong multicollinearity problems or that the design matrix is singular.
+
+<stdin>:50: SingularMatrixWarning: The design matrix is rank-deficient. The model parameters are not uniquely determined.
+<stdin>:55: SingularMatrixWarning: The design matrix is rank-deficient. The model parameters are not uniquely determined.
+
+
+=== Code run in turn 2, call 3 of 5 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Create interaction term
+df['treated'] = df['switched_branch'] * df['after_switch']
+
+# Run regression with branch and week fixed effects, cluster SE by branch
+print("=== Difference-in-Differences Regression ===")
+print("With Branch and Week Fixed Effects")
+print("Standard Errors Clustered by Branch\n")
+
+# Use cluster-robust standard errors
+model = ols('service_score ~ switched_branch + after_switch + treated + C(branch_id) + C(week)', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+# Extract just the key coefficients
+print("Key Coefficients:")
+print(f"  Treatment Effect (treated): {model.params['treated']:.3f}")
+print(f"  Standard Error: {model.bse['treated']:.3f}")
+print(f"  95% CI: [{model.conf_int().loc['treated'][0]:.3f}, {model.conf_int().loc['treated'][1]:.3f}]")
+print(f"  P-value: {model.pvalues['treated']:.4f}")
+
+# Pre-trends analysis: Check if treatment and control had similar trends before the switch
+print("\n=== Pre-Trends Check ===")
+print("Average service scores by week for treatment vs control groups (before week 15):\n")
+
+pre_trends = df[df['week'] < 15].groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+print(pre_trends)
+
+# Calculate week-by-week differences before the switch
+pre_trends['diff'] = pre_trends[1] - pre_trends[0]
+print("\nWeek-by-week difference (Treatment - Control) before switch:")
+print(pre_trends['diff'])
+
+# Post-switch trends
+print("\n=== Post-Switch Trends ===")
+post_trends = df[df['week'] >= 15].groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+print(post_trends)
+post_trends['diff'] = post_trends[1] - post_trends[0]
+print("\nWeek-by-week difference (Treatment - Control) after switch:")
+print(post_trends['diff'])
+
+# Create a visualization
+plt.figure(figsize=(12, 6))
+
+# Plot treatment group
+treat_weekly = df.groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+plt.plot(treat_weekly.index, treat_weekly[0], 'o--', label='Control (No Switch)', linewidth=2, markersize=6)
+plt.plot(treat_weekly.index, treat_weekly[1], 's--', label='Treatment (Switched)', linewidth=2, markersize=6)
+
+# Add vertical line at switch point
+plt.axvline(x=14.5, color='red', linestyle='-', linewidth=2, label='Switch Week (15)')
+
+plt.xlabel('Week', fontsize=12)
+plt.ylabel('Average Service Score', fontsize=12)
+plt.title('Service Scores: Treatment vs Control Groups Over Time', fontsize=14, fontweight='bold')
+plt.legend(fontsize=11)
+plt.grid(True, alpha=0.3)
+plt.xticks(range(6, 23))
+plt.tight_layout()
+plt.savefig('service_scores_trend.png', dpi=150)
+print("\nPlot saved as 'service_scores_trend.png'")
+
+# Effect size interpretation
+print("\n=== Effect Size Interpretation ===")
+treatment_effect = model.params['treated']
+baseline_score = df[df['after_switch']==0]['service_score'].mean()
+pct_change = (treatment_effect / baseline_score) * 100
+print(f"Baseline average service score (before switch): {baseline_score:.2f}")
+print(f"Estimated treatment effect: +{treatment_effect:.2f} points")
+print(f"Percentage improvement: {pct_change:.1f}%")
+
+--- printed ---
+=== Difference-in-Differences Regression ===
+With Branch and Week Fixed Effects
+Standard Errors Clustered by Branch
+
+Key Coefficients:
+  Treatment Effect (treated): 1.877
+  Standard Error: nan
+  95% CI: [nan, nan]
+  P-value: nan
+
+=== Pre-Trends Check ===
+Average service scores by week for treatment vs control groups (before week 15):
+
+switched_branch          0          1
+week                                 
+6                51.541207  51.318063
+7                50.624369  50.395141
+8                52.505348  52.817668
+9                49.960558  49.762729
+10               50.838234  51.322616
+11               53.397691  53.891060
+12               49.113909  50.195341
+13               49.618625  51.514243
+14               43.982649  45.859001
+
+Week-by-week difference (Treatment - Control) before switch:
+week
+6    -0.223143
+7    -0.229228
+8     0.312320
+9    -0.197829
+10    0.484382
+11    0.493368
+12    1.081433
+13    1.895617
+14    1.876351
+Name: diff, dtype: float64
+
+=== Post-Switch Trends ===
+switched_branch          0          1
+week                                 
+15               46.355428  48.914496
+16               46.411372  49.483207
+17               52.299231  54.467158
+18               49.232712  51.212580
+19               54.314931  56.069709
+20               54.662292  57.033052
+21               48.209295  51.168920
+22               49.059280  52.096183
+
+Week-by-week difference (Treatment - Control) after switch:
+week
+15    2.559068
+16    3.071836
+17    2.167926
+18    1.979867
+19    1.754778
+20    2.370761
+21    2.959625
+22    3.036904
+Name: diff, dtype: float64
+
+Plot saved as 'service_scores_trend.png'
+
+=== Effect Size Interpretation ===
+Baseline average service score (before switch): 50.54
+Estimated treatment effect: +1.88 points
+Percentage improvement: 3.7%
+
+<stdin>:18: SingularMatrixWarning: The design matrix is rank-deficient. The model parameters are not uniquely determined.
+/usr/local/lib/python3.11/site-packages/statsmodels/regression/linear_model.py:2121: RuntimeWarning: invalid value encountered in sqrt
+  return np.sqrt(np.diag(self.cov_params()))
+
+
+=== Code run in turn 2, call 4 of 5 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+df['treated'] = df['switched_branch'] * df['after_switch']
+
+# Run DiD regression with robust SE (not clustered - each branch-week is one obs)
+print("=== Main Difference-in-Differences Results ===\n")
+
+# Model 1: Basic DiD
+model1 = ols('service_score ~ switched_branch + after_switch + treated', data=df).fit(cov_type='HC3')
+print("Model 1: Basic DiD (no fixed effects)")
+print(f"  Treatment Effect: {model1.params['treated']:.3f} (SE: {model1.bse['treated']:.3f}, p={model1.pvalues['treated']:.4f})")
+
+# Model 2: With week fixed effects
+model2 = ols('service_score ~ switched_branch + after_switch + treated + C(week)', data=df).fit(cov_type='HC3')
+print("\nModel 2: With Week Fixed Effects")
+print(f"  Treatment Effect: {model2.params['treated']:.3f} (SE: {model2.bse['treated']:.3f}, p={model2.pvalues['treated']:.4f})")
+
+# Model 3: With branch fixed effects (absorbing switched_branch)
+model3 = ols('service_score ~ after_switch + treated + C(branch_id)', data=df).fit(cov_type='HC3')
+print("\nModel 3: With Branch Fixed Effects")
+print(f"  Treatment Effect: {model3.params['treated']:.3f} (SE: {model3.bse['treated']:.3f}, p={model3.pvalues['treated']:.4f})")
+
+# Model 4: With both branch and week fixed effects
+model4 = ols('service_score ~ after_switch + treated + C(branch_id) + C(week)', data=df).fit(cov_type='HC3')
+print("\nModel 4: With Branch + Week Fixed Effects")
+print(f"  Treatment Effect: {model4.params['treated']:.3f} (SE: {model4.bse['treated']:.3f}, p={model4.pvalues['treated']:.4f})")
+
+# Pre-trends test: regress on leads
+print("\n=== Pre-Trends Test ===")
+df['weeks_to_switch'] = df['week'] - 15  # negative before, positive after
+df['pre_week_12'] = ((df['week'] == 12) & (df['switched_branch'] == 1)).astype(int)
+df['pre_week_13'] = ((df['week'] == 13) & (df['switched_branch'] == 1)).astype(int)
+df['pre_week_14'] = ((df['week'] == 14) & (df['switched_branch'] == 1)).astype(int)
+df['post_week_15'] = ((df['week'] == 15) & (df['switched_branch'] == 1)).astype(int)
+df['post_week_16'] = ((df['week'] == 16) & (df['switched_branch'] == 1)).astype(int)
+df['post_week_17'] = ((df['week'] == 17) & (df['switched_branch'] == 1)).astype(int)
+df['post_week_18'] = ((df['week'] == 18) & (df['switched_branch'] == 1)).astype(int)
+df['post_week_19'] = ((df['week'] == 19) & (df['switched_branch'] == 1)).astype(int)
+df['post_week_20'] = ((df['week'] == 20) & (df['switched_branch'] == 1)).astype(int)
+df['post_week_21'] = ((df['week'] == 21) & (df['switched_branch'] == 1)).astype(int)
+df['post_week_22'] = ((df['week'] == 22) & (df['switched_branch'] == 1)).astype(int)
+
+# Event study regression (omitting week 14 as reference)
+event_vars = ['pre_week_12', 'pre_week_13', 'post_week_15', 'post_week_16', 'post_week_17', 
+              'post_week_18', 'post_week_19', 'post_week_20', 'post_week_21', 'post_week_22']
+formula = 'service_score ~ ' + ' + '.join(event_vars) + ' + C(branch_id) + C(week)'
+model_event = ols(formula, data=df).fit(cov_type='HC3')
+
+print("\nEvent Study Coefficients (relative to week 14):")
+for var in event_vars:
+    coef = model_event.params[var]
+    se = model_event.bse[var]
+    pval = model_event.pvalues[var]
+    sig = "***" if pval < 0.01 else "**" if pval < 0.05 else "*" if pval < 0.1 else ""
+    print(f"  {var}: {coef:.2f} (SE: {se:.2f}) {sig}")
+
+# Create event study plot
+plt.figure(figsize=(10, 6))
+event_coefs = [model_event.params[var] for var in event_vars]
+event_se = [model_event.bse[var] for var in event_vars]
+event_names = ['W12', 'W13', 'W15', 'W16', 'W17', 'W18', 'W19', 'W20', 'W21', 'W22']
+x_pos = range(len(event_names))
+
+plt.errorbar(x_pos, event_coefs, yerr=[1.96*s for s in event_se], fmt='o', capsize=5, 
+             markersize=8, linewidth=2, color='blue')
+plt.axhline(y=0, color='red', linestyle='--', linewidth=1)
+plt.axvline(x=2.5, color='gray', linestyle=':', linewidth=1)  # Between W13 and W15
+plt.xticks(x_pos, event_names)
+plt.xlabel('Week (relative to switch at week 15)', fontsize=12)
+plt.ylabel('Coefficient (Treatment vs Control)', fontsize=12)
+plt.title('Event Study: Treatment Effect by Week', fontsize=14, fontweight='bold')
+plt.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig('event_study.png', dpi=150)
+print("\nEvent study plot saved as 'event_study.png'")
+
+# Summary stats
+print("\n=== Summary Statistics ===")
+print(f"Total observations: {len(df):,}")
+print(f"Total branches: {df['branch_id'].nunique()}")
+print(f"  - Treatment branches: {df['switched_branch'].sum()}")
+print(f"  - Control branches: {len(df['branch_id'].unique()) - df['switched_branch'].sum()}")
+print(f"Weeks: {df['week'].min()} to {df['week'].max()}")
+print(f"\nService score range: {df['service_score'].min():.1f} to {df['service_score'].max():.1f}")
+print(f"Mean service score: {df['service_score'].mean():.2f}")
+
+--- printed ---
+=== Main Difference-in-Differences Results ===
+
+Model 1: Basic DiD (no fixed effects)
+  Treatment Effect: 1.877 (SE: 0.370, p=0.0000)
+
+Model 2: With Week Fixed Effects
+  Treatment Effect: 1.866 (SE: 0.245, p=0.0000)
+
+Model 3: With Branch Fixed Effects
+  Treatment Effect: 1.877 (SE: 0.210, p=0.0000)
+
+Model 4: With Branch + Week Fixed Effects
+  Treatment Effect: 1.877 (SE: 0.181, p=0.0000)
+
+=== Pre-Trends Test ===
+
+Event Study Coefficients (relative to week 14):
+  pre_week_12: 0.72 (SE: 0.38) *
+  pre_week_13: 1.54 (SE: 0.38) ***
+  post_week_15: 2.20 (SE: 0.39) ***
+  post_week_16: 2.71 (SE: 0.40) ***
+  post_week_17: 1.81 (SE: 0.41) ***
+  post_week_18: 1.62 (SE: 0.40) ***
+  post_week_19: 1.40 (SE: 0.40) ***
+  post_week_20: 2.01 (SE: 0.40) ***
+  post_week_21: 2.60 (SE: 0.40) ***
+  post_week_22: 2.68 (SE: 0.42) ***
+
+Event study plot saved as 'event_study.png'
+
+=== Summary Statistics ===
+Total observations: 12,053
+Total branches: 709
+  - Treatment branches: 7225
+  - Control branches: -6516
+Weeks: 6 to 22
+
+Service score range: 9.9 to 86.2
+Mean service score: 51.02
+
+<stdin>:29: SingularMatrixWarning: The design matrix is rank-deficient. The model parameters are not uniquely determined.
+
+
+=== Code run in turn 2, call 5 of 5 ===
+import pandas as pd
+
+df = pd.read_csv('branches.csv')
+
+# Correct branch counts
+branch_info = df.groupby('branch_id')['switched_branch'].first()
+treatment_branches = branch_info.sum()
+control_branches = len(branch_info) - treatment_branches
+
+print("=== Corrected Branch Counts ===")
+print(f"Total branches: {len(branch_info)}")
+print(f"Treatment (switched): {treatment_branches}")
+print(f"Control (not switched): {control_branches}")
+
+# Calculate the DiD estimate more carefully accounting for pre-trends
+# Using weeks 6-11 as the "clean" pre-period (before divergence started)
+pre_clean = df[(df['week'] <= 11)]
+post = df[(df['week'] >= 15)]
+
+control_before_clean = pre_clean[pre_clean['switched_branch']==0]['service_score'].mean()
+treat_before_clean = pre_clean[pre_clean['switched_branch']==1]['service_score'].mean()
+control_after = post[post['switched_branch']==0]['service_score'].mean()
+treat_after = post[post['switched_branch']==1]['service_score'].mean()
+
+control_change_clean = control_after - control_before_clean
+treat_change_clean = treat_after - treat_before_clean
+did_clean = treat_change_clean - control_change_clean
+
+print(f"\n=== DiD Using Clean Pre-Period (Weeks 6-11) ===")
+print(f"Control - Before (W6-11): {control_before_clean:.2f}, After (W15-22): {control_after:.2f}, Change: {control_change_clean:.2f}")
+print(f"Treatment - Before (W6-11): {treat_before_clean:.2f}, After (W15-22): {treat_after:.2f}, Change: {treat_change_clean:.2f}")
+print(f"Difference-in-Differences: {did_clean:.2f}")
+
+# Also calculate using all pre-weeks for comparison
+pre_all = df[(df['week'] < 15)]
+control_before_all = pre_all[pre_all['switched_branch']==0]['service_score'].mean()
+treat_before_all = pre_all[pre_all['switched_branch']==1]['service_score'].mean()
+control_change_all = control_after - control_before_all
+treat_change_all = treat_after - treat_before_all
+did_all = treat_change_all - control_change_all
+
+print(f"\n=== DiD Using All Pre-Period (Weeks 6-14) ===")
+print(f"Control - Before: {control_before_all:.2f}, After: {control_after:.2f}, Change: {control_change_all:.2f}")
+print(f"Treatment - Before: {treat_before_all:.2f}, After: {treat_after:.2f}, Change: {treat_change_all:.2f}")
+print(f"Difference-in-Differences: {did_all:.2f}")
+
+--- printed ---
+=== Corrected Branch Counts ===
+Total branches: 709
+Treatment (switched): 425
+Control (not switched): 284
+
+=== DiD Using Clean Pre-Period (Weeks 6-11) ===
+Control - Before (W6-11): 51.48, After (W15-22): 50.07, Change: -1.41
+Treatment - Before (W6-11): 51.58, After (W15-22): 52.56, Change: 0.97
+Difference-in-Differences: 2.38
+
+=== DiD Using All Pre-Period (Weeks 6-14) ===
+Control - Before: 50.18, After: 50.07, Change: -0.11
+Treatment - Before: 50.79, After: 52.56, Change: 1.77
+Difference-in-Differences: 1.88
+
+
+--- files saved in turn 2: event_study.png, service_scores_trend.png ---
+
+=== Code run in turn 6, call 1 of 1 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+df['treated'] = df['switched_branch'] * df['after_switch']
+
+# Check parallel trends assumption more carefully
+print("=== Parallel Trends Assessment ===\n")
+
+# Pre-period trends (weeks 6-14)
+pre_df = df[df['week'] < 15].copy()
+
+# Run regression on pre-period only to test for differential pre-trends
+pre_df['week_centered'] = pre_df['week'] - 10  # center around middle of pre-period
+pre_df['trend_interaction'] = pre_df['switched_branch'] * pre_df['week_centered']
+
+pre_model = ols('service_score ~ switched_branch + week_centered + trend_interaction + C(branch_id)', 
+                data=pre_df).fit(cov_type='HC3')
+
+print("Pre-Period Differential Trend Test (Weeks 6-14):")
+print(f"  Interaction coefficient: {pre_model.params['trend_interaction']:.3f}")
+print(f"  Standard Error: {pre_model.bse['trend_interaction']:.3f}")
+print(f"  P-value: {pre_model.pvalues['trend_interaction']:.4f}")
+print(f"  Interpretation: Treatment branches were gaining {pre_model.params['trend_interaction']:.2f} points/week MORE than control BEFORE the switch\n")
+
+# Calculate what portion of the observed effect might be due to pre-trends
+pre_trend_diff = pre_model.params['trend_interaction']
+weeks_of_pre_trend = 4  # approximate weeks 11-14 where divergence was visible
+pre_trend_contribution = pre_trend_diff * weeks_of_pre_trend
+
+print(f"  If pre-trend continued for ~4 weeks, pre-trend could explain ~{pre_trend_contribution:.2f} points of the effect")
+print(f"  Main DiD estimate was ~1.88 points")
+print(f"  Adjusted estimate (rough): {1.88 - pre_trend_contribution:.2f} points\n")
+
+# Alternative: Synthetic control style - match on pre-period levels
+print("=== Matched Comparison ===")
+pre_avg = df[df['week'] < 15].groupby(['branch_id', 'switched_branch'])['service_score'].mean().reset_index()
+pre_avg.columns = ['branch_id', 'switched_branch', 'pre_avg_score']
+
+# Find control branches with similar pre-period scores to treatment branches
+treat_pre = pre_avg[pre_avg['switched_branch']==1]['pre_avg_score']
+control_pre = pre_avg[pre_avg['switched_branch']==0]['pre_avg_score']
+
+print(f"Treatment branches pre-average: mean={treat_pre.mean():.2f}, std={treat_pre.std():.2f}")
+print(f"Control branches pre-average: mean={control_pre.mean():.2f}, std={control_pre.std():.2f}")
+print(f"Difference in pre-period levels: {treat_pre.mean() - control_pre.mean():.2f} points\n")
+
+# Post-period comparison
+post_df = df[df['week'] >= 15]
+post_avg = post_df.groupby(['branch_id', 'switched_branch'])['service_score'].mean().reset_index()
+post_avg.columns = ['branch_id', 'switched_branch', 'post_avg_score']
+
+treat_post = post_avg[post_avg['switched_branch']==1]['post_avg_score']
+control_post = post_avg[post_avg['switched_branch']==0]['post_avg_score']
+
+print(f"Treatment branches post-average: mean={treat_post.mean():.2f}")
+print(f"Control branches post-average: mean={control_post.mean():.2f}")
+print(f"Simple difference: {treat_post.mean() - control_post.mean():.2f} points\n")
+
+# Check if there's heterogeneity - do some branches benefit more than others?
+print("=== Heterogeneity Check ===")
+df['improvement'] = df.groupby('branch_id')['service_score'].transform(lambda x: x - x.mean())
+branch_effects = df[df['after_switch']==1].groupby(['branch_id', 'switched_branch'])['service_score'].mean()
+branch_effects = branch_effects.reset_index()
+
+treat_branches_post = branch_effects[branch_effects['switched_branch']==1]['service_score']
+print(f"Variation in treatment branch post-scores:")
+print(f"  25th percentile: {treat_branches_post.quantile(0.25):.2f}")
+print(f"  Median: {treat_branches_post.median():.2f}")
+print(f"  75th percentile: {treat_branches_post.quantile(0.75):.2f}")
+print(f"  Range: {treat_branches_post.min():.2f} to {treat_branches_post.max():.2f}")
+
+--- printed ---
+=== Parallel Trends Assessment ===
+
+Pre-Period Differential Trend Test (Weeks 6-14):
+  Interaction coefficient: 0.284
+  Standard Error: 0.041
+  P-value: 0.0000
+  Interpretation: Treatment branches were gaining 0.28 points/week MORE than control BEFORE the switch
+
+  If pre-trend continued for ~4 weeks, pre-trend could explain ~1.13 points of the effect
+  Main DiD estimate was ~1.88 points
+  Adjusted estimate (rough): 0.75 points
+
+=== Matched Comparison ===
+Treatment branches pre-average: mean=50.79, std=9.21
+Control branches pre-average: mean=50.18, std=8.20
+Difference in pre-period levels: 0.61 points
+
+Treatment branches post-average: mean=52.56
+Control branches post-average: mean=50.07
+Simple difference: 2.49 points
+
+=== Heterogeneity Check ===
+Variation in treatment branch post-scores:
+  25th percentile: 46.32
+  Median: 53.51
+  75th percentile: 58.53
+  Range: 17.64 to 74.03
+
+<stdin>:21: SingularMatrixWarning: The design matrix is rank-deficient. The model parameters are not uniquely determined.
+
+
+(No code was run in turn 8.)

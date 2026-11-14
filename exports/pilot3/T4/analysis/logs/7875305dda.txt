@@ -1,0 +1,665 @@
+Summary ID: 7875305dda
+
+=== Code run in turn 2, call 1 of 7 ===
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Basic exploration
+print("Dataset shape:", df.shape)
+print("\nColumn names:", df.columns.tolist())
+print("\nFirst few rows:")
+print(df.head(10))
+print("\nData types:")
+print(df.dtypes)
+print("\nSummary statistics:")
+print(df.describe())
+print("\nUnique values:")
+print("branch_id:", df['branch_id'].nunique())
+print("week:", sorted(df['week'].unique()))
+print("switched_branch:", df['switched_branch'].value_counts().to_dict())
+print("after_switch:", df['after_switch'].value_counts().to_dict())
+
+--- printed ---
+Dataset shape: (12053, 7)
+
+Column names: ['branch_id', 'week', 'switched_branch', 'after_switch', 'service_score', 'staffing_index', 'visits_index']
+
+First few rows:
+   branch_id  week  ...  staffing_index  visits_index
+0          0     6  ...       -0.183949     -0.181601
+1          0     7  ...        0.992777     -0.007833
+2          0     8  ...       -0.785559     -0.261377
+3          0     9  ...       -1.509403      0.384051
+4          0    10  ...        0.408250     -1.312674
+5          0    11  ...       -0.309499     -1.039019
+6          0    12  ...       -0.219123      0.334906
+7          0    13  ...       -0.639962      0.745073
+8          0    14  ...       -1.967783      0.606942
+9          0    15  ...       -0.605203     -0.725452
+
+[10 rows x 7 columns]
+
+Data types:
+branch_id            int64
+week                 int64
+switched_branch      int64
+after_switch         int64
+service_score      float64
+staffing_index     float64
+visits_index       float64
+dtype: object
+
+Summary statistics:
+          branch_id          week  ...  staffing_index  visits_index
+count  12053.000000  12053.000000  ...    12053.000000  12053.000000
+mean     354.000000     14.000000  ...       -0.006008     -0.006576
+std      204.678958      4.899183  ...        1.003909      1.000564
+min        0.000000      6.000000  ...       -3.520689     -4.221799
+25%      177.000000     10.000000  ...       -0.682448     -0.678551
+50%      354.000000     14.000000  ...       -0.007450     -0.010394
+75%      531.000000     18.000000  ...        0.683093      0.661366
+max      708.000000     22.000000  ...        3.359529      4.515945
+
+[8 rows x 7 columns]
+
+Unique values:
+branch_id: 709
+week: [np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14), np.int64(15), np.int64(16), np.int64(17), np.int64(18), np.int64(19), np.int64(20), np.int64(21), np.int64(22)]
+switched_branch: {1: 7225, 0: 4828}
+after_switch: {0: 6381, 1: 5672}
+
+
+=== Code run in turn 2, call 2 of 7 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create the interaction term for DiD
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# 1. Calculate mean service scores by group and period
+print("=" * 60)
+print("MEAN SERVICE SCORES BY GROUP AND PERIOD")
+print("=" * 60)
+
+# Before period (after_switch = 0)
+before_control = df[(df['switched_branch'] == 0) & (df['after_switch'] == 0)]['service_score'].mean()
+before_treatment = df[(df['switched_branch'] == 1) & (df['after_switch'] == 0)]['service_score'].mean()
+
+# After period (after_switch = 1)
+after_control = df[(df['switched_branch'] == 0) & (df['after_switch'] == 1)]['service_score'].mean()
+after_treatment = df[(df['switched_branch'] == 1) & (df['after_switch'] == 1)]['service_score'].mean()
+
+print(f"\nControl Group (didn't switch):")
+print(f"  Before (weeks 6-14): {before_control:.2f}")
+print(f"  After (weeks 15-22): {after_control:.2f}")
+print(f"  Change: {after_control - before_control:.2f}")
+
+print(f"\nTreatment Group (switched):")
+print(f"  Before (weeks 6-14): {before_treatment:.2f}")
+print(f"  After (weeks 15-22): {after_treatment:.2f}")
+print(f"  Change: {after_treatment - before_treatment:.2f}")
+
+# DiD estimate
+did_estimate = (after_treatment - before_treatment) - (after_control - before_control)
+print(f"\nDifference-in-Differences Estimate: {did_estimate:.2f}")
+
+# 2. Run DiD regression
+print("\n" + "=" * 60)
+print("DIFFERENCE-IN-DIFFERENCES REGRESSION")
+print("=" * 60)
+
+# Basic DiD model
+model1 = ols('service_score ~ switched_branch + after_switch + treatment', data=df).fit()
+print("\nModel 1: Basic DiD (no controls)")
+print(model1.summary().tables[1])
+
+# DiD with controls
+model2 = ols('service_score ~ switched_branch + after_switch + treatment + staffing_index + visits_index', data=df).fit()
+print("\nModel 2: DiD with staffing and visits controls")
+print(model2.summary().tables[1])
+
+# Cluster-robust standard errors by branch
+print("\n" + "=" * 60)
+print("CLUSTER-ROBUST STANDARD ERRORS (by branch)")
+print("=" * 60)
+
+model3 = ols('service_score ~ switched_branch + after_switch + treatment + staffing_index + visits_index', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print(model3.summary().tables[1])
+
+--- printed ---
+============================================================
+MEAN SERVICE SCORES BY GROUP AND PERIOD
+============================================================
+
+Control Group (didn't switch):
+  Before (weeks 6-14): 48.43
+  After (weeks 15-22): 50.36
+  Change: 1.92
+
+Treatment Group (switched):
+  Before (weeks 6-14): 49.97
+  After (weeks 15-22): 53.92
+  Change: 3.95
+
+Difference-in-Differences Estimate: 2.02
+
+============================================================
+DIFFERENCE-IN-DIFFERENCES REGRESSION
+============================================================
+
+Model 1: Basic DiD (no controls)
+===================================================================================
+                      coef    std err          t      P>|t|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          48.4349      0.203    238.886      0.000      48.037      48.832
+switched_branch     1.5346      0.262      5.860      0.000       1.021       2.048
+after_switch        1.9220      0.296      6.503      0.000       1.343       2.501
+treatment           2.0248      0.382      5.304      0.000       1.276       2.773
+===================================================================================
+
+Model 2: DiD with staffing and visits controls
+===================================================================================
+                      coef    std err          t      P>|t|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          48.4600      0.202    239.343      0.000      48.063      48.857
+switched_branch     1.5121      0.261      5.783      0.000       1.000       2.025
+after_switch        1.8929      0.295      6.414      0.000       1.314       2.471
+treatment           2.0506      0.381      5.380      0.000       1.303       2.798
+staffing_index      0.4417      0.093      4.756      0.000       0.260       0.624
+visits_index        0.3967      0.093      4.257      0.000       0.214       0.579
+===================================================================================
+
+============================================================
+CLUSTER-ROBUST STANDARD ERRORS (by branch)
+============================================================
+===================================================================================
+                      coef    std err          z      P>|z|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          48.4600      0.519     93.413      0.000      47.443      49.477
+switched_branch     1.5121      0.679      2.229      0.026       0.182       2.842
+after_switch        1.8929      0.217      8.720      0.000       1.467       2.318
+treatment           2.0506      0.290      7.070      0.000       1.482       2.619
+staffing_index      0.4417      0.089      4.944      0.000       0.267       0.617
+visits_index        0.3967      0.092      4.292      0.000       0.216       0.578
+===================================================================================
+
+
+=== Code run in turn 2, call 3 of 7 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Check parallel trends: mean service score by week for each group
+weekly_means = df.groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+weekly_means.columns = ['Control (no switch)', 'Treatment (switched)']
+
+print("Weekly mean service scores:")
+print(weekly_means)
+
+# Calculate the difference between treatment and control each week
+weekly_diff = weekly_means['Treatment (switched)'] - weekly_means['Control (no switch)']
+print("\nWeekly difference (Treatment - Control):")
+print(weekly_diff)
+
+# Check pre-trends (weeks 6-14)
+pre_trend_diff = weekly_diff[weekly_diff.index < 15]
+print(f"\nPre-treatment trend (weeks 6-14):")
+print(f"  Mean difference: {pre_trend_diff.mean():.2f}")
+print(f"  Std of difference: {pre_trend_diff.std():.2f}")
+
+# Let's also do an event study type analysis with week fixed effects
+print("\n" + "=" * 60)
+print("EVENT STUDY / WEEK-BY-WEEK ANALYSIS")
+print("=" * 60)
+
+# Create week dummies interacted with treatment
+for w in range(6, 23):
+    df[f'week_{w}'] = (df['week'] == w).astype(int)
+    df[f'treat_week_{w}'] = df['switched_branch'] * df[f'week_{w}']
+
+# Use week 14 as reference (last pre-treatment week)
+# Run regression with week fixed effects and treatment-week interactions
+week_dummies = [f'week_{w}' for w in range(6, 23) if w != 14]
+treat_week_dummies = [f'treat_week_{w}' for w in range(6, 23) if w != 14]
+
+# Build formula
+formula = 'service_score ~ switched_branch + ' + ' + '.join(week_dummies) + ' + ' + ' + '.join(treat_week_dummies) + ' + staffing_index + visits_index'
+
+model_event = ols(formula, data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+# Extract treatment-week coefficients
+print("\nTreatment effect by week (relative to week 14):")
+for w in range(6, 23):
+    if w == 14:
+        print(f"  Week {w}: 0.00 (reference)")
+    else:
+        coef = model_event.params[f'treat_week_{w}']
+        se = model_event.bse[f'treat_week_{w}']
+        ci_low = coef - 1.96 * se
+        ci_high = coef + 1.96 * se
+        sig = "***" if model_event.pvalues[f'treat_week_{w}'] < 0.01 else ("**" if model_event.pvalues[f'treat_week_{w}'] < 0.05 else ("*" if model_event.pvalues[f'treat_week_{w}'] < 0.1 else ""))
+        print(f"  Week {w}: {coef:.2f} (SE: {se:.2f}, 95% CI: [{ci_low:.2f}, {ci_high:.2f}]) {sig}")
+
+--- printed ---
+Weekly mean service scores:
+      Control (no switch)  Treatment (switched)
+week                                           
+6               49.436583             50.090036
+7               43.469059             44.240849
+8               49.291801             50.188451
+9               49.065634             50.448728
+10              48.983075             50.459184
+11              50.537531             52.239390
+12              48.613062             50.420942
+13              49.754836             51.828656
+14              46.762353             49.808918
+15              51.974479             54.702510
+16              56.083457             59.045337
+17              47.591065             50.852211
+18              43.881683             47.629104
+19              48.484380             51.828850
+20              51.246983             54.749560
+21              53.380726             57.656661
+22              50.212149             54.865420
+
+Weekly difference (Treatment - Control):
+week
+6     0.653452
+7     0.771790
+8     0.896649
+9     1.383094
+10    1.476109
+11    1.701859
+12    1.807880
+13    2.073820
+14    3.046566
+15    2.728030
+16    2.961880
+17    3.261146
+18    3.747421
+19    3.344470
+20    3.502577
+21    4.275935
+22    4.653271
+dtype: float64
+
+Pre-treatment trend (weeks 6-14):
+  Mean difference: 1.53
+  Std of difference: 0.75
+
+============================================================
+EVENT STUDY / WEEK-BY-WEEK ANALYSIS
+============================================================
+
+Traceback (most recent call last):
+  File "<stdin>", line 43, in <module>
+NameError: name 'ols' is not defined
+
+
+=== Code run in turn 2, call 4 of 7 ===
+import pandas as pd
+import numpy as np
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create week dummies interacted with treatment
+for w in range(6, 23):
+    df[f'week_{w}'] = (df['week'] == w).astype(int)
+    df[f'treat_week_{w}'] = df['switched_branch'] * df[f'week_{w}']
+
+# Use week 14 as reference (last pre-treatment week)
+week_dummies = [f'week_{w}' for w in range(6, 23) if w != 14]
+treat_week_dummies = [f'treat_week_{w}' for w in range(6, 23) if w != 14]
+
+# Build formula
+formula = 'service_score ~ switched_branch + ' + ' + '.join(week_dummies) + ' + ' + ' + '.join(treat_week_dummies) + ' + staffing_index + visits_index'
+
+model_event = ols(formula, data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+# Extract treatment-week coefficients
+print("Treatment effect by week (relative to week 14):")
+print("=" * 70)
+for w in range(6, 23):
+    if w == 14:
+        print(f"  Week {w}: 0.00 (reference)")
+    else:
+        coef = model_event.params[f'treat_week_{w}']
+        se = model_event.bse[f'treat_week_{w}']
+        ci_low = coef - 1.96 * se
+        ci_high = coef + 1.96 * se
+        pval = model_event.pvalues[f'treat_week_{w}']
+        sig = "***" if pval < 0.01 else ("**" if pval < 0.05 else ("*" if pval < 0.1 else ""))
+        print(f"  Week {w}: {coef:6.2f} (SE: {se:.2f}, 95% CI: [{ci_low:6.2f}, {ci_high:6.2f}]) {sig}")
+
+# Check if pre-trends are statistically different from zero
+print("\n" + "=" * 70)
+print("PRE-TREND TEST (weeks 6-13 vs week 14)")
+print("=" * 70)
+
+# Average the pre-treatment coefficients
+pre_weeks = [f'treat_week_{w}' for w in range(6, 14)]
+pre_coefs = [model_event.params[w] for w in pre_weeks]
+print(f"Average pre-treatment coefficient (weeks 6-13): {np.mean(pre_coefs):.2f}")
+
+# Test if any pre-treatment weeks are significantly different from 0
+print("\nPre-treatment weeks significance:")
+for w in range(6, 14):
+    pval = model_event.pvalues[f'treat_week_{w}']
+    sig = "***" if pval < 0.01 else ("**" if pval < 0.05 else ("*" if pval < 0.1 else "ns"))
+    print(f"  Week {w}: p={pval:.4f} {sig}")
+
+--- printed ---
+Treatment effect by week (relative to week 14):
+======================================================================
+  Week 6:  -2.41 (SE: 0.52, 95% CI: [ -3.43,  -1.38]) ***
+  Week 7:  -2.22 (SE: 0.51, 95% CI: [ -3.22,  -1.21]) ***
+  Week 8:  -2.16 (SE: 0.52, 95% CI: [ -3.18,  -1.14]) ***
+  Week 9:  -1.64 (SE: 0.51, 95% CI: [ -2.64,  -0.64]) ***
+  Week 10:  -1.65 (SE: 0.52, 95% CI: [ -2.66,  -0.64]) ***
+  Week 11:  -1.45 (SE: 0.49, 95% CI: [ -2.42,  -0.48]) ***
+  Week 12:  -1.30 (SE: 0.46, 95% CI: [ -2.19,  -0.40]) ***
+  Week 13:  -0.98 (SE: 0.36, 95% CI: [ -1.69,  -0.27]) ***
+  Week 14: 0.00 (reference)
+  Week 15:  -0.36 (SE: 0.39, 95% CI: [ -1.12,   0.40]) 
+  Week 16:  -0.12 (SE: 0.48, 95% CI: [ -1.06,   0.83]) 
+  Week 17:   0.25 (SE: 0.51, 95% CI: [ -0.76,   1.25]) 
+  Week 18:   0.75 (SE: 0.52, 95% CI: [ -0.27,   1.76]) 
+  Week 19:   0.38 (SE: 0.56, 95% CI: [ -0.71,   1.47]) 
+  Week 20:   0.53 (SE: 0.53, 95% CI: [ -0.52,   1.58]) 
+  Week 21:   1.19 (SE: 0.56, 95% CI: [  0.09,   2.29]) **
+  Week 22:   1.52 (SE: 0.54, 95% CI: [  0.46,   2.59]) ***
+
+======================================================================
+PRE-TREND TEST (weeks 6-13 vs week 14)
+======================================================================
+Average pre-treatment coefficient (weeks 6-13): -1.73
+
+Pre-treatment weeks significance:
+  Week 6: p=0.0000 ***
+  Week 7: p=0.0000 ***
+  Week 8: p=0.0000 ***
+  Week 9: p=0.0013 ***
+  Week 10: p=0.0014 ***
+  Week 11: p=0.0035 ***
+  Week 12: p=0.0046 ***
+  Week 13: p=0.0070 ***
+
+
+=== Code run in turn 2, call 5 of 7 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create the interaction term
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# Model with branch fixed effects
+print("=" * 70)
+print("MODEL WITH BRANCH FIXED EFFECTS")
+print("=" * 70)
+
+# Convert branch_id to categorical for fixed effects
+df['branch_id_cat'] = df['branch_id'].astype('category')
+
+# Use C() notation for categorical variables
+model_fe = ols('service_score ~ C(branch_id_cat) + after_switch + treatment + staffing_index + visits_index', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print(f"\nNumber of branches: {df['branch_id'].nunique()}")
+print(f"Number of observations: {len(df)}")
+
+# The treatment coefficient is what we care about
+print(f"\nTreatment effect (with branch FE): {model_fe.params['treatment']:.2f}")
+print(f"Standard error: {model_fe.bse['treatment']:.2f}")
+print(f"95% CI: [{model_fe.params['treatment'] - 1.96*model_fe.bse['treatment']:.2f}, {model_fe.params['treatment'] + 1.96*model_fe.bse['treatment']:.2f}]")
+print(f"P-value: {model_fe.pvalues['treatment']:.4f}")
+
+# Also check after_switch coefficient (common time effect)
+print(f"\nAfter switch effect (common time trend): {model_fe.params['after_switch']:.2f}")
+print(f"P-value: {model_fe.pvalues['after_switch']:.4f}")
+
+# Let's also look at the raw trends more carefully
+print("\n" + "=" * 70)
+print("TREND ANALYSIS: CHANGE IN GAP OVER TIME")
+print("=" * 70)
+
+# Calculate weekly gaps
+weekly_means = df.groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+weekly_gap = weekly_means[1] - weekly_means[0]
+
+# Fit a linear trend to pre and post periods
+pre_weeks = weekly_gap[weekly_gap.index < 15]
+post_weeks = weekly_gap[weekly_gap.index >= 15]
+
+# Simple linear regression for trends
+pre_X = sm.add_constant(pre_weeks.index.values)
+pre_model = sm.OLS(pre_weeks.values, pre_X).fit()
+print(f"\nPre-treatment trend in gap: {pre_model.params[1]:.3f} points per week")
+print(f"  (p-value: {pre_model.pvalues[1]:.4f})")
+
+post_X = sm.add_constant(post_weeks.index.values)
+post_model = sm.OLS(post_weeks.values, post_X).fit()
+print(f"\nPost-treatment trend in gap: {post_model.params[1]:.3f} points per week")
+print(f"  (p-value: {post_model.pvalues[1]:.4f})")
+
+# Difference in slopes
+print(f"\nChange in slope (post - pre): {post_model.params[1] - pre_model.params[1]:.3f} points per week")
+
+# Summary statistics
+print("\n" + "=" * 70)
+print("SUMMARY STATISTICS BY GROUP")
+print("=" * 70)
+
+summary = df.groupby('switched_branch')['service_score'].agg(['mean', 'std', 'count'])
+summary.columns = ['Mean', 'Std Dev', 'Count']
+print(summary)
+
+# By period
+print("\nBy period:")
+period_summary = df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std', 'count']).unstack(level=0)
+print(period_summary)
+
+--- printed ---
+======================================================================
+MODEL WITH BRANCH FIXED EFFECTS
+======================================================================
+
+Number of branches: 709
+Number of observations: 12053
+
+Treatment effect (with branch FE): 2.05
+Standard error: 0.30
+95% CI: [1.46, 2.63]
+P-value: 0.0000
+
+After switch effect (common time trend): 1.89
+P-value: 0.0000
+
+======================================================================
+TREND ANALYSIS: CHANGE IN GAP OVER TIME
+======================================================================
+
+Pre-treatment trend in gap: 0.260 points per week
+  (p-value: 0.0001)
+
+Post-treatment trend in gap: 0.242 points per week
+  (p-value: 0.0013)
+
+Change in slope (post - pre): -0.018 points per week
+
+======================================================================
+SUMMARY STATISTICS BY GROUP
+======================================================================
+                      Mean    Std Dev  Count
+switched_branch                             
+0                49.339344  10.150084   4828
+1                51.826753  10.531441   7225
+
+By period:
+                      mean                   std            count      
+switched_branch          0          1          0          1     0     1
+after_switch                                                           
+0                48.434882  49.969462   9.904600  10.164675  2556  3825
+1                50.356865  53.916207  10.327235  10.546785  2272  3400
+
+
+=== Code run in turn 2, call 6 of 7 ===
+import pandas as pd
+import numpy as np
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create treatment variable
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# Placebo test: pretend the switch happened at week 12 instead of 15
+df['after_switch_placebo'] = (df['week'] >= 12).astype(int)
+df['treatment_placebo'] = df['switched_branch'] * df['after_switch_placebo']
+
+print("=" * 70)
+print("PLACEBO TEST: Fake switch at week 12")
+print("=" * 70)
+
+model_placebo = ols('service_score ~ switched_branch + after_switch_placebo + treatment_placebo + staffing_index + visits_index', 
+                    data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print(f"\nPlacebo treatment effect: {model_placebo.params['treatment_placebo']:.2f}")
+print(f"Standard error: {model_placebo.bse['treatment_placebo']:.2f}")
+print(f"P-value: {model_placebo.pvalues['treatment_placebo']:.4f}")
+print(f"95% CI: [{model_placebo.params['treatment_placebo'] - 1.96*model_placebo.bse['treatment_placebo']:.2f}, {model_placebo.params['treatment_placebo'] + 1.96*model_placebo.bse['treatment_placebo']:.2f}]")
+
+# Another check: effect heterogeneity
+print("\n" + "=" * 70)
+print("EFFECT HETEROGENEITY: Early vs Late Post-Treatment")
+print("=" * 70)
+
+# Split post period into early (15-18) and late (19-22)
+df['post_early'] = ((df['week'] >= 15) & (df['week'] <= 18)).astype(int)
+df['post_late'] = (df['week'] >= 19).astype(int)
+df['treat_early'] = df['switched_branch'] * df['post_early']
+df['treat_late'] = df['switched_branch'] * df['post_late']
+
+model_het = ols('service_score ~ switched_branch + post_early + post_late + treat_early + treat_late + staffing_index + visits_index',
+                data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print(f"\nEarly post-treatment effect (weeks 15-18): {model_het.params['treat_early']:.2f} (p={model_het.pvalues['treat_early']:.4f})")
+print(f"Late post-treatment effect (weeks 19-22): {model_het.params['treat_late']:.2f} (p={model_het.pvalues['treat_late']:.4f})")
+
+# Check if they're different
+print(f"\nDifference (late - early): {model_het.params['treat_late'] - model_het.params['treat_early']:.2f}")
+
+# Final summary table
+print("\n" + "=" * 70)
+print("FINAL SUMMARY: TREATMENT EFFECT ESTIMATES")
+print("=" * 70)
+
+# Basic DiD
+model_basic = ols('service_score ~ switched_branch + after_switch + treatment + staffing_index + visits_index', 
+                  data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+# With branch FE
+df['branch_id_cat'] = df['branch_id'].astype('category')
+model_fe = ols('service_score ~ C(branch_id_cat) + after_switch + treatment + staffing_index + visits_index', 
+               data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("\nModel                          | Coef   | SE    | 95% CI           | P-value")
+print("-" * 70)
+print(f"Basic DiD (with controls)      | {model_basic.params['treatment']:6.2f} | {model_basic.bse['treatment']:.2f} | [{model_basic.params['treatment'] - 1.96*model_basic.bse['treatment']:6.2f}, {model_basic.params['treatment'] + 1.96*model_basic.bse['treatment']:6.2f}] | {model_basic.pvalues['treatment']:.4f}")
+print(f"Branch Fixed Effects           | {model_fe.params['treatment']:6.2f} | {model_fe.bse['treatment']:.2f} | [{model_fe.params['treatment'] - 1.96*model_fe.bse['treatment']:6.2f}, {model_fe.params['treatment'] + 1.96*model_fe.bse['treatment']:6.2f}] | {model_fe.pvalues['treatment']:.4f}")
+print(f"Placebo (week 12 switch)       | {model_placebo.params['treatment_placebo']:6.2f} | {model_placebo.bse['treatment_placebo']:.2f} | [{model_placebo.params['treatment_placebo'] - 1.96*model_placebo.bse['treatment_placebo']:6.2f}, {model_placebo.params['treatment_placebo'] + 1.96*model_placebo.bse['treatment_placebo']:6.2f}] | {model_placebo.pvalues['treatment_placebo']:.4f}")
+
+--- printed ---
+======================================================================
+PLACEBO TEST: Fake switch at week 12
+======================================================================
+
+Placebo treatment effect: 2.09
+Standard error: 0.28
+P-value: 0.0000
+95% CI: [1.55, 2.63]
+
+======================================================================
+EFFECT HETEROGENEITY: Early vs Late Post-Treatment
+======================================================================
+
+Early post-treatment effect (weeks 15-18): 1.66 (p=0.0000)
+Late post-treatment effect (weeks 19-22): 2.44 (p=0.0000)
+
+Difference (late - early): 0.77
+
+======================================================================
+FINAL SUMMARY: TREATMENT EFFECT ESTIMATES
+======================================================================
+
+Model                          | Coef   | SE    | 95% CI           | P-value
+----------------------------------------------------------------------
+Basic DiD (with controls)      |   2.05 | 0.29 | [  1.48,   2.62] | 0.0000
+Branch Fixed Effects           |   2.05 | 0.30 | [  1.46,   2.63] | 0.0000
+Placebo (week 12 switch)       |   2.09 | 0.28 | [  1.55,   2.63] | 0.0000
+
+
+=== Code run in turn 2, call 7 of 7 ===
+import pandas as pd
+import numpy as np
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# Final model for reporting
+model = ols('service_score ~ switched_branch + after_switch + treatment + staffing_index + visits_index', 
+            data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+# Calculate effect size in percentage terms
+mean_score = df['service_score'].mean()
+effect_pct = (model.params['treatment'] / mean_score) * 100
+
+print("Key numbers for the report:")
+print(f"  Average service score: {mean_score:.1f}")
+print(f"  Treatment effect: {model.params['treatment']:.2f} points")
+print(f"  Treatment effect (%): {effect_pct:.1f}%")
+print(f"  95% CI: [{model.params['treatment'] - 1.96*model.bse['treatment']:.2f}, {model.params['treatment'] + 1.96*model.bse['treatment']:.2f}]")
+print(f"  P-value: {model.pvalues['treatment']:.4f}")
+
+# Number of branches in each group
+n_treated = df['switched_branch'].sum() // 8  # approximately, since 8 post weeks
+n_control = (1 - df['switched_branch']).sum() // 8
+print(f"\n  Branches that switched: ~{df['switched_branch'].nunique() - (1-df['switched_branch']).nunique()}")
+print(f"  Actually, let me recalculate...")
+
+# Count unique branches by group
+treated_branches = df[df['switched_branch'] == 1]['branch_id'].nunique()
+control_branches = df[df['switched_branch'] == 0]['branch_id'].nunique()
+print(f"  Branches that switched: {treated_branches}")
+print(f"  Branches that didn't switch: {control_branches}")
+print(f"  Total branches: {df['branch_id'].nunique()}")
+
+--- printed ---
+Key numbers for the report:
+  Average service score: 50.8
+  Treatment effect: 2.05 points
+  Treatment effect (%): 4.0%
+  95% CI: [1.48, 2.62]
+  P-value: 0.0000
+
+  Branches that switched: ~0
+  Actually, let me recalculate...
+  Branches that switched: 425
+  Branches that didn't switch: 284
+  Total branches: 709
+
+
+(No code was run in turn 4.)

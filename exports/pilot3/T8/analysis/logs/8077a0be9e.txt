@@ -1,0 +1,1207 @@
+Summary ID: 8077a0be9e
+
+=== Code run in turn 2, call 1 of 8 ===
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Display basic info
+print("Data shape:", df.shape)
+print("\nColumn names:", df.columns.tolist())
+print("\nFirst few rows:")
+print(df.head(10))
+print("\nData types:")
+print(df.dtypes)
+print("\nSummary statistics:")
+print(df.describe())
+print("\nUnique values:")
+print("branch_id:", df['branch_id'].nunique())
+print("week:", sorted(df['week'].unique()))
+print("switched_branch:", df['switched_branch'].unique())
+print("after_switch:", df['after_switch'].unique())
+--- printed ---
+Data shape: (578, 7)
+
+Column names: ['branch_id', 'week', 'switched_branch', 'after_switch', 'service_score', 'staffing_index', 'visits_index']
+
+First few rows:
+   branch_id  week  ...  staffing_index  visits_index
+0          0     6  ...        0.671691      0.002902
+1          0     7  ...        0.573087      0.058655
+2          0     8  ...        1.262224      1.199335
+3          0     9  ...       -0.883327     -1.191862
+4          0    10  ...       -0.389680      0.640816
+5          0    11  ...        0.343579     -0.069161
+6          0    12  ...        0.884041     -1.080324
+7          0    13  ...        0.177516     -0.322283
+8          0    14  ...       -0.160305     -0.353007
+9          0    15  ...       -1.858802     -0.022071
+
+[10 rows x 7 columns]
+
+Data types:
+branch_id            int64
+week                 int64
+switched_branch      int64
+after_switch         int64
+service_score      float64
+staffing_index     float64
+visits_index       float64
+dtype: object
+
+Summary statistics:
+        branch_id        week  ...  staffing_index  visits_index
+count  578.000000  578.000000  ...      578.000000    578.000000
+mean    16.500000   14.000000  ...        0.041651      0.035290
+std      9.819206    4.903223  ...        1.026201      0.961132
+min      0.000000    6.000000  ...       -2.515027     -2.618985
+25%      8.000000   10.000000  ...       -0.635938     -0.629363
+50%     16.500000   14.000000  ...        0.045831     -0.021680
+75%     25.000000   18.000000  ...        0.708749      0.692370
+max     33.000000   22.000000  ...        2.828245      3.191354
+
+[8 rows x 7 columns]
+
+Unique values:
+branch_id: 34
+week: [np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14), np.int64(15), np.int64(16), np.int64(17), np.int64(18), np.int64(19), np.int64(20), np.int64(21), np.int64(22)]
+switched_branch: [1 0]
+after_switch: [0 1]
+
+
+=== Code run in turn 2, call 2 of 8 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create the interaction term for DiD
+df['treated'] = df['switched_branch']
+df['post'] = df['after_switch']
+df['treated_post'] = df['treated'] * df['post']
+
+# Summary table: average service scores by group and period
+summary_table = df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std', 'count']).unstack(level=0)
+print("Average Service Scores by Group and Period:")
+print(summary_table)
+
+# Calculate DiD manually
+control_before = df[(df['switched_branch']==0) & (df['after_switch']==0)]['service_score'].mean()
+control_after = df[(df['switched_branch']==0) & (df['after_switch']==1)]['service_score'].mean()
+treated_before = df[(df['switched_branch']==1) & (df['after_switch']==0)]['service_score'].mean()
+treated_after = df[(df['switched_branch']==1) & (df['after_switch']==1)]['service_score'].mean()
+
+print("\n=== Difference-in-Differences Calculation ===")
+print(f"Control (non-switched) before: {control_before:.2f}")
+print(f"Control (non-switched) after: {control_after:.2f}")
+print(f"Control change: {control_after - control_before:.2f}")
+print()
+print(f"Treated (switched) before: {treated_before:.2f}")
+print(f"Treated (switched) after: {treated_after:.2f}")
+print(f"Treated change: {treated_after - treated_before:.2f}")
+print()
+did_effect = (treated_after - treated_before) - (control_after - control_before)
+print(f"DiD Effect (Treated change - Control change): {did_effect:.2f}")
+
+# Run regression with branch fixed effects
+print("\n=== Regression Analysis ===")
+
+# Model 1: Simple DiD without fixed effects
+model1 = ols('service_score ~ treated + post + treated_post', data=df).fit()
+print("\nModel 1: Simple DiD (no fixed effects)")
+print(model1.summary().tables[1])
+
+# Model 2: With branch fixed effects
+df_with_dummies = df.copy()
+branch_dummies = pd.get_dummies(df['branch_id'], prefix='branch', drop_first=True)
+df_with_dummies = pd.concat([df_with_dummies, branch_dummies], axis=1)
+
+# Build formula for model with branch fixed effects
+branch_cols = [c for c in df_with_dummies.columns if c.startswith('branch_')]
+formula = 'service_score ~ treated + post + treated_post + ' + ' + '.join(branch_cols)
+model2 = ols(formula, data=df_with_dummies).fit()
+print("\nModel 2: DiD with Branch Fixed Effects")
+print(model2.summary().tables[1].loc[['treated', 'post', 'treated_post']])
+
+# Model 3: With controls (staffing and visits)
+model3 = ols('service_score ~ treated + post + treated_post + staffing_index + visits_index', data=df).fit()
+print("\nModel 3: DiD with Controls")
+print(model3.summary().tables[1].loc[['treated', 'post', 'treated_post', 'staffing_index', 'visits_index']])
+
+# Model 4: With branch fixed effects AND controls
+formula4 = 'service_score ~ treated + post + treated_post + staffing_index + visits_index + ' + ' + '.join(branch_cols)
+model4 = ols(formula4, data=df_with_dummies).fit()
+print("\nModel 4: DiD with Branch Fixed Effects and Controls")
+print(model4.summary().tables[1].loc[['treated', 'post', 'treated_post', 'staffing_index', 'visits_index']])
+--- printed ---
+Average Service Scores by Group and Period:
+                      mean                   std           count     
+switched_branch          0          1          0         1     0    1
+after_switch                                                         
+0                47.439153  46.612596   9.193874  9.386428   126  180
+1                47.162816  48.233956  10.280716  9.589565   112  160
+
+=== Difference-in-Differences Calculation ===
+Control (non-switched) before: 47.44
+Control (non-switched) after: 47.16
+Control change: -0.28
+
+Treated (switched) before: 46.61
+Treated (switched) after: 48.23
+Treated change: 1.62
+
+DiD Effect (Treated change - Control change): 1.90
+
+=== Regression Analysis ===
+
+Model 1: Simple DiD (no fixed effects)
+================================================================================
+                   coef    std err          t      P>|t|      [0.025      0.975]
+--------------------------------------------------------------------------------
+Intercept       47.4392      0.854     55.579      0.000      45.763      49.116
+treated         -0.8266      1.113     -0.743      0.458      -3.012       1.359
+post            -0.2763      1.244     -0.222      0.824      -2.720       2.167
+treated_post     1.8977      1.622      1.170      0.243      -1.289       5.084
+================================================================================
+
+Model 2: DiD with Branch Fixed Effects
+
+<stdin>:52: SingularMatrixWarning: The design matrix is rank-deficient. The model parameters are not uniquely determined.
+Traceback (most recent call last):
+  File "<stdin>", line 54, in <module>
+AttributeError: 'SimpleTable' object has no attribute 'loc'
+
+
+=== Code run in turn 2, call 3 of 8 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import warnings
+warnings.filterwarnings('ignore')
+
+df = pd.read_csv('branches.csv')
+
+# Create the interaction term for DiD
+df['treated'] = df['switched_branch']
+df['post'] = df['after_switch']
+df['treated_post'] = df['treated'] * df['post']
+
+# Model 1: Simple DiD without fixed effects
+model1 = ols('service_score ~ treated + post + treated_post', data=df).fit()
+print("Model 1: Simple DiD (no fixed effects)")
+print(model1.summary())
+
+# Model 2: With controls (staffing and visits)
+model2 = ols('service_score ~ treated + post + treated_post + staffing_index + visits_index', data=df).fit()
+print("\n\nModel 2: DiD with Controls")
+print(model2.summary())
+
+# Model 3: With branch fixed effects (using C() notation)
+model3 = ols('service_score ~ treated + post + treated_post + C(branch_id)', data=df).fit()
+print("\n\nModel 3: DiD with Branch Fixed Effects")
+print(model3.summary())
+
+# Model 4: With branch fixed effects AND controls
+model4 = ols('service_score ~ treated + post + treated_post + staffing_index + visits_index + C(branch_id)', data=df).fit()
+print("\n\nModel 4: DiD with Branch Fixed Effects and Controls")
+print(model4.summary())
+
+# Check parallel trends - look at pre-treatment trends by week
+print("\n\n=== Pre-Treatment Trends (Weeks 6-14) ===")
+pre_trend = df[df['week'] <= 14].groupby(['switched_branch', 'week'])['service_score'].mean().unstack(level=0)
+print(pre_trend)
+
+# Calculate week-by-week differences before treatment
+print("\n\nWeek-by-week gap (Treated - Control) before switch:")
+for week in range(6, 15):
+    treated_avg = df[(df['week']==week) & (df['switched_branch']==1)]['service_score'].mean()
+    control_avg = df[(df['week']==week) & (df['switched_branch']==0)]['service_score'].mean()
+    gap = treated_avg - control_avg
+    print(f"Week {week}: {gap:.2f}")
+--- printed ---
+Model 1: Simple DiD (no fixed effects)
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.004
+Model:                            OLS   Adj. R-squared:                 -0.001
+Method:                 Least Squares   F-statistic:                    0.8273
+Date:                Sat, 14 Nov 2026   Prob (F-statistic):              0.479
+Time:                        11:59:35   Log-Likelihood:                -2124.3
+No. Observations:                 578   AIC:                             4257.
+Df Residuals:                     574   BIC:                             4274.
+Df Model:                           3                                         
+Covariance Type:            nonrobust                                         
+================================================================================
+                   coef    std err          t      P>|t|      [0.025      0.975]
+--------------------------------------------------------------------------------
+Intercept       47.4392      0.854     55.579      0.000      45.763      49.116
+treated         -0.8266      1.113     -0.743      0.458      -3.012       1.359
+post            -0.2763      1.244     -0.222      0.824      -2.720       2.167
+treated_post     1.8977      1.622      1.170      0.243      -1.289       5.084
+==============================================================================
+Omnibus:                        7.027   Durbin-Watson:                   0.728
+Prob(Omnibus):                  0.030   Jarque-Bera (JB):                5.989
+Skew:                          -0.174   Prob(JB):                       0.0501
+Kurtosis:                       2.642   Cond. No.                         7.36
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+
+
+Model 2: DiD with Controls
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.011
+Model:                            OLS   Adj. R-squared:                  0.003
+Method:                 Least Squares   F-statistic:                     1.308
+Date:                Sat, 14 Nov 2026   Prob (F-statistic):              0.259
+Time:                        11:59:35   Log-Likelihood:                -2122.3
+No. Observations:                 578   AIC:                             4257.
+Df Residuals:                     572   BIC:                             4283.
+Df Model:                           5                                         
+Covariance Type:            nonrobust                                         
+==================================================================================
+                     coef    std err          t      P>|t|      [0.025      0.975]
+----------------------------------------------------------------------------------
+Intercept         47.4713      0.853     55.621      0.000      45.795      49.148
+treated           -0.8501      1.111     -0.765      0.444      -3.032       1.332
+post              -0.3465      1.243     -0.279      0.781      -2.788       2.095
+treated_post       1.9848      1.620      1.225      0.221      -1.198       5.167
+staffing_index     0.3936      0.389      1.012      0.312      -0.370       1.158
+visits_index      -0.7302      0.415     -1.760      0.079      -1.545       0.085
+==============================================================================
+Omnibus:                        5.553   Durbin-Watson:                   0.739
+Prob(Omnibus):                  0.062   Jarque-Bera (JB):                5.026
+Skew:                          -0.168   Prob(JB):                       0.0810
+Kurtosis:                       2.691   Cond. No.                         7.36
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+
+
+Model 3: DiD with Branch Fixed Effects
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.599
+Model:                            OLS   Adj. R-squared:                  0.573
+Method:                 Least Squares   F-statistic:                     23.14
+Date:                Sat, 14 Nov 2026   Prob (F-statistic):           1.59e-85
+Time:                        11:59:35   Log-Likelihood:                -1861.4
+No. Observations:                 578   AIC:                             3795.
+Df Residuals:                     542   BIC:                             3952.
+Df Model:                          35                                         
+Covariance Type:            nonrobust                                         
+======================================================================================
+                         coef    std err          t      P>|t|      [0.025      0.975]
+--------------------------------------------------------------------------------------
+Intercept            3.24e+13   2.43e+13      1.332      0.183   -1.54e+13    8.02e+13
+C(branch_id)[T.1]      7.4513      2.197      3.392      0.001       3.136      11.766
+C(branch_id)[T.2]     -4.6669      2.224     -2.099      0.036      -9.035      -0.299
+C(branch_id)[T.3]     -2.6699      2.245     -1.189      0.235      -7.079       1.739
+C(branch_id)[T.4]   -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+C(branch_id)[T.5]    -14.1000      2.233     -6.314      0.000     -18.487      -9.713
+C(branch_id)[T.6]   -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+C(branch_id)[T.7]     -0.2849      2.216     -0.129      0.898      -4.637       4.068
+C(branch_id)[T.8]   -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+C(branch_id)[T.9]   -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+C(branch_id)[T.10]     6.2134      2.213      2.808      0.005       1.866      10.560
+C(branch_id)[T.11]  -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+C(branch_id)[T.12]    -0.5429      2.226     -0.244      0.807      -4.915       3.829
+C(branch_id)[T.13]  -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+C(branch_id)[T.14]   -14.5069      2.214     -6.553      0.000     -18.855     -10.159
+C(branch_id)[T.15]    -0.6691      2.209     -0.303      0.762      -5.009       3.671
+C(branch_id)[T.16]     3.9911      2.207      1.809      0.071      -0.343       8.325
+C(branch_id)[T.17]  -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+C(branch_id)[T.18]   -16.2004      2.201     -7.359      0.000     -20.525     -11.876
+C(branch_id)[T.19]   -17.9784      2.204     -8.158      0.000     -22.307     -13.650
+C(branch_id)[T.20]     1.7932      2.207      0.813      0.417      -2.542       6.128
+C(branch_id)[T.21]    -2.9093      2.207     -1.318      0.188      -7.245       1.426
+C(branch_id)[T.22]  -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+C(branch_id)[T.23]  -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+C(branch_id)[T.24]    -3.4236      2.201     -1.556      0.120      -7.746       0.899
+C(branch_id)[T.25]  -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+C(branch_id)[T.26]  -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+C(branch_id)[T.27]  -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+C(branch_id)[T.28]  -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+C(branch_id)[T.29]     2.7192      2.203      1.234      0.218      -1.609       7.047
+C(branch_id)[T.30]    -5.5876      2.204     -2.536      0.012      -9.916      -1.259
+C(branch_id)[T.31]    -5.7554      2.205     -2.610      0.009     -10.087      -1.424
+C(branch_id)[T.32]   -12.4096      2.203     -5.633      0.000     -16.737      -8.082
+C(branch_id)[T.33]  -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+treated             -3.24e+13   2.43e+13     -1.332      0.183   -8.02e+13    1.54e+13
+post                  -0.2943      0.813     -0.362      0.717      -1.891       1.302
+treated_post           1.9121      1.059      1.805      0.072      -0.169       3.993
+==============================================================================
+Omnibus:                        2.702   Durbin-Watson:                   1.621
+Prob(Omnibus):                  0.259   Jarque-Bera (JB):                2.733
+Skew:                          -0.166   Prob(JB):                        0.255
+Kurtosis:                       2.939   Cond. No.                     5.06e+14
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+[2] The smallest eigenvalue is 4.13e-27. This might indicate that there are
+strong multicollinearity problems or that the design matrix is singular.
+
+
+Model 4: DiD with Branch Fixed Effects and Controls
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.602
+Model:                            OLS   Adj. R-squared:                  0.575
+Method:                 Least Squares   F-statistic:                     22.08
+Date:                Sat, 14 Nov 2026   Prob (F-statistic):           5.39e-85
+Time:                        11:59:35   Log-Likelihood:                -1859.2
+No. Observations:                 578   AIC:                             3794.
+Df Residuals:                     540   BIC:                             3960.
+Df Model:                          37                                         
+Covariance Type:            nonrobust                                         
+======================================================================================
+                         coef    std err          t      P>|t|      [0.025      0.975]
+--------------------------------------------------------------------------------------
+Intercept           3.647e+13   2.44e+13      1.496      0.135   -1.14e+13    8.43e+13
+C(branch_id)[T.1]      7.7821      2.230      3.490      0.001       3.402      12.162
+C(branch_id)[T.2]     -4.3923      2.220     -1.978      0.048      -8.753      -0.031
+C(branch_id)[T.3]     -2.3622      2.240     -1.054      0.292      -6.763       2.038
+C(branch_id)[T.4]  -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+C(branch_id)[T.5]    -14.1892      2.239     -6.337      0.000     -18.588      -9.790
+C(branch_id)[T.6]  -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+C(branch_id)[T.7]     -0.1621      2.214     -0.073      0.942      -4.512       4.188
+C(branch_id)[T.8]  -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+C(branch_id)[T.9]  -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+C(branch_id)[T.10]     6.5082      2.213      2.940      0.003       2.160      10.856
+C(branch_id)[T.11] -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+C(branch_id)[T.12]    -0.2603      2.215     -0.118      0.906      -4.611       4.090
+C(branch_id)[T.13] -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+C(branch_id)[T.14]   -14.2554      2.208     -6.456      0.000     -18.593      -9.918
+C(branch_id)[T.15]    -0.5473      2.205     -0.248      0.804      -4.879       3.784
+C(branch_id)[T.16]     4.1817      2.210      1.892      0.059      -0.159       8.522
+C(branch_id)[T.17] -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+C(branch_id)[T.18]   -15.9668      2.205     -7.241      0.000     -20.298     -11.635
+C(branch_id)[T.19]   -17.8171      2.202     -8.091      0.000     -22.143     -13.492
+C(branch_id)[T.20]     1.7879      2.206      0.811      0.418      -2.545       6.120
+C(branch_id)[T.21]    -2.7102      2.203     -1.230      0.219      -7.038       1.618
+C(branch_id)[T.22] -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+C(branch_id)[T.23] -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+C(branch_id)[T.24]    -3.3539      2.195     -1.528      0.127      -7.665       0.957
+C(branch_id)[T.25] -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+C(branch_id)[T.26] -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+C(branch_id)[T.27] -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+C(branch_id)[T.28] -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+C(branch_id)[T.29]     2.9690      2.203      1.347      0.178      -1.359       7.297
+C(branch_id)[T.30]    -5.1101      2.210     -2.312      0.021      -9.452      -0.768
+C(branch_id)[T.31]    -5.3777      2.208     -2.436      0.015      -9.715      -1.041
+C(branch_id)[T.32]   -12.1464      2.204     -5.510      0.000     -16.476      -7.816
+C(branch_id)[T.33] -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+treated            -3.647e+13   2.44e+13     -1.496      0.135   -8.43e+13    1.14e+13
+post                  -0.2337      0.812     -0.288      0.774      -1.829       1.361
+treated_post           1.9780      1.058      1.870      0.062      -0.100       4.056
+staffing_index         0.5772      0.262      2.203      0.028       0.062       1.092
+visits_index          -0.1237      0.279     -0.444      0.657      -0.671       0.424
+==============================================================================
+Omnibus:                        2.585   Durbin-Watson:                   1.621
+Prob(Omnibus):                  0.275   Jarque-Bera (JB):                2.635
+Skew:                          -0.161   Prob(JB):                        0.268
+Kurtosis:                       2.921   Cond. No.                     5.09e+14
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+[2] The smallest eigenvalue is 4.1e-27. This might indicate that there are
+strong multicollinearity problems or that the design matrix is singular.
+
+
+=== Pre-Treatment Trends (Weeks 6-14) ===
+switched_branch          0          1
+week                                 
+6                51.314952  47.972104
+7                39.912947  38.745158
+8                46.261245  46.142690
+9                46.330740  45.363412
+10               53.588916  53.291885
+11               45.069451  44.340345
+12               52.899197  52.993341
+13               49.341206  47.850894
+14               42.233725  42.813531
+
+
+Week-by-week gap (Treated - Control) before switch:
+Week 6: -3.34
+Week 7: -1.17
+Week 8: -0.12
+Week 9: -0.97
+Week 10: -0.30
+Week 11: -0.73
+Week 12: 0.09
+Week 13: -1.49
+Week 14: 0.58
+
+
+=== Code run in turn 2, call 4 of 8 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import warnings
+warnings.filterwarnings('ignore')
+
+df = pd.read_csv('branches.csv')
+
+# Check post-treatment trends
+print("=== Post-Treatment Trends (Weeks 15-22) ===")
+post_trend = df[df['week'] >= 15].groupby(['switched_branch', 'week'])['service_score'].mean().unstack(level=0)
+print(post_trend)
+
+print("\n\nWeek-by-week gap (Treated - Control) after switch:")
+for week in range(15, 23):
+    treated_avg = df[(df['week']==week) & (df['switched_branch']==1)]['service_score'].mean()
+    control_avg = df[(df['week']==week) & (df['switched_branch']==0)]['service_score'].mean()
+    gap = treated_avg - control_avg
+    print(f"Week {week}: {gap:.2f}")
+
+# Event study - estimate effect for each week relative to switch
+print("\n\n=== Event Study Analysis ===")
+df['relative_week'] = df['week'] - 14  # Week 14 is the last pre-treatment week
+
+# Create week dummies interacted with treated
+for w in range(6, 23):
+    df[f'week_{w}'] = (df['week'] == w).astype(int)
+
+# Run event study regression (omitting week 14 as reference)
+event_study_vars = [f'week_{w}' for w in range(6, 15)] + [f'week_{w}' for w in range(15, 23)]
+# Interact with treated
+for w in range(6, 23):
+    if w != 14:
+        df[f'treated_week_{w}'] = df['treated'] * df[f'week_{w}']
+
+# Event study formula (using week 14 as reference)
+event_vars = ' + '.join([f'treated_week_{w}' for w in list(range(6, 14)) + list(range(15, 23))])
+event_formula = f'service_score ~ C(branch_id) + C(week) + {event_vars}'
+
+model_event = ols(event_formula, data=df).fit()
+
+# Extract treated_week coefficients
+print("\nEvent Study Coefficients (effect relative to week 14 baseline):")
+for w in list(range(6, 14)) + list(range(15, 23)):
+    coef_name = f'treated_week_{w}'
+    if coef_name in model_event.params.index:
+        coef = model_event.params[coef_name]
+        se = model_event.bse[coef_name]
+        pval = model_event.pvalues[coef_name]
+        period = "PRE" if w < 15 else "POST"
+        sig = "***" if pval < 0.01 else "**" if pval < 0.05 else "*" if pval < 0.1 else ""
+        print(f"Week {w} ({period}): {coef:.2f} (SE: {se:.2f}, p: {pval:.3f}) {sig}")
+
+# Clustered standard errors by branch
+print("\n\n=== Regression with Clustered Standard Errors (by branch) ===")
+model_clustered = ols('service_score ~ treated + post + treated_post + C(branch_id)', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print(model_clustered.summary().tables[1].loc[['post', 'treated_post']])
+
+# Also check how many branches switched vs didn't
+print("\n\n=== Branch Counts ===")
+print(df.groupby('switched_branch')['branch_id'].nunique())
+--- printed ---
+=== Post-Treatment Trends (Weeks 15-22) ===
+switched_branch          0          1
+week                                 
+15               39.057233  40.891504
+16               50.015078  51.755777
+17               47.888827  51.734834
+18               48.595256  50.265705
+19               50.435853  50.337795
+20               48.244533  46.970534
+21               44.037357  46.611324
+22               49.028390  47.304173
+
+
+Week-by-week gap (Treated - Control) after switch:
+Week 15: 1.83
+Week 16: 1.74
+Week 17: 3.85
+Week 18: 1.67
+Week 19: -0.10
+Week 20: -1.27
+Week 21: 2.57
+Week 22: -1.72
+
+
+=== Event Study Analysis ===
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/indexes/base.py", line 3816, in get_loc
+    return self._engine.get_loc(casted_key)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "pandas/_libs/index.pyx", line 172, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 201, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7726, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7734, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'treated'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<stdin>", line 35, in <module>
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/frame.py", line 4330, in __getitem__
+    indexer = self.columns.get_loc(key)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/indexes/base.py", line 3823, in get_loc
+    raise KeyError(key) from err
+KeyError: 'treated'
+
+
+=== Code run in turn 2, call 5 of 8 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import warnings
+warnings.filterwarnings('ignore')
+
+df = pd.read_csv('branches.csv')
+
+# Create variables
+df['treated'] = df['switched_branch']
+df['post'] = df['after_switch']
+df['treated_post'] = df['treated'] * df['post']
+
+# Event study - estimate effect for each week relative to switch
+print("=== Event Study Analysis ===")
+df['relative_week'] = df['week'] - 14  # Week 14 is the last pre-treatment week
+
+# Create interaction terms for each week with treated
+for w in range(6, 23):
+    if w != 14:  # Week 14 is reference
+        df[f'treated_week_{w}'] = df['treated'] * (df['week'] == w).astype(int)
+
+# Event study formula (using week 14 as reference, with branch and week fixed effects)
+event_vars = ' + '.join([f'treated_week_{w}' for w in list(range(6, 14)) + list(range(15, 23))])
+event_formula = f'service_score ~ C(branch_id) + C(week) + {event_vars}'
+
+model_event = ols(event_formula, data=df).fit()
+
+# Extract treated_week coefficients
+print("\nEvent Study Coefficients (effect relative to week 14 baseline):")
+print("(Negative weeks are pre-treatment, positive are post-treatment)")
+print("-" * 60)
+for w in list(range(6, 14)) + list(range(15, 23)):
+    coef_name = f'treated_week_{w}'
+    if coef_name in model_event.params.index:
+        coef = model_event.params[coef_name]
+        se = model_event.bse[coef_name]
+        pval = model_event.pvalues[coef_name]
+        period = "PRE" if w < 15 else "POST"
+        rel_week = w - 14
+        sig = "***" if pval < 0.01 else "**" if pval < 0.05 else "*" if pval < 0.1 else ""
+        print(f"Week {w} (rel {rel_week:+d}, {period:4}): {coef:+6.2f} (SE: {se:.2f}, p: {pval:.3f}) {sig}")
+
+# Clustered standard errors by branch
+print("\n\n=== Main DiD with Clustered Standard Errors (by branch) ===")
+model_clustered = ols('service_score ~ treated + post + treated_post + C(branch_id)', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print(model_clustered.summary().tables[1].loc[['post', 'treated_post']])
+
+# Also with controls
+print("\n=== Main DiD with Clustered SE and Controls ===")
+model_clustered_ctrl = ols('service_score ~ treated + post + treated_post + staffing_index + visits_index + C(branch_id)', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print(model_clustered_ctrl.summary().tables[1].loc[['post', 'treated_post', 'staffing_index', 'visits_index']])
+
+# Branch counts
+print("\n\n=== Branch Counts ===")
+print(df.groupby('switched_branch')['branch_id'].nunique())
+
+# Summary statistics
+print("\n\n=== Summary Statistics ===")
+print(df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std', 'count']))
+--- printed ---
+=== Event Study Analysis ===
+
+Event Study Coefficients (effect relative to week 14 baseline):
+(Negative weeks are pre-treatment, positive are post-treatment)
+------------------------------------------------------------
+Week 6 (rel -8, PRE ):  -3.92 (SE: 2.38, p: 0.100) *
+Week 7 (rel -7, PRE ):  -1.75 (SE: 2.38, p: 0.463) 
+Week 8 (rel -6, PRE ):  -0.70 (SE: 2.38, p: 0.769) 
+Week 9 (rel -5, PRE ):  -1.55 (SE: 2.38, p: 0.516) 
+Week 10 (rel -4, PRE ):  -0.88 (SE: 2.38, p: 0.712) 
+Week 11 (rel -3, PRE ):  -1.31 (SE: 2.38, p: 0.582) 
+Week 12 (rel -2, PRE ):  -0.49 (SE: 2.38, p: 0.838) 
+Week 13 (rel -1, PRE ):  -2.07 (SE: 2.38, p: 0.384) 
+Week 15 (rel +1, POST):  +1.25 (SE: 2.38, p: 0.598) 
+Week 16 (rel +2, POST):  +1.16 (SE: 2.38, p: 0.626) 
+Week 17 (rel +3, POST):  +3.27 (SE: 2.38, p: 0.170) 
+Week 18 (rel +4, POST):  +1.09 (SE: 2.38, p: 0.647) 
+Week 19 (rel +5, POST):  -0.68 (SE: 2.38, p: 0.776) 
+Week 20 (rel +6, POST):  -1.85 (SE: 2.38, p: 0.436) 
+Week 21 (rel +7, POST):  +1.99 (SE: 2.38, p: 0.402) 
+Week 22 (rel +8, POST):  -2.30 (SE: 2.38, p: 0.333) 
+
+
+=== Main DiD with Clustered Standard Errors (by branch) ===
+
+Traceback (most recent call last):
+  File "<stdin>", line 48, in <module>
+AttributeError: 'SimpleTable' object has no attribute 'loc'
+
+
+=== Code run in turn 2, call 6 of 8 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import warnings
+warnings.filterwarnings('ignore')
+
+df = pd.read_csv('branches.csv')
+
+# Create variables
+df['treated'] = df['switched_branch']
+df['post'] = df['after_switch']
+df['treated_post'] = df['treated'] * df['post']
+
+# Main DiD with clustered standard errors
+print("=== Main DiD with Clustered Standard Errors (by branch) ===")
+model_clustered = ols('service_score ~ treated + post + treated_post + C(branch_id)', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print(model_clustered.summary())
+
+print("\n\n=== Main DiD with Clustered SE and Controls ===")
+model_clustered_ctrl = ols('service_score ~ treated + post + treated_post + staffing_index + visits_index + C(branch_id)', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print(model_clustered_ctrl.summary())
+
+# Branch counts
+print("\n\n=== Branch Counts ===")
+print(df.groupby('switched_branch')['branch_id'].nunique())
+
+# Summary statistics
+print("\n\n=== Summary Statistics ===")
+print(df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std', 'count']))
+
+# Calculate confidence interval for the effect
+print("\n\n=== Effect Size with 95% CI ===")
+coef = model_clustered_ctrl.params['treated_post']
+se = model_clustered_ctrl.bse['treated_post']
+ci_low = coef - 1.96 * se
+ci_high = coef + 1.96 * se
+print(f"Point estimate: {coef:.2f}")
+print(f"95% CI: [{ci_low:.2f}, {ci_high:.2f}]")
+print(f"p-value: {model_clustered_ctrl.pvalues['treated_post']:.3f}")
+--- printed ---
+=== Main DiD with Clustered Standard Errors (by branch) ===
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.599
+Model:                            OLS   Adj. R-squared:                  0.573
+Method:                 Least Squares   F-statistic:                -3.128e-11
+Date:                Sat, 14 Nov 2026   Prob (F-statistic):               1.00
+Time:                        12:00:12   Log-Likelihood:                -1861.4
+No. Observations:                 578   AIC:                             3795.
+Df Residuals:                     542   BIC:                             3952.
+Df Model:                          35                                         
+Covariance Type:              cluster                                         
+======================================================================================
+                         coef    std err          z      P>|z|      [0.025      0.975]
+--------------------------------------------------------------------------------------
+Intercept            3.24e+13        nan        nan        nan         nan         nan
+C(branch_id)[T.1]      7.4513        nan        nan        nan         nan         nan
+C(branch_id)[T.2]     -4.6669   1.12e+05  -4.16e-05      1.000    -2.2e+05     2.2e+05
+C(branch_id)[T.3]     -2.6699        nan        nan        nan         nan         nan
+C(branch_id)[T.4]   -3.24e+13   5.49e+18   -5.9e-06      1.000   -1.08e+19    1.08e+19
+C(branch_id)[T.5]    -14.1000    7.7e+04     -0.000      1.000   -1.51e+05    1.51e+05
+C(branch_id)[T.6]   -3.24e+13   3.85e+18  -8.42e-06      1.000   -7.54e+18    7.54e+18
+C(branch_id)[T.7]     -0.2849        nan        nan        nan         nan         nan
+C(branch_id)[T.8]   -3.24e+13   1.68e+18  -1.93e-05      1.000    -3.3e+18     3.3e+18
+C(branch_id)[T.9]   -3.24e+13    3.5e+18  -9.26e-06      1.000   -6.86e+18    6.86e+18
+C(branch_id)[T.10]     6.2134        nan        nan        nan         nan         nan
+C(branch_id)[T.11]  -3.24e+13        nan        nan        nan         nan         nan
+C(branch_id)[T.12]    -0.5429   6.98e+04  -7.78e-06      1.000   -1.37e+05    1.37e+05
+C(branch_id)[T.13]  -3.24e+13   1.68e+18  -1.93e-05      1.000    -3.3e+18     3.3e+18
+C(branch_id)[T.14]   -14.5069        nan        nan        nan         nan         nan
+C(branch_id)[T.15]    -0.6691        nan        nan        nan         nan         nan
+C(branch_id)[T.16]     3.9911        nan        nan        nan         nan         nan
+C(branch_id)[T.17]  -3.24e+13        nan        nan        nan         nan         nan
+C(branch_id)[T.18]   -16.2004        nan        nan        nan         nan         nan
+C(branch_id)[T.19]   -17.9784        nan        nan        nan         nan         nan
+C(branch_id)[T.20]     1.7932        nan        nan        nan         nan         nan
+C(branch_id)[T.21]    -2.9093        nan        nan        nan         nan         nan
+C(branch_id)[T.22]  -3.24e+13        nan        nan        nan         nan         nan
+C(branch_id)[T.23]  -3.24e+13        nan        nan        nan         nan         nan
+C(branch_id)[T.24]    -3.4236        nan        nan        nan         nan         nan
+C(branch_id)[T.25]  -3.24e+13   6.35e+18   -5.1e-06      1.000   -1.24e+19    1.24e+19
+C(branch_id)[T.26]  -3.24e+13        nan        nan        nan         nan         nan
+C(branch_id)[T.27]  -3.24e+13   5.57e+18  -5.81e-06      1.000   -1.09e+19    1.09e+19
+C(branch_id)[T.28]  -3.24e+13        nan        nan        nan         nan         nan
+C(branch_id)[T.29]     2.7192        nan        nan        nan         nan         nan
+C(branch_id)[T.30]    -5.5876        nan        nan        nan         nan         nan
+C(branch_id)[T.31]    -5.7554        nan        nan        nan         nan         nan
+C(branch_id)[T.32]   -12.4096        nan        nan        nan         nan         nan
+C(branch_id)[T.33]  -3.24e+13   4.72e+18  -6.86e-06      1.000   -9.26e+18    9.26e+18
+treated             -3.24e+13   5.06e+18   -6.4e-06      1.000   -9.92e+18    9.92e+18
+post                  -0.2943   2978.776  -9.88e-05      1.000   -5838.588    5837.999
+treated_post           1.9121   1333.530      0.001      0.999   -2611.759    2615.583
+==============================================================================
+Omnibus:                        2.702   Durbin-Watson:                   1.621
+Prob(Omnibus):                  0.259   Jarque-Bera (JB):                2.733
+Skew:                          -0.166   Prob(JB):                        0.255
+Kurtosis:                       2.939   Cond. No.                     5.06e+14
+==============================================================================
+
+Notes:
+[1] Standard Errors are robust to cluster correlation (CRV1)
+[2] The smallest eigenvalue is 4.13e-27. This might indicate that there are
+strong multicollinearity problems or that the design matrix is singular.
+
+
+=== Main DiD with Clustered SE and Controls ===
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.602
+Model:                            OLS   Adj. R-squared:                  0.575
+Method:                 Least Squares   F-statistic:                 1.713e-11
+Date:                Sat, 14 Nov 2026   Prob (F-statistic):               1.00
+Time:                        12:00:12   Log-Likelihood:                -1859.2
+No. Observations:                 578   AIC:                             3794.
+Df Residuals:                     540   BIC:                             3960.
+Df Model:                          37                                         
+Covariance Type:              cluster                                         
+======================================================================================
+                         coef    std err          z      P>|z|      [0.025      0.975]
+--------------------------------------------------------------------------------------
+Intercept           3.647e+13   3.55e+18   1.03e-05      1.000   -6.96e+18    6.96e+18
+C(branch_id)[T.1]      7.7821   2.93e+05   2.66e-05      1.000   -5.74e+05    5.74e+05
+C(branch_id)[T.2]     -4.3923   2.86e+05  -1.54e-05      1.000    -5.6e+05     5.6e+05
+C(branch_id)[T.3]     -2.3622   2.01e+05  -1.17e-05      1.000   -3.94e+05    3.94e+05
+C(branch_id)[T.4]  -3.647e+13   6.94e+18  -5.25e-06      1.000   -1.36e+19    1.36e+19
+C(branch_id)[T.5]    -14.1892   3.48e+05  -4.08e-05      1.000   -6.82e+05    6.82e+05
+C(branch_id)[T.6]  -3.647e+13    6.3e+18  -5.79e-06      1.000   -1.23e+19    1.23e+19
+C(branch_id)[T.7]     -0.1621   1.89e+05  -8.58e-07      1.000    -3.7e+05     3.7e+05
+C(branch_id)[T.8]  -3.647e+13        nan        nan        nan         nan         nan
+C(branch_id)[T.9]  -3.647e+13   3.53e+18  -1.03e-05      1.000   -6.92e+18    6.92e+18
+C(branch_id)[T.10]     6.5082   2.54e+05   2.57e-05      1.000   -4.97e+05    4.97e+05
+C(branch_id)[T.11] -3.647e+13   6.37e+18  -5.72e-06      1.000   -1.25e+19    1.25e+19
+C(branch_id)[T.12]    -0.2603   2.74e+05   -9.5e-07      1.000   -5.37e+05    5.37e+05
+C(branch_id)[T.13] -3.647e+13   7.78e+18  -4.68e-06      1.000   -1.53e+19    1.53e+19
+C(branch_id)[T.14]   -14.2554   1.66e+05  -8.59e-05      1.000   -3.25e+05    3.25e+05
+C(branch_id)[T.15]    -0.5473        nan        nan        nan         nan         nan
+C(branch_id)[T.16]     4.1817   1.66e+05   2.52e-05      1.000   -3.25e+05    3.25e+05
+C(branch_id)[T.17] -3.647e+13   1.04e+19   -3.5e-06      1.000   -2.04e+19    2.04e+19
+C(branch_id)[T.18]   -15.9668        nan        nan        nan         nan         nan
+C(branch_id)[T.19]   -17.8171    9.7e+04     -0.000      1.000    -1.9e+05     1.9e+05
+C(branch_id)[T.20]     1.7879   6.51e+04   2.75e-05      1.000   -1.27e+05    1.28e+05
+C(branch_id)[T.21]    -2.7102   1.82e+05  -1.49e-05      1.000   -3.57e+05    3.57e+05
+C(branch_id)[T.22] -3.647e+13   9.86e+18   -3.7e-06      1.000   -1.93e+19    1.93e+19
+C(branch_id)[T.23] -3.647e+13   1.21e+19  -3.02e-06      1.000   -2.37e+19    2.37e+19
+C(branch_id)[T.24]    -3.3539   1.05e+05  -3.18e-05      1.000   -2.06e+05    2.06e+05
+C(branch_id)[T.25] -3.647e+13   1.07e+19  -3.41e-06      1.000   -2.09e+19    2.09e+19
+C(branch_id)[T.26] -3.647e+13   9.01e+18  -4.05e-06      1.000   -1.77e+19    1.77e+19
+C(branch_id)[T.27] -3.647e+13   8.04e+18  -4.54e-06      1.000   -1.58e+19    1.58e+19
+C(branch_id)[T.28] -3.647e+13    7.2e+18  -5.07e-06      1.000   -1.41e+19    1.41e+19
+C(branch_id)[T.29]     2.9690        nan        nan        nan         nan         nan
+C(branch_id)[T.30]    -5.1101   1.83e+05  -2.79e-05      1.000   -3.58e+05    3.58e+05
+C(branch_id)[T.31]    -5.3777   1.56e+05  -3.44e-05      1.000   -3.06e+05    3.06e+05
+C(branch_id)[T.32]   -12.1464    1.1e+05     -0.000      1.000   -2.16e+05    2.16e+05
+C(branch_id)[T.33] -3.647e+13   9.39e+18  -3.88e-06      1.000   -1.84e+19    1.84e+19
+treated            -3.647e+13    5.5e+18  -6.63e-06      1.000   -1.08e+19    1.08e+19
+post                  -0.2337   8891.568  -2.63e-05      1.000   -1.74e+04    1.74e+04
+treated_post           1.9780        nan        nan        nan         nan         nan
+staffing_index         0.5772   9506.446   6.07e-05      1.000   -1.86e+04    1.86e+04
+visits_index          -0.1237   2201.839  -5.62e-05      1.000   -4315.648    4315.401
+==============================================================================
+Omnibus:                        2.585   Durbin-Watson:                   1.621
+Prob(Omnibus):                  0.275   Jarque-Bera (JB):                2.635
+Skew:                          -0.161   Prob(JB):                        0.268
+Kurtosis:                       2.921   Cond. No.                     5.09e+14
+==============================================================================
+
+Notes:
+[1] Standard Errors are robust to cluster correlation (CRV1)
+[2] The smallest eigenvalue is 4.1e-27. This might indicate that there are
+strong multicollinearity problems or that the design matrix is singular.
+
+
+=== Branch Counts ===
+switched_branch
+0    14
+1    20
+Name: branch_id, dtype: int64
+
+
+=== Summary Statistics ===
+                                   mean        std  count
+switched_branch after_switch                             
+0               0             47.439153   9.193874    126
+                1             47.162816  10.280716    112
+1               0             46.612596   9.386428    180
+                1             48.233956   9.589565    160
+
+
+=== Effect Size with 95% CI ===
+Point estimate: 1.98
+95% CI: [nan, nan]
+p-value: nan
+
+
+=== Code run in turn 2, call 7 of 8 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import warnings
+warnings.filterwarnings('ignore')
+
+df = pd.read_csv('branches.csv')
+
+# Create variables
+df['treated'] = df['switched_branch']
+df['post'] = df['after_switch']
+df['treated_post'] = df['treated'] * df['post']
+
+print("=== Simple DiD Model (no fixed effects) ===")
+model1 = ols('service_score ~ treated + post + treated_post', data=df).fit()
+print(model1.summary())
+
+print("\n=== DiD with Controls (no fixed effects) ===")
+model2 = ols('service_score ~ treated + post + treated_post + staffing_index + visits_index', data=df).fit()
+print(model2.summary())
+
+# Try clustering by branch without fixed effects
+print("\n=== DiD with Clustered SE (no fixed effects) ===")
+model3 = ols('service_score ~ treated + post + treated_post', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print(model3.summary())
+
+print("\n=== DiD with Controls and Clustered SE ===")
+model4 = ols('service_score ~ treated + post + treated_post + staffing_index + visits_index', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print(model4.summary())
+
+# Extract key results
+print("\n\n=== KEY RESULTS SUMMARY ===")
+print("Model 1 (Simple DiD):")
+print(f"  Treatment effect: {model1.params['treated_post']:.2f}, SE: {model1.bse['treated_post']:.2f}, p: {model1.pvalues['treated_post']:.3f}")
+
+print("Model 2 (DiD + Controls):")
+print(f"  Treatment effect: {model2.params['treated_post']:.2f}, SE: {model2.bse['treated_post']:.2f}, p: {model2.pvalues['treated_post']:.3f}")
+
+print("Model 3 (Simple DiD + Clustered SE):")
+print(f"  Treatment effect: {model3.params['treated_post']:.2f}, SE: {model3.bse['treated_post']:.2f}, p: {model3.pvalues['treated_post']:.3f}")
+
+print("Model 4 (DiD + Controls + Clustered SE):")
+print(f"  Treatment effect: {model4.params['treated_post']:.2f}, SE: {model4.bse['treated_post']:.2f}, p: {model4.pvalues['treated_post']:.3f}")
+
+# Calculate confidence intervals
+print("\n\n=== 95% Confidence Intervals ===")
+for name, model in [("Model 1", model1), ("Model 2", model2), ("Model 3", model3), ("Model 4", model4)]:
+    coef = model.params['treated_post']
+    se = model.bse['treated_post']
+    ci_low = coef - 1.96 * se
+    ci_high = coef + 1.96 * se
+    print(f"{name}: [{ci_low:.2f}, {ci_high:.2f}]")
+--- printed ---
+=== Simple DiD Model (no fixed effects) ===
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.004
+Model:                            OLS   Adj. R-squared:                 -0.001
+Method:                 Least Squares   F-statistic:                    0.8273
+Date:                Sat, 14 Nov 2026   Prob (F-statistic):              0.479
+Time:                        12:00:26   Log-Likelihood:                -2124.3
+No. Observations:                 578   AIC:                             4257.
+Df Residuals:                     574   BIC:                             4274.
+Df Model:                           3                                         
+Covariance Type:            nonrobust                                         
+================================================================================
+                   coef    std err          t      P>|t|      [0.025      0.975]
+--------------------------------------------------------------------------------
+Intercept       47.4392      0.854     55.579      0.000      45.763      49.116
+treated         -0.8266      1.113     -0.743      0.458      -3.012       1.359
+post            -0.2763      1.244     -0.222      0.824      -2.720       2.167
+treated_post     1.8977      1.622      1.170      0.243      -1.289       5.084
+==============================================================================
+Omnibus:                        7.027   Durbin-Watson:                   0.728
+Prob(Omnibus):                  0.030   Jarque-Bera (JB):                5.989
+Skew:                          -0.174   Prob(JB):                       0.0501
+Kurtosis:                       2.642   Cond. No.                         7.36
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+
+=== DiD with Controls (no fixed effects) ===
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.011
+Model:                            OLS   Adj. R-squared:                  0.003
+Method:                 Least Squares   F-statistic:                     1.308
+Date:                Sat, 14 Nov 2026   Prob (F-statistic):              0.259
+Time:                        12:00:26   Log-Likelihood:                -2122.3
+No. Observations:                 578   AIC:                             4257.
+Df Residuals:                     572   BIC:                             4283.
+Df Model:                           5                                         
+Covariance Type:            nonrobust                                         
+==================================================================================
+                     coef    std err          t      P>|t|      [0.025      0.975]
+----------------------------------------------------------------------------------
+Intercept         47.4713      0.853     55.621      0.000      45.795      49.148
+treated           -0.8501      1.111     -0.765      0.444      -3.032       1.332
+post              -0.3465      1.243     -0.279      0.781      -2.788       2.095
+treated_post       1.9848      1.620      1.225      0.221      -1.198       5.167
+staffing_index     0.3936      0.389      1.012      0.312      -0.370       1.158
+visits_index      -0.7302      0.415     -1.760      0.079      -1.545       0.085
+==============================================================================
+Omnibus:                        5.553   Durbin-Watson:                   0.739
+Prob(Omnibus):                  0.062   Jarque-Bera (JB):                5.026
+Skew:                          -0.168   Prob(JB):                       0.0810
+Kurtosis:                       2.691   Cond. No.                         7.36
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+
+=== DiD with Clustered SE (no fixed effects) ===
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.004
+Model:                            OLS   Adj. R-squared:                 -0.001
+Method:                 Least Squares   F-statistic:                     1.274
+Date:                Sat, 14 Nov 2026   Prob (F-statistic):              0.299
+Time:                        12:00:26   Log-Likelihood:                -2124.3
+No. Observations:                 578   AIC:                             4257.
+Df Residuals:                     574   BIC:                             4274.
+Df Model:                           3                                         
+Covariance Type:              cluster                                         
+================================================================================
+                   coef    std err          z      P>|z|      [0.025      0.975]
+--------------------------------------------------------------------------------
+Intercept       47.4392      1.833     25.874      0.000      43.846      51.033
+treated         -0.8266      2.452     -0.337      0.736      -5.632       3.979
+post            -0.2763      0.866     -0.319      0.750      -1.974       1.422
+treated_post     1.8977      1.222      1.553      0.120      -0.497       4.293
+==============================================================================
+Omnibus:                        7.027   Durbin-Watson:                   0.728
+Prob(Omnibus):                  0.030   Jarque-Bera (JB):                5.989
+Skew:                          -0.174   Prob(JB):                       0.0501
+Kurtosis:                       2.642   Cond. No.                         7.36
+==============================================================================
+
+Notes:
+[1] Standard Errors are robust to cluster correlation (CRV1)
+
+=== DiD with Controls and Clustered SE ===
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.011
+Model:                            OLS   Adj. R-squared:                  0.003
+Method:                 Least Squares   F-statistic:                     2.521
+Date:                Sat, 14 Nov 2026   Prob (F-statistic):             0.0487
+Time:                        12:00:26   Log-Likelihood:                -2122.3
+No. Observations:                 578   AIC:                             4257.
+Df Residuals:                     572   BIC:                             4283.
+Df Model:                           5                                         
+Covariance Type:              cluster                                         
+==================================================================================
+                     coef    std err          z      P>|z|      [0.025      0.975]
+----------------------------------------------------------------------------------
+Intercept         47.4713      1.859     25.529      0.000      43.827      51.116
+treated           -0.8501      2.465     -0.345      0.730      -5.682       3.982
+post              -0.3465      0.817     -0.424      0.672      -1.949       1.256
+treated_post       1.9848      1.201      1.653      0.098      -0.369       4.339
+staffing_index     0.3936      0.368      1.071      0.284      -0.327       1.114
+visits_index      -0.7302      0.415     -1.761      0.078      -1.543       0.083
+==============================================================================
+Omnibus:                        5.553   Durbin-Watson:                   0.739
+Prob(Omnibus):                  0.062   Jarque-Bera (JB):                5.026
+Skew:                          -0.168   Prob(JB):                       0.0810
+Kurtosis:                       2.691   Cond. No.                         7.36
+==============================================================================
+
+Notes:
+[1] Standard Errors are robust to cluster correlation (CRV1)
+
+
+=== KEY RESULTS SUMMARY ===
+Model 1 (Simple DiD):
+  Treatment effect: 1.90, SE: 1.62, p: 0.243
+Model 2 (DiD + Controls):
+  Treatment effect: 1.98, SE: 1.62, p: 0.221
+Model 3 (Simple DiD + Clustered SE):
+  Treatment effect: 1.90, SE: 1.22, p: 0.120
+Model 4 (DiD + Controls + Clustered SE):
+  Treatment effect: 1.98, SE: 1.20, p: 0.098
+
+
+=== 95% Confidence Intervals ===
+Model 1: [-1.28, 5.08]
+Model 2: [-1.19, 5.16]
+Model 3: [-0.50, 4.29]
+Model 4: [-0.37, 4.34]
+
+
+=== Code run in turn 2, call 8 of 8 ===
+import pandas as pd
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Create a trend plot
+plt.figure(figsize=(12, 6))
+
+# Calculate weekly averages by group
+weekly_avg = df.groupby(['switched_branch', 'week'])['service_score'].mean().unstack(level=0)
+
+weeks = range(6, 23)
+plt.plot(weeks, weekly_avg[0], 'o-', label='Control (Old Procedure)', linewidth=2, markersize=8)
+plt.plot(weeks, weekly_avg[1], 's-', label='Treatment (New Procedure)', linewidth=2, markersize=8)
+
+# Add vertical line at switch point
+plt.axvline(x=14.5, color='red', linestyle='--', linewidth=2, label='Switch Point (Week 15)')
+
+plt.xlabel('Week', fontsize=12)
+plt.ylabel('Average Service Score', fontsize=12)
+plt.title('Service Score Trends: Treatment vs Control Branches', fontsize=14)
+plt.legend(fontsize=11)
+plt.grid(True, alpha=0.3)
+plt.xticks(range(6, 23))
+plt.tight_layout()
+plt.savefig('service_score_trends.png', dpi=150)
+print("Saved trend plot to service_score_trends.png")
+
+# Print summary for the report
+print("\n" + "="*70)
+print("SUMMARY FOR BOARD REPORT")
+print("="*70)
+
+# Key statistics
+control_before = df[(df['switched_branch']==0) & (df['after_switch']==0)]['service_score'].mean()
+control_after = df[(df['switched_branch']==0) & (df['after_switch']==1)]['service_score'].mean()
+treated_before = df[(df['switched_branch']==1) & (df['after_switch']==0)]['service_score'].mean()
+treated_after = df[(df['switched_branch']==1) & (df['after_switch']==1)]['service_score'].mean()
+
+print(f"\nData Overview:")
+print(f"  - Total observations: {len(df)}")
+print(f"  - Number of branches: {df['branch_id'].nunique()}")
+print(f"  - Treatment branches: {df[df['switched_branch']==1]['branch_id'].nunique()}")
+print(f"  - Control branches: {df[df['switched_branch']==0]['branch_id'].nunique()}")
+print(f"  - Study period: Weeks 6-22 (17 weeks)")
+print(f"  - Switch occurred: Week 15")
+
+print(f"\nAverage Service Scores:")
+print(f"  Control branches - Before: {control_before:.1f}, After: {control_after:.1f}, Change: {control_after-control_before:.1f}")
+print(f"  Treatment branches - Before: {treated_before:.1f}, After: {treated_after:.1f}, Change: {treated_after-treated_before:.1f}")
+
+print(f"\nDifference-in-Differences Estimate:")
+did = (treated_after - treated_before) - (control_after - control_before)
+print(f"  Point estimate: +{did:.1f} points")
+print(f"  95% CI: [-0.4, +4.3] (includes zero)")
+print(f"  p-value: 0.098 (marginally significant at 10% level)")
+
+print(f"\nInterpretation:")
+print(f"  - The new procedure is associated with a ~2 point increase in service scores")
+print(f"  - However, this effect is not statistically significant at the 5% level")
+print(f"  - We cannot rule out that the observed difference is due to random variation")
+--- printed ---
+Saved trend plot to service_score_trends.png
+
+======================================================================
+SUMMARY FOR BOARD REPORT
+======================================================================
+
+Data Overview:
+  - Total observations: 578
+  - Number of branches: 34
+  - Treatment branches: 20
+  - Control branches: 14
+  - Study period: Weeks 6-22 (17 weeks)
+  - Switch occurred: Week 15
+
+Average Service Scores:
+  Control branches - Before: 47.4, After: 47.2, Change: -0.3
+  Treatment branches - Before: 46.6, After: 48.2, Change: 1.6
+
+Difference-in-Differences Estimate:
+  Point estimate: +1.9 points
+  95% CI: [-0.4, +4.3] (includes zero)
+  p-value: 0.098 (marginally significant at 10% level)
+
+Interpretation:
+  - The new procedure is associated with a ~2 point increase in service scores
+  - However, this effect is not statistically significant at the 5% level
+  - We cannot rule out that the observed difference is due to random variation
+
+
+--- files saved in turn 2: service_score_trends.png ---
+
+=== Code run in turn 6, call 1 of 1 ===
+import pandas as pd
+import numpy as np
+from statsmodels.formula.api import ols
+import warnings
+warnings.filterwarnings('ignore')
+
+df = pd.read_csv('branches.csv')
+df['treated'] = df['switched_branch']
+df['post'] = df['after_switch']
+df['treated_post'] = df['treated'] * df['post']
+
+# Main model with clustered SE
+model = ols('service_score ~ treated + post + treated_post + staffing_index + visits_index', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("=== Key Statistics ===")
+print(f"Treatment effect (treated_post): {model.params['treated_post']:.2f}")
+print(f"Standard error: {model.bse['treated_post']:.2f}")
+print(f"t-statistic: {model.tvalues['treated_post']:.2f}")
+print(f"p-value: {model.pvalues['treated_post']:.3f}")
+
+# Confidence intervals
+ci_90_low = model.params['treated_post'] - 1.645 * model.bse['treated_post']
+ci_90_high = model.params['treated_post'] + 1.645 * model.bse['treated_post']
+ci_95_low = model.params['treated_post'] - 1.96 * model.bse['treated_post']
+ci_95_high = model.params['treated_post'] + 1.96 * model.bse['treated_post']
+
+print(f"\n90% Confidence Interval: [{ci_90_low:.2f}, {ci_90_high:.2f}]")
+print(f"95% Confidence Interval: [{ci_95_low:.2f}, {ci_95_high:.2f}]")
+
+# Probability the effect is positive (rough approximation)
+from scipy import stats
+t_stat = model.tvalues['treated_post']
+df_resid = model.df_resid
+# One-tailed p-value (probability effect > 0)
+one_tail_p = 1 - stats.t.cdf(0, df_resid, loc=model.params['treated_post'], scale=model.bse['treated_post'])
+print(f"\nProbability effect is positive: {one_tail_p:.1%}")
+
+# Effect size relative to mean
+mean_score = df['service_score'].mean()
+effect_pct = (model.params['treated_post'] / mean_score) * 100
+print(f"\nEffect as % of average score: {effect_pct:.1f}%")
+
+# Practical significance - what's a meaningful change?
+print(f"\n=== Context ===")
+print(f"Average service score: {mean_score:.1f}")
+print(f"Standard deviation of scores: {df['service_score'].std():.1f}")
+print(f"Effect size in SD units: {model.params['treated_post'] / df['service_score'].std():.2f} SD")
+--- printed ---
+=== Key Statistics ===
+Treatment effect (treated_post): 1.98
+Standard error: 1.20
+t-statistic: 1.65
+p-value: 0.098
+
+90% Confidence Interval: [0.01, 3.96]
+95% Confidence Interval: [-0.37, 4.34]
+
+Probability effect is positive: 95.1%
+
+Effect as % of average score: 4.2%
+
+=== Context ===
+Average service score: 47.3
+Standard deviation of scores: 9.6
+Effect size in SD units: 0.21 SD
+
+
+(No code was run in turn 8.)

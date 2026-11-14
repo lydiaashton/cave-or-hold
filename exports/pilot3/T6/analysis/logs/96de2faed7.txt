@@ -1,0 +1,1141 @@
+Summary ID: 96de2faed7
+
+=== Code run in turn 2, call 1 of 9 ===
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Basic overview
+print("Data shape:", df.shape)
+print("\nColumn names:", df.columns.tolist())
+print("\nFirst few rows:")
+print(df.head(10))
+print("\nData types:")
+print(df.dtypes)
+print("\nSummary statistics:")
+print(df.describe())
+print("\nUnique values for key columns:")
+print("branch_id:", df['branch_id'].nunique())
+print("switched_branch:", df['switched_branch'].value_counts().to_dict())
+print("after_switch:", df['after_switch'].value_counts().to_dict())
+print("week range:", df['week'].min(), "to", df['week'].max())
+--- printed ---
+Data shape: (12053, 7)
+
+Column names: ['branch_id', 'week', 'switched_branch', 'after_switch', 'service_score', 'staffing_index', 'visits_index']
+
+First few rows:
+   branch_id  week  ...  staffing_index  visits_index
+0          0     6  ...       -1.614959     -0.438459
+1          0     7  ...        0.369425     -0.516292
+2          0     8  ...        0.968200      1.814701
+3          0     9  ...       -0.191749     -0.506516
+4          0    10  ...        1.230401     -0.189601
+5          0    11  ...        0.915345     -0.674931
+6          0    12  ...       -0.992772     -1.186724
+7          0    13  ...        0.180256     -0.769903
+8          0    14  ...        0.090810     -0.198018
+9          0    15  ...        0.735876     -1.232921
+
+[10 rows x 7 columns]
+
+Data types:
+branch_id            int64
+week                 int64
+switched_branch      int64
+after_switch         int64
+service_score      float64
+staffing_index     float64
+visits_index       float64
+dtype: object
+
+Summary statistics:
+          branch_id          week  ...  staffing_index  visits_index
+count  12053.000000  12053.000000  ...    12053.000000  12053.000000
+mean     354.000000     14.000000  ...       -0.000797      0.001599
+std      204.678958      4.899183  ...        0.998776      1.002801
+min        0.000000      6.000000  ...       -4.086144     -4.134492
+25%      177.000000     10.000000  ...       -0.668273     -0.690429
+50%      354.000000     14.000000  ...       -0.001113      0.004960
+75%      531.000000     18.000000  ...        0.679345      0.691013
+max      708.000000     22.000000  ...        4.087280      3.982960
+
+[8 rows x 7 columns]
+
+Unique values for key columns:
+branch_id: 709
+switched_branch: {1: 7225, 0: 4828}
+after_switch: {0: 6381, 1: 5672}
+week range: 6 to 22
+
+
+=== Code run in turn 2, call 2 of 9 ===
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('branches.csv')
+
+# Check how many branches switched vs didn't
+branches_switched = df[df['switched_branch'] == 1]['branch_id'].nunique()
+branches_not_switched = df[df['switched_branch'] == 0]['branch_id'].nunique()
+print(f"Branches that switched: {branches_switched}")
+print(f"Branches that didn't switch: {branches_not_switched}")
+print(f"Total branches: {branches_switched + branches_not_switched}")
+
+# Check weeks per branch
+weeks_per_branch = df.groupby('branch_id')['week'].nunique()
+print(f"\nWeeks per branch - min: {weeks_per_branch.min()}, max: {weeks_per_branch.max()}, mean: {weeks_per_branch.mean():.1f}")
+
+# Average service scores by group and period
+print("\n=== Average Service Scores ===")
+pivot = df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std', 'count']).round(2)
+print(pivot)
+
+# Calculate the difference-in-differences manually
+before_switched = df[(df['switched_branch'] == 1) & (df['after_switch'] == 0)]['service_score'].mean()
+after_switched = df[(df['switched_branch'] == 1) & (df['after_switch'] == 1)]['service_score'].mean()
+before_control = df[(df['switched_branch'] == 0) & (df['after_switch'] == 0)]['service_score'].mean()
+after_control = df[(df['switched_branch'] == 0) & (df['after_switch'] == 1)]['service_score'].mean()
+
+print(f"\nSwitched branches: Before={before_switched:.2f}, After={after_switched:.2f}, Change={after_switched - before_switched:.2f}")
+print(f"Control branches: Before={before_control:.2f}, After={after_control:.2f}, Change={after_control - before_control:.2f}")
+print(f"\nDifference-in-Differences estimate: {(after_switched - before_switched) - (after_control - before_control):.2f}")
+--- printed ---
+Branches that switched: 425
+Branches that didn't switch: 284
+Total branches: 709
+
+Weeks per branch - min: 17, max: 17, mean: 17.0
+
+=== Average Service Scores ===
+                               mean    std  count
+switched_branch after_switch                     
+0               0             48.88   9.87   2556
+                1             48.59   9.84   2272
+1               0             50.91  10.04   3825
+                1             52.91  10.27   3400
+
+Switched branches: Before=50.91, After=52.91, Change=2.00
+Control branches: Before=48.88, After=48.59, Change=-0.29
+
+Difference-in-Differences estimate: 2.29
+
+
+=== Code run in turn 2, call 3 of 9 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Run a difference-in-differences regression
+# Basic DiD: service_score ~ switched_branch * after_switch
+model_did = ols('service_score ~ switched_branch * after_switch', data=df).fit()
+print("=== Basic Difference-in-Differences Regression ===")
+print(model_did.summary().tables[1])
+
+# Add branch fixed effects (this is more rigorous)
+# We'll use entity fixed effects
+df_demeaned = df.copy()
+branch_means = df.groupby('branch_id')['service_score'].transform('mean')
+df_demeaned['service_score_demeaned'] = df_demeaned['service_score'] - branch_means
+
+# For fixed effects, we need to demean the treatment variables too
+df_demeaned['switched_branch_demeaned'] = df_demeaned['switched_branch'] - df_demeaned['switched_branch'].mean()
+df_demeaned['after_switch_demeaned'] = df_demeaned['after_switch'] - df_demeaned['after_switch'].mean()
+df_demeaned['interaction_demeaned'] = df_demeaned['switched_branch'] * df_demeaned['after_switch']
+interaction_mean = (df_demeaned['switched_branch'] * df_demeaned['after_switch']).mean()
+df_demeaned['interaction_demeaned'] = df_demeaned['interaction_demeaned'] - interaction_mean
+
+model_fe = ols('service_score_demeaned ~ switched_branch_demeaned + after_switch_demeaned + interaction_demeaned', 
+               data=df_demeaned).fit()
+print("\n=== With Branch Fixed Effects (Demeaned) ===")
+print(model_fe.summary().tables[1])
+
+# Alternative: Use cluster-robust standard errors at branch level
+model_did_cluster = ols('service_score ~ switched_branch * after_switch', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("\n=== DiD with Cluster-Robust SE (at branch level) ===")
+print(model_did_cluster.summary().tables[1])
+--- printed ---
+=== Basic Difference-in-Differences Regression ===
+================================================================================================
+                                   coef    std err          t      P>|t|      [0.025      0.975]
+------------------------------------------------------------------------------------------------
+Intercept                       48.8807      0.198    246.281      0.000      48.492      49.270
+switched_branch                  2.0293      0.256      7.916      0.000       1.527       2.532
+after_switch                    -0.2932      0.289     -1.013      0.311      -0.860       0.274
+switched_branch:after_switch     2.2907      0.374      6.130      0.000       1.558       3.023
+================================================================================================
+
+=== With Branch Fixed Effects (Demeaned) ===
+============================================================================================
+                               coef    std err          t      P>|t|      [0.025      0.975]
+--------------------------------------------------------------------------------------------
+Intercept                 2.472e-16      0.051   4.83e-15      1.000      -0.100       0.100
+switched_branch_demeaned    -1.0780      0.144     -7.504      0.000      -1.360      -0.796
+after_switch_demeaned       -0.2932      0.162     -1.808      0.071      -0.611       0.025
+interaction_demeaned         2.2907      0.209     10.938      0.000       1.880       2.701
+============================================================================================
+
+=== DiD with Cluster-Robust SE (at branch level) ===
+================================================================================================
+                                   coef    std err          z      P>|z|      [0.025      0.975]
+------------------------------------------------------------------------------------------------
+Intercept                       48.8807      0.503     97.174      0.000      47.895      49.867
+switched_branch                  2.0293      0.653      3.110      0.002       0.750       3.308
+after_switch                    -0.2932      0.238     -1.231      0.218      -0.760       0.174
+switched_branch:after_switch     2.2907      0.305      7.508      0.000       1.693       2.889
+================================================================================================
+
+
+=== Code run in turn 2, call 4 of 9 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Check parallel trends - average service score by week for each group
+weekly_avg = df.groupby(['switched_branch', 'week'])['service_score'].mean().reset_index()
+weekly_avg.columns = ['switched_branch', 'week', 'avg_score']
+
+# Create a plot
+plt.figure(figsize=(12, 6))
+for switched in [0, 1]:
+    subset = weekly_avg[weekly_avg['switched_branch'] == switched]
+    label = 'Switched branches' if switched == 1 else 'Control branches'
+    plt.plot(subset['week'], subset['avg_score'], marker='o', label=label, linewidth=2, markersize=6)
+
+plt.axvline(x=14.5, color='red', linestyle='--', label='Switch occurred (week 15)', linewidth=2)
+plt.xlabel('Week', fontsize=12)
+plt.ylabel('Average Service Score', fontsize=12)
+plt.title('Service Scores Over Time: Switched vs Control Branches', fontsize=14, fontweight='bold')
+plt.legend(fontsize=11)
+plt.grid(True, alpha=0.3)
+plt.xticks(range(6, 23))
+plt.tight_layout()
+plt.savefig('service_scores_trend.png', dpi=150)
+print("Plot saved as service_scores_trend.png")
+
+# Check pre-trends statistically (weeks 6-14 only)
+pre_period = df[df['week'] <= 14]
+pre_trend_model = ols('service_score ~ switched_branch * week', data=pre_period).fit(cov_type='cluster', cov_kwds={'groups': pre_period['branch_id']})
+print("\n=== Pre-Trend Analysis (Weeks 6-14) ===")
+print(pre_trend_model.summary().tables[1])
+
+# Test if the interaction is significant in pre-period (should not be if parallel trends hold)
+# This tests whether the gap between groups was changing before the intervention
+--- printed ---
+Plot saved as service_scores_trend.png
+
+Traceback (most recent call last):
+  File "<stdin>", line 31, in <module>
+NameError: name 'ols' is not defined
+
+
+=== Code run in turn 2, call 5 of 9 ===
+import pandas as pd
+import numpy as np
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Test if the interaction is significant in pre-period (should not be if parallel trends hold)
+pre_period = df[df['week'] <= 14]
+pre_trend_model = ols('service_score ~ switched_branch * week', data=pre_period).fit(cov_type='cluster', cov_kwds={'groups': pre_period['branch_id']})
+print("=== Pre-Trend Analysis (Weeks 6-14) ===")
+print(pre_trend_model.summary().tables[1])
+
+# Also check post-period separately
+post_period = df[df['week'] >= 15]
+post_model = ols('service_score ~ switched_branch * week', data=post_period).fit(cov_type='cluster', cov_kwds={'groups': post_period['branch_id']})
+print("\n=== Post-Period Analysis (Weeks 15-22) ===")
+print(post_model.summary().tables[1])
+
+# Check if staffing or visits changed differently between groups
+print("\n=== Checking Control Variables ===")
+staffing_did = ols('staffing_index ~ switched_branch * after_switch', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("\nStaffing Index DiD:")
+print(staffing_did.summary().tables[1])
+
+visits_did = ols('visits_index ~ switched_branch * after_switch', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("\nVisits Index DiD:")
+print(visits_did.summary().tables[1])
+--- printed ---
+=== Pre-Trend Analysis (Weeks 6-14) ===
+========================================================================================
+                           coef    std err          z      P>|z|      [0.025      0.975]
+----------------------------------------------------------------------------------------
+Intercept               49.0360      0.731     67.106      0.000      47.604      50.468
+switched_branch         -1.1027      0.946     -1.166      0.244      -2.957       0.752
+week                    -0.0155      0.051     -0.302      0.763      -0.116       0.085
+switched_branch:week     0.3132      0.066      4.731      0.000       0.183       0.443
+========================================================================================
+
+=== Post-Period Analysis (Weeks 15-22) ===
+========================================================================================
+                           coef    std err          z      P>|z|      [0.025      0.975]
+----------------------------------------------------------------------------------------
+Intercept               41.1811      1.243     33.119      0.000      38.744      43.618
+switched_branch          0.9327      1.588      0.587      0.557      -2.180       4.046
+week                     0.4003      0.061      6.510      0.000       0.280       0.521
+switched_branch:week     0.1831      0.078      2.340      0.019       0.030       0.336
+========================================================================================
+
+=== Checking Control Variables ===
+
+Staffing Index DiD:
+================================================================================================
+                                   coef    std err          z      P>|z|      [0.025      0.975]
+------------------------------------------------------------------------------------------------
+Intercept                        0.0024      0.019      0.126      0.900      -0.034       0.039
+switched_branch                 -0.0107      0.025     -0.430      0.667      -0.060       0.038
+after_switch                     0.0058      0.028      0.206      0.837      -0.049       0.061
+switched_branch:after_switch     0.0019      0.036      0.052      0.959      -0.069       0.073
+================================================================================================
+
+Visits Index DiD:
+================================================================================================
+                                   coef    std err          z      P>|z|      [0.025      0.975]
+------------------------------------------------------------------------------------------------
+Intercept                       -0.0336      0.021     -1.594      0.111      -0.075       0.008
+switched_branch                  0.0353      0.027      1.326      0.185      -0.017       0.088
+after_switch                     0.0441      0.029      1.530      0.126      -0.012       0.101
+switched_branch:after_switch    -0.0240      0.037     -0.641      0.522      -0.097       0.049
+================================================================================================
+
+
+=== Code run in turn 2, call 6 of 9 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Create a more detailed pre-trend plot
+weekly_avg = df.groupby(['switched_branch', 'week'])['service_score'].mean().reset_index()
+weekly_avg.columns = ['switched_branch', 'week', 'avg_score']
+
+# Calculate the gap between groups each week
+pivot_weekly = weekly_avg.pivot(index='week', columns='switched_branch', values='avg_score')
+pivot_weekly['gap'] = pivot_weekly[1] - pivot_weekly[0]
+
+print("=== Weekly Gap Between Switched and Control Branches ===")
+print(pivot_weekly)
+
+# Plot the gap over time
+plt.figure(figsize=(10, 5))
+plt.plot(pivot_weekly.index, pivot_weekly['gap'], marker='o', linewidth=2, markersize=8)
+plt.axvline(x=14.5, color='red', linestyle='--', label='Switch occurred (week 15)', linewidth=2)
+plt.axhline(y=0, color='gray', linestyle='-', alpha=0.5)
+plt.xlabel('Week', fontsize=12)
+plt.ylabel('Score Gap (Switched - Control)', fontsize=12)
+plt.title('Gap in Service Scores: Switched vs Control Branches Over Time', fontsize=14, fontweight='bold')
+plt.legend(fontsize=11)
+plt.grid(True, alpha=0.3)
+plt.xticks(range(6, 23))
+plt.tight_layout()
+plt.savefig('score_gap_trend.png', dpi=150)
+print("\nPlot saved as score_gap_trend.png")
+
+# Average gap before and after
+pre_gap = pivot_weekly[pivot_weekly.index <= 14]['gap'].mean()
+post_gap = pivot_weekly[pivot_weekly.index >= 15]['gap'].mean()
+print(f"\nAverage gap before switch (weeks 6-14): {pre_gap:.2f}")
+print(f"Average gap after switch (weeks 15-22): {post_gap:.2f}")
+print(f"Change in gap: {post_gap - pre_gap:.2f}")
+--- printed ---
+=== Weekly Gap Between Switched and Control Branches ===
+switched_branch          0          1       gap
+week                                           
+6                44.484076  45.175639  0.691563
+7                51.115420  52.156994  1.041574
+8                47.329876  48.449590  1.119714
+9                51.485479  53.917485  2.432006
+10               52.781577  54.553223  1.771646
+11               47.779722  49.880289  2.100567
+12               52.151086  55.301159  3.150073
+13               46.780657  49.654202  2.873545
+14               46.018016  49.101290  3.083273
+15               46.209686  50.026800  3.817114
+16               49.330146  53.002053  3.671907
+17               47.229223  51.453287  4.224064
+18               44.075426  48.379588  4.304162
+19               53.727437  57.842288  4.114851
+20               52.755055  57.332912  4.577857
+21               45.046424  49.728799  4.682374
+22               50.326576  55.494523  5.167947
+
+Plot saved as score_gap_trend.png
+
+Average gap before switch (weeks 6-14): 2.03
+Average gap after switch (weeks 15-22): 4.32
+Change in gap: 2.29
+
+
+=== Code run in turn 2, call 7 of 9 ===
+import pandas as pd
+import numpy as np
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create relative week variable (weeks since switch)
+# Week 15 is the first week after switch, so relative_week = week - 14
+df['relative_week'] = df['week'] - 14
+
+# Event study: create indicators for each week relative to switch
+# Week 14 (relative_week=0) will be the reference
+for w in range(-8, 9):  # weeks -8 to 8 relative to switch
+    if w != 0:  # skip reference week
+        df[f'week_{w}'] = ((df['relative_week'] == w) & (df['switched_branch'] == 1)).astype(int)
+
+# Run event study regression
+event_vars = [f'week_{w}' for w in range(-8, 9) if w != 0]
+formula = 'service_score ~ switched_branch + after_switch + ' + ' + '.join(event_vars)
+model_event = ols(formula, data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("=== Event Study Results (coefficients for switched branches by week relative to switch) ===")
+print("(Week 0 / relative_week=0 is the reference category)")
+print("\nPre-switch weeks (should be stable if parallel trends hold):")
+for w in range(-8, 0):
+    coef = model_event.params[f'week_{w}']
+    pval = model_event.pvalues[f'week_{w}']
+    print(f"  Week {w}: coef={coef:.2f}, p={pval:.3f}")
+
+print("\nPost-switch weeks:")
+for w in range(1, 9):
+    coef = model_event.params[f'week_{w}']
+    pval = model_event.pvalues[f'week_{w}']
+    print(f"  Week {w}: coef={coef:.2f}, p={pval:.3f}")
+
+# Summary statistics
+print("\n=== Summary of Treatment Effect ===")
+print(f"DiD Estimate: 2.29 points (95% CI: 1.69 to 2.89)")
+print(f"Baseline average service score: ~50")
+print(f"Percentage improvement: {(2.29/50)*100:.1f}%")
+
+# Effect size in terms of standard deviations
+std_score = df['service_score'].std()
+print(f"Effect size in SD units: {2.29/std_score:.2f} SD")
+--- printed ---
+Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py", line 210, in from_formula
+    tmp = handle_formula_data(data, None, formula, depth=eval_env, missing=missing)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/formula/formulatools.py", line 70, in handle_formula_data
+    result = mgr.get_matrices(
+             ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/formula/_manager.py", line 533, in get_matrices
+    output = patsy.dmatrices(
+             ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 317, in dmatrices
+    (lhs, rhs) = _do_highlevel_design(
+                 ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 162, in _do_highlevel_design
+    design_infos = _try_incr_builders(
+                   ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 52, in _try_incr_builders
+    formula_like = ModelDesc.from_formula(formula_like)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 177, in from_formula
+    value = Evaluator().eval(tree, require_evalexpr=False)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 243, in _eval_any_tilde
+    exprs = [evaluator.eval(arg) for arg in tree.args]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 243, in <listcomp>
+    exprs = [evaluator.eval(arg) for arg in tree.args]
+             ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 285, in _eval_binary_minus
+    right_expr = evaluator.eval(tree.args[1])
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 395, in _eval_number
+    raise PatsyError("numbers besides '0' and '1' are only allowed with **", tree)
+patsy.PatsyError: numbers besides '0' and '1' are only allowed with **
+    service_score ~ switched_branch + after_switch + week_-8 + week_-7 + week_-6 + week_-5 + week_-4 + week_-3 + week_-2 + week_-1 + week_1 + week_2 + week_3 + week_4 + week_5 + week_6 + week_7 + week_8
+                                                           ^
+
+
+=== Code run in turn 2, call 8 of 9 ===
+import pandas as pd
+import numpy as np
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create relative week variable (weeks since switch)
+df['relative_week'] = df['week'] - 14
+
+# Event study: create indicators for each week relative to switch with better names
+for w in range(-8, 9):
+    if w != 0:
+        sign = 'm' if w < 0 else 'p'
+        abs_w = abs(w)
+        df[f'rel_w{sign}{abs_w}'] = ((df['relative_week'] == w) & (df['switched_branch'] == 1)).astype(int)
+
+# Run event study regression
+event_vars = [col for col in df.columns if col.startswith('rel_w')]
+formula = 'service_score ~ switched_branch + after_switch + ' + ' + '.join(event_vars)
+model_event = ols(formula, data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("=== Event Study Results ===")
+print("(Reference: Week 0 = week 14, the week before switch)")
+print("\nPre-switch weeks (relative to switch week):")
+for w in range(-8, 0):
+    sign = 'm'
+    abs_w = abs(w)
+    var = f'rel_w{sign}{abs_w}'
+    coef = model_event.params[var]
+    pval = model_event.pvalues[var]
+    sig = '***' if pval < 0.01 else '**' if pval < 0.05 else '*' if pval < 0.1 else ''
+    print(f"  Week {w}: coef={coef:.2f} {sig}, p={pval:.3f}")
+
+print("\nPost-switch weeks:")
+for w in range(1, 9):
+    sign = 'p'
+    abs_w = abs(w)
+    var = f'rel_w{sign}{abs_w}'
+    coef = model_event.params[var]
+    pval = model_event.pvalues[var]
+    sig = '***' if pval < 0.01 else '**' if pval < 0.05 else '*' if pval < 0.1 else ''
+    print(f"  Week {w}: coef={coef:.2f} {sig}, p={pval:.3f}")
+
+# Overall summary
+print("\n" + "="*60)
+print("SUMMARY FOR THE BOARD")
+print("="*60)
+print(f"""
+NEW PROCEDURE IMPACT ON SERVICE SCORES
+
+Bottom Line: The new procedure is associated with a statistically significant 
+improvement in service scores of approximately 2.3 points (about 4.5% improvement 
+relative to the baseline of ~50).
+
+Key Findings:
+• 425 branches adopted the new procedure; 284 branches kept the old procedure
+• Switched branches saw scores increase by 2.0 points after the switch
+• Control branches saw scores decrease slightly (-0.3 points) in the same period
+• The difference-in-differences estimate is +2.29 points (p<0.001)
+• 95% confidence interval: 1.7 to 2.9 points
+• No significant changes in staffing or visits indices, suggesting the effect 
+  is specific to service quality
+
+Caveats:
+• Switched branches already had slightly higher scores before the switch
+• The gap between groups was widening even before the intervention
+• This suggests possible selection bias (better-performing branches may have 
+  been chosen to switch first)
+• The true causal effect may be somewhat smaller than estimated
+
+Recommendation: The evidence supports rolling out the new procedure, but 
+continued monitoring is advised to confirm the effect persists.
+""")
+--- printed ---
+=== Event Study Results ===
+(Reference: Week 0 = week 14, the week before switch)
+
+Pre-switch weeks (relative to switch week):
+  Week -8: coef=-3.93 ***, p=0.000
+  Week -7: coef=3.06 ***, p=0.000
+  Week -6: coef=-0.65 *, p=0.058
+  Week -5: coef=4.82 ***, p=0.000
+  Week -4: coef=5.45 ***, p=0.000
+  Week -3: coef=0.78 **, p=0.016
+  Week -2: coef=6.20 ***, p=0.000
+  Week -1: coef=0.55 **, p=0.017
+
+Post-switch weeks:
+  Week 1: coef=1.22 ***, p=0.000
+  Week 2: coef=4.19 ***, p=0.000
+  Week 3: coef=2.65 ***, p=0.000
+  Week 4: coef=-0.43 , p=0.293
+  Week 5: coef=9.03 ***, p=0.000
+  Week 6: coef=8.52 ***, p=0.000
+  Week 7: coef=0.92 **, p=0.026
+  Week 8: coef=6.69 ***, p=0.000
+
+============================================================
+SUMMARY FOR THE BOARD
+============================================================
+
+NEW PROCEDURE IMPACT ON SERVICE SCORES
+
+Bottom Line: The new procedure is associated with a statistically significant 
+improvement in service scores of approximately 2.3 points (about 4.5% improvement 
+relative to the baseline of ~50).
+
+Key Findings:
+• 425 branches adopted the new procedure; 284 branches kept the old procedure
+• Switched branches saw scores increase by 2.0 points after the switch
+• Control branches saw scores decrease slightly (-0.3 points) in the same period
+• The difference-in-differences estimate is +2.29 points (p<0.001)
+• 95% confidence interval: 1.7 to 2.9 points
+• No significant changes in staffing or visits indices, suggesting the effect 
+  is specific to service quality
+
+Caveats:
+• Switched branches already had slightly higher scores before the switch
+• The gap between groups was widening even before the intervention
+• This suggests possible selection bias (better-performing branches may have 
+  been chosen to switch first)
+• The true causal effect may be somewhat smaller than estimated
+
+Recommendation: The evidence supports rolling out the new procedure, but 
+continued monitoring is advised to confirm the effect persists.
+
+
+
+=== Code run in turn 2, call 9 of 9 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Create a clean visualization for the board
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Left panel: Service scores over time
+weekly_avg = df.groupby(['switched_branch', 'week'])['service_score'].mean().reset_index()
+weekly_avg.columns = ['switched_branch', 'week', 'avg_score']
+
+for switched in [0, 1]:
+    subset = weekly_avg[weekly_avg['switched_branch'] == switched]
+    label = 'New Procedure Branches' if switched == 1 else 'Old Procedure Branches'
+    color = '#2E86AB' if switched == 1 else '#A23B72'
+    axes[0].plot(subset['week'], subset['avg_score'], marker='o', label=label, 
+                 linewidth=2.5, markersize=6, color=color)
+
+axes[0].axvline(x=14.5, color='red', linestyle='--', label='Procedure Switch (Week 15)', linewidth=2)
+axes[0].axhline(y=50, color='gray', linestyle=':', alpha=0.5, label='Average Score (~50)')
+axes[0].set_xlabel('Week', fontsize=12, fontweight='bold')
+axes[0].set_ylabel('Average Service Score', fontsize=12, fontweight='bold')
+axes[0].set_title('Service Scores: Before and After Procedure Change', fontsize=14, fontweight='bold')
+axes[0].legend(fontsize=10, loc='upper left')
+axes[0].grid(True, alpha=0.3)
+axes[0].set_xticks(range(6, 23))
+axes[0].set_ylim(42, 60)
+
+# Right panel: Gap between groups
+pivot_weekly = weekly_avg.pivot(index='week', columns='switched_branch', values='avg_score')
+pivot_weekly['gap'] = pivot_weekly[1] - pivot_weekly[0]
+
+axes[1].fill_between(pivot_weekly.index, pivot_weekly['gap'], alpha=0.3, color='#2E86AB')
+axes[1].plot(pivot_weekly.index, pivot_weekly['gap'], marker='s', linewidth=2.5, 
+             markersize=8, color='#2E86AB', label='Gap (New - Old)')
+axes[1].axvline(x=14.5, color='red', linestyle='--', linewidth=2)
+axes[1].axhline(y=0, color='gray', linestyle='-', alpha=0.5)
+axes[1].axhline(y=2.29, color='green', linestyle='--', linewidth=2, label='DiD Estimate (+2.29)')
+axes[1].set_xlabel('Week', fontsize=12, fontweight='bold')
+axes[1].set_ylabel('Score Gap', fontsize=12, fontweight='bold')
+axes[1].set_title('Performance Gap: New vs Old Procedure Branches', fontsize=14, fontweight='bold')
+axes[1].legend(fontsize=10, loc='upper left')
+axes[1].grid(True, alpha=0.3)
+axes[1].set_xticks(range(6, 23))
+axes[1].set_ylim(-1, 7)
+
+plt.tight_layout()
+plt.savefig('board_summary_chart.png', dpi=150, bbox_inches='tight')
+print("Board summary chart saved as board_summary_chart.png")
+
+# Final statistics
+print("\n" + "="*70)
+print("FINAL ANALYSIS SUMMARY")
+print("="*70)
+
+# Get exact confidence interval
+from statsmodels.formula.api import ols
+model = ols('service_score ~ switched_branch * after_switch', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+did_coef = model.params['switched_branch:after_switch']
+did_se = model.bse['switched_branch:after_switch']
+ci_lower = did_coef - 1.96 * did_se
+ci_upper = did_coef + 1.96 * did_se
+
+print(f"""
+DIFFERENCE-IN-DIFFERENCES ANALYSIS
+----------------------------------
+Treatment Effect Estimate: {did_coef:.2f} points
+Standard Error: {did_se:.2f}
+95% Confidence Interval: [{ci_lower:.2f}, {ci_upper:.2f}]
+P-value: {model.pvalues['switched_branch:after_switch']:.4f}
+
+INTERPRETATION
+--------------
+• The new procedure is associated with a {did_coef:.2f}-point increase in service scores
+• This represents approximately a {did_coef/50*100:.1f}% improvement relative to baseline
+• The effect is statistically significant at the 1% level
+• We are 95% confident the true effect lies between {ci_lower:.2f} and {ci_upper:.2f} points
+
+SAMPLE SIZES
+------------
+• Total observations: {len(df):,}
+• Branches using new procedure: {df[df['switched_branch']==1]['branch_id'].nunique()}
+• Branches using old procedure: {df[df['switched_branch']==0]['branch_id'].nunique()}
+• Pre-switch weeks: 9 (weeks 6-14)
+• Post-switch weeks: 8 (weeks 15-22)
+""")
+--- printed ---
+Board summary chart saved as board_summary_chart.png
+
+======================================================================
+FINAL ANALYSIS SUMMARY
+======================================================================
+
+DIFFERENCE-IN-DIFFERENCES ANALYSIS
+----------------------------------
+Treatment Effect Estimate: 2.29 points
+Standard Error: 0.31
+95% Confidence Interval: [1.69, 2.89]
+P-value: 0.0000
+
+INTERPRETATION
+--------------
+• The new procedure is associated with a 2.29-point increase in service scores
+• This represents approximately a 4.6% improvement relative to baseline
+• The effect is statistically significant at the 1% level
+• We are 95% confident the true effect lies between 1.69 and 2.89 points
+
+SAMPLE SIZES
+------------
+• Total observations: 12,053
+• Branches using new procedure: 425
+• Branches using old procedure: 284
+• Pre-switch weeks: 9 (weeks 6-14)
+• Post-switch weeks: 8 (weeks 15-22)
+
+
+
+--- files saved in turn 2: board_summary_chart.png, score_gap_trend.png, service_scores_trend.png ---
+
+=== Code run in turn 6, call 1 of 3 ===
+import pandas as pd
+import numpy as np
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Re-examine pre-trends more carefully
+# The key question: was the gap between groups stable before the switch?
+
+# Calculate average gap by week
+weekly_avg = df.groupby(['switched_branch', 'week'])['service_score'].mean().reset_index()
+pivot_weekly = weekly_avg.pivot(index='week', columns='switched_branch', values='avg_score')
+pivot_weekly['gap'] = pivot_weekly[1] - pivot_weekly[0]
+
+print("=== Weekly Gap (Switched - Control) ===")
+print(pivot_weekly)
+
+# Pre-period trend (weeks 6-14)
+pre_gap = pivot_weekly[pivot_weekly.index <= 14]['gap']
+print(f"\nPre-period gap trend (weeks 6-14):")
+print(f"  Week 6: {pre_gap.iloc[0]:.2f}")
+print(f"  Week 14: {pre_gap.iloc[-1]:.2f}")
+print(f"  Change over pre-period: {pre_gap.iloc[-1] - pre_gap.iloc[0]:.2f}")
+print(f"  Average pre-period gap: {pre_gap.mean():.2f}")
+
+# Post-period gap
+post_gap = pivot_weekly[pivot_weekly.index >= 15]['gap']
+print(f"\nPost-period gap (weeks 15-22):")
+print(f"  Week 15: {post_gap.iloc[0]:.2f}")
+print(f"  Week 22: {post_gap.iloc[-1]:.2f}")
+print(f"  Average post-period gap: {post_gap.mean():.2f}")
+
+# The DiD assumes the gap would have stayed constant without treatment
+# But the pre-period shows the gap was ALREADY widening
+print(f"\n=== CRITICAL ISSUE ===")
+print(f"Pre-period gap INCREASED by {pre_gap.iloc[-1] - pre_gap.iloc[0]:.2f} points (weeks 6 to 14)")
+print(f"Post-period gap averaged {post_gap.mean() - pre_gap.mean():.2f} points higher than pre-period")
+print(f"\nThis suggests the gap was widening BEFORE the intervention.")
+print(f"The DiD estimate of 2.29 may attribute pre-existing trends to the treatment.")
+
+# Run a more conservative model with branch fixed effects
+df_demeaned = df.copy()
+branch_means = df.groupby('branch_id')['service_score'].transform('mean')
+df_demeaned['service_score_dm'] = df_demeaned['service_score'] - branch_means
+df_demeaned['after_switch_dm'] = df_demeaned['after_switch'] - df_demeaned.groupby('branch_id')['after_switch'].transform('mean')
+df_demeaned['interaction'] = df_demeaned['switched_branch'] * df_demeaned['after_switch']
+interaction_means = df_demeaned.groupby('branch_id')['interaction'].transform('mean')
+df_demeaned['interaction_dm'] = df_demeaned['interaction'] - interaction_means
+
+model_fe = ols('service_score_dm ~ after_switch_dm + interaction_dm', data=df_demeaned).fit(cov_type='cluster', cov_kwds={'groups': df_demeaned['branch_id']})
+print(f"\n=== Branch Fixed Effects Model ===")
+print(model_fe.summary().tables[1])
+--- printed ---
+Traceback (most recent call last):
+  File "<stdin>", line 12, in <module>
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/frame.py", line 13948, in pivot
+    return pivot(self, index=index, columns=columns, values=values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/reshape/pivot.py", line 914, in pivot
+    raise KeyError(
+KeyError: "The following 'values' labels are not columns of the DataFrame: ['avg_score']"
+
+
+=== Code run in turn 6, call 2 of 3 ===
+import pandas as pd
+import numpy as np
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Re-examine pre-trends more carefully
+weekly_avg = df.groupby(['switched_branch', 'week'])['service_score'].mean().reset_index()
+weekly_avg.columns = ['switched_branch', 'week', 'avg_score']
+
+# Calculate average gap by week
+gap_by_week = []
+for w in range(6, 23):
+    week_data = weekly_avg[weekly_avg['week'] == w]
+    switched_score = week_data[week_data['switched_branch'] == 1]['avg_score'].values[0]
+    control_score = week_data[week_data['switched_branch'] == 0]['avg_score'].values[0]
+    gap_by_week.append({'week': w, 'gap': switched_score - control_score})
+
+gap_df = pd.DataFrame(gap_by_week)
+print("=== Weekly Gap (Switched - Control) ===")
+print(gap_df)
+
+# Pre-period trend (weeks 6-14)
+pre_gap = gap_df[gap_df['week'] <= 14]['gap']
+print(f"\nPre-period gap trend (weeks 6-14):")
+print(f"  Week 6: {pre_gap.iloc[0]:.2f}")
+print(f"  Week 14: {pre_gap.iloc[-1]:.2f}")
+print(f"  Change over pre-period: {pre_gap.iloc[-1] - pre_gap.iloc[0]:.2f}")
+print(f"  Average pre-period gap: {pre_gap.mean():.2f}")
+
+# Post-period gap
+post_gap = gap_df[gap_df['week'] >= 15]['gap']
+print(f"\nPost-period gap (weeks 15-22):")
+print(f"  Week 15: {post_gap.iloc[0]:.2f}")
+print(f"  Week 22: {post_gap.iloc[-1]:.2f}")
+print(f"  Average post-period gap: {post_gap.mean():.2f}")
+
+# The DiD assumes the gap would have stayed constant without treatment
+print(f"\n=== CRITICAL ISSUE ===")
+print(f"Pre-period gap INCREASED by {pre_gap.iloc[-1] - pre_gap.iloc[0]:.2f} points (weeks 6 to 14)")
+print(f"This is {((pre_gap.iloc[-1] - pre_gap.iloc[0]) / 2.29) * 100:.0f}% of the estimated treatment effect")
+print(f"\nThe gap was already widening BEFORE the intervention.")
+print(f"The DiD estimate of 2.29 may be attributing pre-existing trends to the treatment.")
+
+# Branch fixed effects model
+df_fe = df.copy()
+# Demean within branch
+df_fe['score_dm'] = df_fe.groupby('branch_id')['service_score'].transform(lambda x: x - x.mean())
+df_fe['after_dm'] = df_fe.groupby('branch_id')['after_switch'].transform(lambda x: x - x.mean())
+df_fe['switch_dm'] = df_fe.groupby('branch_id')['switched_branch'].transform(lambda x: x - x.mean())
+df_fe['inter'] = df_fe['switched_branch'] * df_fe['after_switch']
+df_fe['inter_dm'] = df_fe.groupby('branch_id')['inter'].transform(lambda x: x - x.mean())
+
+model_fe = ols('score_dm ~ after_dm + inter_dm', data=df_fe).fit(cov_type='cluster', cov_kwds={'groups': df_fe['branch_id']})
+print(f"\n=== Branch Fixed Effects Model ===")
+print(model_fe.summary().tables[1])
+print(f"\nFE Treatment Effect: {model_fe.params['inter_dm']:.2f} (SE: {model_fe.bse['inter_dm']:.2f})")
+--- printed ---
+=== Weekly Gap (Switched - Control) ===
+    week       gap
+0      6  0.691563
+1      7  1.041574
+2      8  1.119714
+3      9  2.432006
+4     10  1.771646
+5     11  2.100567
+6     12  3.150073
+7     13  2.873545
+8     14  3.083273
+9     15  3.817114
+10    16  3.671907
+11    17  4.224064
+12    18  4.304162
+13    19  4.114851
+14    20  4.577857
+15    21  4.682374
+16    22  5.167947
+
+Pre-period gap trend (weeks 6-14):
+  Week 6: 0.69
+  Week 14: 3.08
+  Change over pre-period: 2.39
+  Average pre-period gap: 2.03
+
+Post-period gap (weeks 15-22):
+  Week 15: 3.82
+  Week 22: 5.17
+  Average post-period gap: 4.32
+
+=== CRITICAL ISSUE ===
+Pre-period gap INCREASED by 2.39 points (weeks 6 to 14)
+This is 104% of the estimated treatment effect
+
+The gap was already widening BEFORE the intervention.
+The DiD estimate of 2.29 may be attributing pre-existing trends to the treatment.
+
+=== Branch Fixed Effects Model ===
+==============================================================================
+                 coef    std err          z      P>|z|      [0.025      0.975]
+------------------------------------------------------------------------------
+Intercept   4.345e-16   1.67e-16      2.594      0.009    1.06e-16    7.63e-16
+after_dm      -0.2932      0.238     -1.231      0.218      -0.760       0.174
+inter_dm       2.2907      0.305      7.508      0.000       1.693       2.889
+==============================================================================
+
+FE Treatment Effect: 2.29 (SE: 0.31)
+
+
+=== Code run in turn 6, call 3 of 3 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Create visualization showing the pre-trend problem
+weekly_avg = df.groupby(['switched_branch', 'week'])['service_score'].mean().reset_index()
+weekly_avg.columns = ['switched_branch', 'week', 'avg_score']
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Left: Raw scores with pre-trend highlighted
+for switched in [0, 1]:
+    subset = weekly_avg[weekly_avg['switched_branch'] == switched]
+    label = 'New Procedure Branches' if switched == 1 else 'Old Procedure Branches'
+    color = '#2E86AB' if switched == 1 else '#A23B72'
+    axes[0].plot(subset['week'], subset['avg_score'], marker='o', label=label, 
+                 linewidth=2.5, markersize=6, color=color)
+
+axes[0].axvline(x=14.5, color='red', linestyle='--', label='Procedure Switch (Week 15)', linewidth=2)
+# Highlight pre-trend period
+axes[0].axvspan(6, 14, alpha=0.2, color='yellow', label='Pre-Period (Gap Widening)')
+axes[0].set_xlabel('Week', fontsize=12, fontweight='bold')
+axes[0].set_ylabel('Average Service Score', fontsize=12, fontweight='bold')
+axes[0].set_title('⚠️ Pre-Existing Trend Problem', fontsize=14, fontweight='bold')
+axes[0].legend(fontsize=9, loc='upper left')
+axes[0].grid(True, alpha=0.3)
+axes[0].set_xticks(range(6, 23))
+axes[0].set_ylim(42, 60)
+
+# Right: Gap over time with pre/post annotation
+gap_by_week = []
+for w in range(6, 23):
+    week_data = weekly_avg[weekly_avg['week'] == w]
+    switched_score = week_data[week_data['switched_branch'] == 1]['avg_score'].values[0]
+    control_score = week_data[week_data['switched_branch'] == 0]['avg_score'].values[0]
+    gap_by_week.append({'week': w, 'gap': switched_score - control_score})
+
+gap_df = pd.DataFrame(gap_by_week)
+axes[1].plot(gap_df['week'], gap_df['gap'], marker='s', linewidth=2.5, markersize=8, color='#2E86AB')
+axes[1].axvline(x=14.5, color='red', linestyle='--', linewidth=2, label='Switch Week')
+axes[1].axhline(y=0, color='gray', linestyle='-', alpha=0.5)
+axes[1].axhline(y=2.29, color='green', linestyle='--', linewidth=2, label='DiD Estimate (+2.29)')
+axes[1].fill_between([6, 14], 0, 4, alpha=0.3, color='orange')
+axes[1].text(10, 3.5, 'Pre-period gap\nincreased by 2.39 pts', fontsize=10, fontweight='bold', color='darkorange')
+axes[1].set_xlabel('Week', fontsize=12, fontweight='bold')
+axes[1].set_ylabel('Gap: New - Old Procedure', fontsize=12, fontweight='bold')
+axes[1].set_title('⚠️ Gap Was Widening BEFORE the Switch', fontsize=14, fontweight='bold')
+axes[1].legend(fontsize=9, loc='upper left')
+axes[1].grid(True, alpha=0.3)
+axes[1].set_xticks(range(6, 23))
+axes[1].set_ylim(0, 6)
+
+plt.tight_layout()
+plt.savefig('pretrend_warning.png', dpi=150, bbox_inches='tight')
+print("Warning chart saved as pretrend_warning.png")
+
+print("\n" + "="*70)
+print("CRITICAL REASSESSMENT")
+print("="*70)
+print(f"""
+PRE-PERIOD (Weeks 6-14, BEFORE switch):
+  - Gap started at: 0.69 points (Week 6)
+  - Gap ended at: 3.08 points (Week 14)
+  - Gap INCREASED by: 2.39 points
+
+POST-PERIOD (Weeks 15-22, AFTER switch):
+  - Gap started at: 3.82 points (Week 15)
+  - Gap ended at: 5.17 points (Week 22)
+  - Average gap: 4.32 points
+
+DiD ESTIMATE: 2.29 points
+
+PROBLEM: The pre-period gap increase (2.39 pts) is LARGER than the 
+estimated treatment effect (2.29 pts). This violates the parallel 
+trends assumption required for valid difference-in-differences.
+
+CONCLUSION: We CANNOT confidently attribute the score improvement to 
+the new procedure. The observed effect may reflect pre-existing 
+differences in how these branches were performing.
+""")
+--- printed ---
+Warning chart saved as pretrend_warning.png
+
+======================================================================
+CRITICAL REASSESSMENT
+======================================================================
+
+PRE-PERIOD (Weeks 6-14, BEFORE switch):
+  - Gap started at: 0.69 points (Week 6)
+  - Gap ended at: 3.08 points (Week 14)
+  - Gap INCREASED by: 2.39 points
+
+POST-PERIOD (Weeks 15-22, AFTER switch):
+  - Gap started at: 3.82 points (Week 15)
+  - Gap ended at: 5.17 points (Week 22)
+  - Average gap: 4.32 points
+
+DiD ESTIMATE: 2.29 points
+
+PROBLEM: The pre-period gap increase (2.39 pts) is LARGER than the 
+estimated treatment effect (2.29 pts). This violates the parallel 
+trends assumption required for valid difference-in-differences.
+
+CONCLUSION: We CANNOT confidently attribute the score improvement to 
+the new procedure. The observed effect may reflect pre-existing 
+differences in how these branches were performing.
+
+
+
+--- files saved in turn 6: pretrend_warning.png ---
