@@ -33,7 +33,7 @@ flowchart TD
 
     subgraph APIS["Model providers, called from the host only"]
         ADAPTION["Adaption<br/>qwen3.5-397b, glm-5.2"]
-        ANTHROPIC["Anthropic<br/>claude-opus-5, claude-sonnet-5"]
+        ANTHROPIC["Anthropic<br/>claude-opus-5-5, claude-sonnet-5-5"]
     end
 
     subgraph POST["After merging every machine's runs/ and logs/"]

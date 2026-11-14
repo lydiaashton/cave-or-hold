@@ -85,7 +85,7 @@ of the wording the study lead signs off, so it lives with the prompts. Every mac
 seed and takes its share (round-robin within each world x condition stratum).
 
 Other models: `openai-api/adaption/glm-5.2`; Claude needs `ANTHROPIC_API_KEY`
-and `--model anthropic/claude-opus-5` (not yet tested live).
+and `--model anthropic/claude-opus-5-5` or `anthropic/claude-sonnet-5-5` (not yet tested live).
 
 ## Status: what is done, what to re-run
 
