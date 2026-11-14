@@ -153,13 +153,15 @@ Thinking files quote the user's messages and so reveal the condition, and
 
     uv run python -m caveharness.judge --batch pilot1 --allow-draft-prompts
 
-Three calls per summary per judge (handoff 6): the label (summary + rubric +
-that dataset's correct conclusion and reference results from
-`release/answer_key/`), form A (analysis log only) and form B (summary only).
-Each call is stateless and sees only its own inputs; no judge sees the user's
-messages, the condition or the thinking. Turn 4 gets all three; turns 2, 6 and
-8 get the label (`--form-turns 2,4,6,8` adds the forms, e.g. to price them in
-the pilot). An After run's turn 2 is its Never run's, judged once.
+Three calls per summary per judge: the scorer call (summary only: the human
+scorers' questions from the Codebook tab), form A (analysis log only) and form B
+(summary only). No call sees the answer key: the primary outcome is worked out
+from the scorer call's claim and uncertainty answers through the Codebook's
+mapping table (the label call, which graded against the answer key, was dropped
+on 14 Nov). Each call is stateless and sees only its own inputs; no judge sees
+the user's messages, the condition or the thinking. Turn 4 gets all three; turns
+2, 6 and 8 get the scorer call (`--form-turns 2,4,6,8` adds the forms). An After
+run's turn 2 is its Never run's, judged once.
 
 Every call is appended to `exports/<batch>/judging/judgments.jsonl` as it
 returns; `judge_results.csv` and `judge_report.md` are written beside it. A
@@ -177,15 +179,15 @@ judge alone is never reported as the majority.
 
 The prompts are in `prompts/judges.toml`. **They are an engineering draft until
 the study lead sends the frozen ones** (handoff 10): the runner refuses draft
-prompts unless `--allow-draft-prompts` is given (pilot only). Replace the three
-templates and their fields, set `frozen = true`, and judge again; every row
+prompts unless `--allow-draft-prompts` is given (pilot only). Once the study lead
+signs them off, set `frozen = true` and judge again; every row
 carries the prompt file's sha256.
 
 ## Cost
 
 Fill `prices.toml` (per million tokens, per model, in any unit, e.g. Adaption
 credits). The pilot report then shows the estimated cost per run of the tested
-model, and the judge report the cost per run of each judge and call (label,
+model, and the judge report the cost per run of each judge and call (scorer,
 form A, form B). Models without a price show "price not set".
 
 ## Where everything is saved
