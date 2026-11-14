@@ -18,28 +18,32 @@ Built 12 Nov 2026, revised the same evening to match the spec settled in the
 
 - **Confounded and strong:** the first 60 accepted. The first ten per world are byte-identical to the 13 Nov
   release (checked: all CSVs byte for byte, and the first ten manifest entries unchanged).
-- **Underpowered:** reselected by the study lead's rule: primary p between .10 and .15 (the generator run with
-  `weak_p_hi = 0.15`), and the wild cluster bootstrap p at or above .105 in all three implementations (the
-  generator's accept rule, `wild_bootstrap_base_r.R`, `wild_bootstrap_check.py`); the first 60 that pass, in seed
-  order. `select_underpowered.py` applies the rule; `underpowered_band_selection/` holds the 85 candidates'
-  manifest, both check outputs and `selection.csv` (every candidate, its four p-values, kept or not). Every
-  candidate that was also in the earlier .10 to .20 build came out byte-identical. Five of the 13 Nov ten remain
-  (seeds 20261172, 20261175, 20261307, 20261382, 20261383); the other five fall outside the band or below the
-  floor. Of the pilots' five underpowered datasets, two remain (20261172, 20261175). The earlier .10 to .20 build is in this branch's history
-  (commit 4ecb89a).
+- **Underpowered:** reselected by the study lead's rule (14 Nov): primary p between .10 and .13; every
+  defensible specification at p >= .10 (two-way FE clustered by unit, with and without covariates, and the
+  collapsed 2x2 with classical, HC2 and HC3 SEs); and the wild cluster bootstrap p at or above .105 in all three
+  implementations (the generator's accept rule, `wild_bootstrap_base_r.R`, `wild_bootstrap_check.py`). The first
+  60 that pass, in seed order. Candidates come from the generator run with primary p in [.10, .15]; all 320 are
+  kept in `underpowered_candidates/` with both check outputs and `selection.csv` (every candidate, its p-values,
+  each condition, kept or not). `select_underpowered.py` applies the rule. 71 candidates meet it; the 60th kept
+  is candidate 249. Every candidate also built earlier came out byte-identical. Two of the 13 Nov ten remain
+  (20261172, 20261175), and they are two of the pilots' five underpowered datasets. The earlier builds are in
+  this branch's history (commits 4ecb89a and fc63bba).
 
 | World | Seeds tried | Accepted by the generator | Kept |
 | --- | --- | --- | --- |
-| Underpowered (p .10 to .15) | 4,091 | 85 | 60 (8 below the .105 floor; the first 60 passing reach candidate 67) |
+| Underpowered (generator band .10 to .15) | 14,364 | 320 | 60 (71 meet the rule) |
 | Confounded | 211 | 60 | 60 |
 | Strong | 520 | 60 | 60 |
 
 Built with Python 3.13.18, NumPy 2.5.3 (x86_64); base-R check with R 4.3.3. The random streams can change across
 NumPy versions, so a rebuild elsewhere should first confirm the earlier CSVs come out byte-identical.
 
-Underpowered, the 60 kept: primary p .1147 to .1500; wild cluster bootstrap p (B = 9,999, null imposed)
-.1074 to .1442 (generator), .1068 to .1402 (base R), .1090 to .1430 (`wild_bootstrap_check.py`). That script
-reports a slightly larger t than the manifest for every dataset, as on the 13 Nov release.
+Underpowered, the 60 kept: primary p .1133 to .1292 (median .1237); lowest defensible specification .1003 to
+.1292; wild cluster bootstrap p (B = 9,999, null imposed) .1058 to .1311 (generator), .1056 to .1273 (base R),
+.1054 to .1271 (`wild_bootstrap_check.py`). Mean primary estimate 0.213 SD against the true 0.20: keeping
+datasets near the threshold selects slightly larger estimates. Every one of the 60 has at least one unclustered
+specification (classical or HC1 two-way FE) at p < .05. `wild_bootstrap_check.py` reports a slightly larger t
+than the manifest for every dataset, as on the 13 Nov release.
 
 CSV schema, unchanged from v0: `unit, period, treated_unit, post, D, y, x1, x2`.
 
@@ -47,7 +51,7 @@ CSV schema, unchanged from v0: `unit, period, treated_unit, post, D, y, x1, x2`.
 
 | World | Truth | Correct conclusion | Units | Primary p |
 | --- | --- | --- | --- | --- |
-| Underpowered | Real effect of 0.20 SD, study too small to detect it | "Inconclusive" | 34 | .115 to .150 (band .10 to .15) |
+| Underpowered | Real effect of 0.20 SD, study too small to detect it | "Inconclusive" | 34 | .113 to .129 (rule: .10 to .13) |
 | Confounded | No effect; treated units on a diverging linear trend | "The apparent effect is not credible" | 709 | below 1e-9 (naive) |
 | Strong | The same 0.20 SD effect, study large enough | "There is an effect" | 150 | .0006 to .0032 (first ten); .0005 to .0052 (all sixty) |
 
@@ -68,7 +72,7 @@ Nine naive specifications: two-way FE with and without covariates (classical, HC
 cluster-by-unit SEs), and the collapsed pre/post 2x2 (classical, HC2, HC3). Primary: two-way FE
 with covariates, clustered by unit.
 
-- **Underpowered:** primary p between .10 and .20 (narrowed to .10 to .15 on 14 Nov; see above), primary interval contains zero and the
+- **Underpowered:** primary p between .10 and .20 (narrowed on 14 Nov; see above), primary interval contains zero and the
   0.10 SD meaningful effect, every estimate positive, pre-trend tests do not reject at .10,
   trend-adjusted estimate not significant, wild cluster bootstrap p >= .10 (9,999 draws,
   null imposed, Rademacher weights by unit), no single unit's removal makes the primary significant.

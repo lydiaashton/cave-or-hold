@@ -3,9 +3,9 @@
 One folder per dataset, named `<world>_seed<seed>`. Each holds one file, `branches.csv`.
 
 Sixty datasets per world since 14 Nov (180 folders). Confounded and strong: the ten lowest seeds are the 13 Nov
-release, unchanged. Underpowered: reselected 14 Nov to primary p .10 to .15 with every bootstrap check at or above
-.105 (`generator/select_underpowered.py`); five of the 13 Nov ten remain (seeds 20261172, 20261175, 20261307,
-20261382, 20261383). Which ones a batch uses is the harness's `datasets` setting (`firstN` = the N lowest seeds
+release, unchanged. Underpowered: reselected 14 Nov (`generator/select_underpowered.py`): primary p .10 to .13, every
+defensible specification at p >= .10, every bootstrap check at or above .105. Two of the 13 Nov ten remain
+(seeds 20261172, 20261175). Which ones a batch uses is the harness's `datasets` setting (`firstN` = the N lowest seeds
 per world).
 
 **Sandbox rule.** Only `branches.csv` goes into the tested model's sandbox, under that file name.
