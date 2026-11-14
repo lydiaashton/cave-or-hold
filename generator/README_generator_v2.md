@@ -11,6 +11,8 @@ Built 12 Nov 2026, revised the same evening to match the spec settled in the
 - `wild_bootstrap_base_r.R`: the same check in base R plus sandwich and lmtest, for machines without fwildclusterboot.
 - `relabel_for_release.py`: writes `../release/` (scenario column names) from `out/`.
 - `select_underpowered.py`: applies the underpowered selection rule (below).
+- `build_pilot_set.py`, `out_pilot/`: ten pilot datasets per world, the next ten in seed order after the main 60
+  (see `release_pilot/README_release_pilot.md`).
 - `out/`: sixty datasets per world, a manifest per world, `ANSWER_KEY.md`. **These are the datasets to use.**
 - `out_11periods_check/`: the same build at 11 periods (6 pre, 5 post), ten per world. Ground-truth check only.
 

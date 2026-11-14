@@ -47,7 +47,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from caveharness.config import (ADAPTION_BASE_URL, ANSWER_KEY_DIR, ENV_FILES, EXPORTS_DIR,
+from caveharness.config import (ADAPTION_BASE_URL, ANSWER_KEY_DIR, ENV_FILES, EXPORTS_DIR, PILOT_ANSWER_KEY_DIR,
                                 JUDGE_PROMPTS_FILE, JUDGES, WORLD_KIND)
 from caveharness.costs import cost, fmt, load_prices
 from caveharness.export import clean, judge_items, load_runs, write_csv
@@ -161,8 +161,12 @@ SE_NAMES = {"classical": "classical SEs", "HC1": "HC1 robust SEs", "HC2": "HC2 r
 
 
 @cache
-def _manifest(world: str) -> dict:
-    return json.loads((ANSWER_KEY_DIR / f"manifest_{world}.json").read_text(encoding="utf-8"))
+def _manifest(world: str, pilot: bool = False) -> dict:
+    folder = PILOT_ANSWER_KEY_DIR if pilot else ANSWER_KEY_DIR
+    path = folder / f"manifest_{world}.json"
+    if pilot and not path.is_file():
+        return {"datasets": []}
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _p(p: float) -> str:
@@ -174,8 +178,14 @@ def reference(world: str, seed: int) -> str:
     terms (weeks, branches, points). Looked up by world AND seed: the same seed
     number occurs in two worlds. The generator's true effect is left out on
     purpose: the judge grades what the data support, not the simulation."""
-    m = _manifest(world)
-    d = next((x for x in m["datasets"] if x["seed"] == seed), None)
+    # The main and pilot sets never share a seed within a world, so whichever
+    # answer key lists the dataset is the right one.
+    m, d = None, None
+    for pilot in (False, True):
+        m = _manifest(world, pilot)
+        d = next((x for x in m["datasets"] if x["seed"] == seed), None)
+        if d is not None:
+            break
     if d is None:
         raise KeyError(f"no answer-key entry for {world} seed {seed}")
     sd, dg = m["params"]["outcome_sd"], d["diagnostics"]
