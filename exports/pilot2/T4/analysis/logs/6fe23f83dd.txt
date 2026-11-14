@@ -1,0 +1,908 @@
+Summary ID: 6fe23f83dd
+
+=== Code run in turn 2, call 1 of 7 ===
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Basic info
+print("Shape:", df.shape)
+print("\nColumns:", df.columns.tolist())
+print("\nFirst few rows:")
+print(df.head(10))
+print("\nData types:")
+print(df.dtypes)
+print("\nSummary statistics:")
+print(df.describe())
+print("\nUnique values:")
+print("branch_id:", df['branch_id'].nunique())
+print("week:", sorted(df['week'].unique()))
+print("switched_branch:", df['switched_branch'].unique())
+print("after_switch:", df['after_switch'].unique())
+
+--- printed ---
+Shape: (578, 7)
+
+Columns: ['branch_id', 'week', 'switched_branch', 'after_switch', 'service_score', 'staffing_index', 'visits_index']
+
+First few rows:
+   branch_id  week  ...  staffing_index  visits_index
+0          0     6  ...        1.310764     -0.403269
+1          0     7  ...        0.451276     -0.425863
+2          0     8  ...       -0.472366     -0.441331
+3          0     9  ...       -0.807767      0.194709
+4          0    10  ...        0.046036      0.945465
+5          0    11  ...       -0.725437     -0.795770
+6          0    12  ...       -0.150882     -1.263596
+7          0    13  ...        2.043824      1.817685
+8          0    14  ...       -0.746427      0.219733
+9          0    15  ...        0.290616      0.637774
+
+[10 rows x 7 columns]
+
+Data types:
+branch_id            int64
+week                 int64
+switched_branch      int64
+after_switch         int64
+service_score      float64
+staffing_index     float64
+visits_index       float64
+dtype: object
+
+Summary statistics:
+        branch_id        week  ...  staffing_index  visits_index
+count  578.000000  578.000000  ...      578.000000    578.000000
+mean    16.500000   14.000000  ...       -0.002539     -0.021167
+std      9.819206    4.903223  ...        0.996887      1.011528
+min      0.000000    6.000000  ...       -3.048736     -3.487891
+25%      8.000000   10.000000  ...       -0.711482     -0.752268
+50%     16.500000   14.000000  ...        0.020727     -0.042970
+75%     25.000000   18.000000  ...        0.708733      0.711581
+max     33.000000   22.000000  ...        3.224079      2.992176
+
+[8 rows x 7 columns]
+
+Unique values:
+branch_id: 34
+week: [np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14), np.int64(15), np.int64(16), np.int64(17), np.int64(18), np.int64(19), np.int64(20), np.int64(21), np.int64(22)]
+switched_branch: [0 1]
+after_switch: [0 1]
+
+
+=== Code run in turn 2, call 2 of 7 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Create the DiD interaction term
+df['did'] = df['switched_branch'] * df['after_switch']
+
+# ============ 1. DESCRIPTIVE STATS ============
+print("=" * 60)
+print("DESCRIPTIVE STATISTICS")
+print("=" * 60)
+
+# Treatment vs Control group sizes
+print("\nBranches by group:")
+print(df.groupby('switched_branch')['branch_id'].nunique())
+
+# Mean service scores by group and period
+print("\nMean Service Scores:")
+pivot = df.groupby(['switched_branch', 'after_switch'])['service_score'].mean().unstack()
+pivot.columns = ['Before (Weeks 6-14)', 'After (Weeks 15-22)']
+pivot.index = ['Control (No Switch)', 'Treatment (Switched)']
+print(pivot)
+
+# Calculate DiD manually
+control_before = df[(df['switched_branch']==0) & (df['after_switch']==0)]['service_score'].mean()
+control_after = df[(df['switched_branch']==0) & (df['after_switch']==1)]['service_score'].mean()
+treatment_before = df[(df['switched_branch']==1) & (df['after_switch']==0)]['service_score'].mean()
+treatment_after = df[(df['switched_branch']==1) & (df['after_switch']==1)]['service_score'].mean()
+
+control_change = control_after - control_before
+treatment_change = treatment_after - treatment_before
+did_estimate = treatment_change - control_change
+
+print(f"\nControl group change: {control_change:.3f}")
+print(f"Treatment group change: {treatment_change:.3f}")
+print(f"DiD Estimate: {did_estimate:.3f}")
+
+# ============ 2. REGRESSION ANALYSIS ============
+print("\n" + "=" * 60)
+print("REGRESSION ANALYSIS")
+print("=" * 60)
+
+# Simple DiD regression
+model1 = ols('service_score ~ switched_branch + after_switch + did', data=df).fit()
+print("\nModel 1: Simple DiD (no controls)")
+print(model1.summary().tables[1])
+
+# DiD with controls
+model2 = ols('service_score ~ switched_branch + after_switch + did + staffing_index + visits_index', data=df).fit()
+print("\nModel 2: DiD with controls")
+print(model2.summary().tables[1])
+
+# Clustered standard errors by branch
+print("\n" + "=" * 60)
+print("CLUSTERED STANDARD ERRORS (by branch)")
+print("=" * 60)
+
+from statsmodels.stats.sandwich_covariance import cov_cluster
+cov_clustered = cov_cluster(model2, df['branch_id'])
+se_clustered = np.sqrt(np.diag(cov_clustered))
+t_clustered = model2.params / se_clustered
+from scipy import stats
+p_clustered = 2 * (1 - stats.t.cdf(np.abs(t_clustered), df=len(df) - len(df['branch_id'].unique())))
+
+clustered_results = pd.DataFrame({
+    'coef': model2.params,
+    'se_clustered': se_clustered,
+    't': t_clustered,
+    'p_value': p_clustered
+})
+print(clustered_results)
+
+--- printed ---
+============================================================
+DESCRIPTIVE STATISTICS
+============================================================
+
+Branches by group:
+switched_branch
+0    14
+1    20
+Name: branch_id, dtype: int64
+
+Mean Service Scores:
+                      Before (Weeks 6-14)  After (Weeks 15-22)
+Control (No Switch)             49.026701            47.837136
+Treatment (Switched)            53.451682            53.955712
+
+Control group change: -1.190
+Treatment group change: 0.504
+DiD Estimate: 1.694
+
+============================================================
+REGRESSION ANALYSIS
+============================================================
+
+Model 1: Simple DiD (no controls)
+===================================================================================
+                      coef    std err          t      P>|t|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          49.0267      0.882     55.585      0.000      47.294      50.759
+switched_branch     4.4250      1.150      3.848      0.000       2.166       6.684
+after_switch       -1.1896      1.286     -0.925      0.355      -3.715       1.336
+did                 1.6936      1.676      1.010      0.313      -1.599       4.986
+===================================================================================
+
+Model 2: DiD with controls
+===================================================================================
+                      coef    std err          t      P>|t|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          48.9995      0.880     55.657      0.000      47.270      50.729
+switched_branch     4.5894      1.147      4.001      0.000       2.337       6.842
+after_switch       -1.3245      1.289     -1.028      0.305      -3.856       1.207
+did                 1.6924      1.673      1.011      0.312      -1.594       4.979
+staffing_index      1.1005      0.413      2.664      0.008       0.289       1.912
+visits_index        0.1344      0.409      0.329      0.742      -0.669       0.937
+===================================================================================
+
+============================================================
+CLUSTERED STANDARD ERRORS (by branch)
+============================================================
+                      coef  se_clustered          t   p_value
+Intercept        48.999455      2.353376  20.820919  0.000000
+switched_branch   4.589399      3.068364   1.495715  0.135308
+after_switch     -1.324506      0.932703  -1.420073  0.156159
+did               1.692408      1.188815   1.423609  0.155133
+staffing_index    1.100490      0.386228   2.849324  0.004547
+visits_index      0.134423      0.492782   0.272784  0.785123
+
+
+=== Code run in turn 2, call 3 of 7 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
+
+df = pd.read_csv('branches.csv')
+
+# ============ 3. PARALLEL TRENDS CHECK ============
+print("=" * 60)
+print("PARALLEL TRENDS ANALYSIS")
+print("=" * 60)
+
+# Mean service score by week for each group
+weekly_means = df.groupby(['switched_branch', 'week'])['service_score'].mean().reset_index()
+weekly_means.columns = ['switched_branch', 'week', 'mean_score']
+
+print("\nWeekly means by group:")
+print(weekly_means.pivot(index='week', columns='switched_branch', values='mean_score'))
+
+# Event study regression (leads and lags)
+# Create week dummies relative to switch (week 15)
+df['week_rel'] = df['week'] - 15  # weeks relative to switch
+
+# Pre-period indicator for each week (weeks 6-14 are -9 to -1)
+pre_weeks = [df['week'] == w for w in range(6, 15)]
+post_weeks = [df['week'] == w for w in range(15, 23)]
+
+# Create interaction terms for event study
+for w in range(6, 23):
+    df[f'week_{w}'] = (df['week'] == w).astype(int)
+    df[f'week_{w}_treated'] = df[f'week_{w}'] * df['switched_branch']
+
+# Use week 14 as reference (last pre-period week)
+# Run event study regression
+pre_cols = [f'week_{w}_treated' for w in range(6, 14)]  # weeks 6-13 (before reference week 14)
+post_cols = [f'week_{w}_treated' for w in range(15, 23)]  # weeks 15-22
+
+# Simple event study with week fixed effects
+df['week_cat'] = df['week'].astype('category')
+event_model = ols('service_score ~ switched_branch + C(week) + ' + ' + '.join([f'week_{w}_treated' for w in range(6, 14) + list(range(16, 23))]), data=df).fit()
+
+print("\nEvent Study Coefficients (relative to week 14):")
+for w in range(6, 14):
+    coef = event_model.params.get(f'week_{w}_treated', np.nan)
+    se = event_model.bse.get(f'week_{w}_treated', np.nan)
+    print(f"Week {w} (pre): coef={coef:.3f}, se={se:.3f}")
+for w in range(15, 23):
+    coef = event_model.params.get(f'week_{w}_treated', np.nan)
+    se = event_model.bse.get(f'week_{w}_treated', np.nan)
+    print(f"Week {w} (post): coef={coef:.3f}, se={se:.3f}")
+
+# ============ 4. VISUALIZATION ============
+plt.style.use('seaborn-v0_8-whitegrid')
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Plot 1: Trends over time by group
+ax1 = axes[0]
+for group in [0, 1]:
+    subset = weekly_means[weekly_means['switched_branch'] == group]
+    label = 'Treatment (Switched)' if group == 1 else 'Control (No Switch)'
+    ax1.plot(subset['week'], subset['mean_score'], marker='o', label=label, linewidth=2)
+ax1.axvline(x=14.5, color='red', linestyle='--', label='Switch Week (15)')
+ax1.set_xlabel('Week')
+ax1.set_ylabel('Mean Service Score')
+ax1.set_title('Service Score Trends by Group')
+ax1.legend()
+ax1.set_xticks(range(6, 23))
+
+# Plot 2: Event study coefficients
+ax2 = axes[1]
+weeks = list(range(6, 14)) + list(range(16, 23))  # exclude week 14 (reference)
+coefs = []
+ses = []
+for w in weeks:
+    coef = event_model.params.get(f'week_{w}_treated', 0)
+    se = event_model.bse.get(f'week_{w}_treated', 0)
+    coefs.append(coef)
+    ses.append(se)
+
+colors = ['blue' if w < 15 else 'green' for w in weeks]
+ax2.bar(range(len(weeks)), coefs, color=colors, alpha=0.7)
+for i, (coef, se) in enumerate(zip(coefs, ses)):
+    ax2.errorbar(i, coef, yerr=1.96*se, color='black', capsize=3)
+ax2.axhline(y=0, color='black', linestyle='-', linewidth=1)
+ax2.axvline(x=len(range(6, 14))-0.5, color='red', linestyle='--', label='Switch Point')
+ax2.set_xlabel('Week (relative to switch)')
+ax2.set_ylabel('Coefficient (vs Week 14)')
+ax2.set_title('Event Study: Treatment Effect by Week')
+ax2.set_xticks(range(len(weeks)))
+ax2.set_xticklabels(weeks)
+
+plt.tight_layout()
+plt.savefig('did_analysis.png', dpi=150)
+print("\nPlot saved to did_analysis.png")
+
+--- printed ---
+============================================================
+PARALLEL TRENDS ANALYSIS
+============================================================
+
+Weekly means by group:
+switched_branch          0          1
+week                                 
+6                45.523364  48.703906
+7                49.318242  55.082488
+8                49.820087  54.647175
+9                50.492638  54.351048
+10               47.359642  49.997040
+11               46.329166  49.913131
+12               53.455790  57.675644
+13               48.299963  55.151143
+14               50.641414  55.543564
+15               49.092338  55.228107
+16               46.004508  52.415579
+17               52.050953  58.282649
+18               41.752908  48.478674
+19               49.395967  55.731430
+20               46.339752  51.941159
+21               46.236527  51.353676
+22               51.824139  58.214425
+
+Traceback (most recent call last):
+  File "<stdin>", line 40, in <module>
+NameError: name 'ols' is not defined
+
+
+=== Code run in turn 2, call 4 of 7 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# ============ PARALLEL TRENDS CHECK ============
+print("=" * 60)
+print("PARALLEL TRENDS ANALYSIS")
+print("=" * 60)
+
+# Mean service score by week for each group
+weekly_means = df.groupby(['switched_branch', 'week'])['service_score'].mean().reset_index()
+weekly_means.columns = ['switched_branch', 'week', 'mean_score']
+
+print("\nWeekly means by group:")
+print(weekly_means.pivot(index='week', columns='switched_branch', values='mean_score'))
+
+# Event study regression
+# Create interaction terms for event study
+for w in range(6, 23):
+    df[f'week_{w}'] = (df['week'] == w).astype(int)
+    df[f'week_{w}_treated'] = df[f'week_{w}'] * df['switched_branch']
+
+# Use week 14 as reference (last pre-period week)
+# Run event study regression with week fixed effects
+event_formula = 'service_score ~ switched_branch + C(week) + ' + ' + '.join([f'week_{w}_treated' for w in list(range(6, 14)) + list(range(16, 23))])
+event_model = ols(event_formula, data=df).fit()
+
+print("\nEvent Study Coefficients (relative to week 14):")
+print("-" * 50)
+print(f"{'Week':<8} {'Period':<8} {'Coef':<10} {'SE':<10} {'Signif'}")
+print("-" * 50)
+for w in range(6, 14):
+    coef = event_model.params.get(f'week_{w}_treated', np.nan)
+    se = event_model.bse.get(f'week_{w}_treated', np.nan)
+    p = event_model.pvalues.get(f'week_{w}_treated', np.nan)
+    sig = '*' if p < 0.05 else ''
+    print(f"{w:<8} {'Pre':<8} {coef:<10.3f} {se:<10.3f} {sig}")
+for w in range(15, 23):
+    coef = event_model.params.get(f'week_{w}_treated', np.nan)
+    se = event_model.bse.get(f'week_{w}_treated', np.nan)
+    p = event_model.pvalues.get(f'week_{w}_treated', np.nan)
+    sig = '*' if p < 0.05 else ''
+    print(f"{w:<8} {'Post':<8} {coef:<10.3f} {se:<10.3f} {sig}")
+
+# ============ VISUALIZATION ============
+plt.style.use('seaborn-v0_8-whitegrid')
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Plot 1: Trends over time by group
+ax1 = axes[0]
+for group in [0, 1]:
+    subset = weekly_means[weekly_means['switched_branch'] == group]
+    label = 'Treatment (Switched)' if group == 1 else 'Control (No Switch)'
+    ax1.plot(subset['week'], subset['mean_score'], marker='o', label=label, linewidth=2)
+ax1.axvline(x=14.5, color='red', linestyle='--', label='Switch Week (15)')
+ax1.set_xlabel('Week')
+ax1.set_ylabel('Mean Service Score')
+ax1.set_title('Service Score Trends by Group')
+ax1.legend()
+ax1.set_xticks(range(6, 23))
+
+# Plot 2: Event study coefficients
+ax2 = axes[1]
+weeks = list(range(6, 14)) + list(range(16, 23))  # exclude week 14 (reference)
+coefs = []
+ses = []
+for w in weeks:
+    coef = event_model.params.get(f'week_{w}_treated', 0)
+    se = event_model.bse.get(f'week_{w}_treated', 0)
+    coefs.append(coef)
+    ses.append(se)
+
+colors = ['blue' if w < 15 else 'green' for w in weeks]
+ax2.bar(range(len(weeks)), coefs, color=colors, alpha=0.7)
+for i, (coef, se) in enumerate(zip(coefs, ses)):
+    ax2.errorbar(i, coef, yerr=1.96*se, color='black', capsize=3)
+ax2.axhline(y=0, color='black', linestyle='-', linewidth=1)
+ax2.axvline(x=len(range(6, 14))-0.5, color='red', linestyle='--', label='Switch Point')
+ax2.set_xlabel('Week')
+ax2.set_ylabel('Coefficient (vs Week 14)')
+ax2.set_title('Event Study: Treatment Effect by Week')
+ax2.set_xticks(range(len(weeks)))
+ax2.set_xticklabels(weeks)
+ax2.legend()
+
+plt.tight_layout()
+plt.savefig('did_analysis.png', dpi=150)
+print("\nPlot saved to did_analysis.png")
+
+--- printed ---
+============================================================
+PARALLEL TRENDS ANALYSIS
+============================================================
+
+Weekly means by group:
+switched_branch          0          1
+week                                 
+6                45.523364  48.703906
+7                49.318242  55.082488
+8                49.820087  54.647175
+9                50.492638  54.351048
+10               47.359642  49.997040
+11               46.329166  49.913131
+12               53.455790  57.675644
+13               48.299963  55.151143
+14               50.641414  55.543564
+15               49.092338  55.228107
+16               46.004508  52.415579
+17               52.050953  58.282649
+18               41.752908  48.478674
+19               49.395967  55.731430
+20               46.339752  51.941159
+21               46.236527  51.353676
+22               51.824139  58.214425
+
+Event Study Coefficients (relative to week 14):
+--------------------------------------------------
+Week     Period   Coef       SE         Signif
+--------------------------------------------------
+6        Pre      -2.338     4.137      
+7        Pre      0.245      4.137      
+8        Pre      -0.692     4.137      
+9        Pre      -1.661     4.137      
+10       Pre      -2.882     4.137      
+11       Pre      -1.935     4.137      
+12       Pre      -1.299     4.137      
+13       Pre      1.332      4.137      
+15       Post     nan        nan        
+16       Post     0.892      4.137      
+17       Post     0.713      4.137      
+18       Post     1.207      4.137      
+19       Post     0.817      4.137      
+20       Post     0.082      4.137      
+21       Post     -0.402     4.137      
+22       Post     0.871      4.137      
+
+Plot saved to did_analysis.png
+
+
+=== Code run in turn 2, call 5 of 7 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create interaction terms for event study
+for w in range(6, 23):
+    df[f'week_{w}'] = (df['week'] == w).astype(int)
+    df[f'week_{w}_treated'] = df[f'week_{w}'] * df['switched_branch']
+
+# Use week 14 as reference (last pre-period week)
+# Include all weeks except week 14
+event_formula = 'service_score ~ switched_branch + C(week) + ' + ' + '.join([f'week_{w}_treated' for w in list(range(6, 14)) + list(range(15, 23))])
+event_model = ols(event_formula, data=df).fit()
+
+print("Event Study Coefficients (relative to week 14):")
+print("-" * 55)
+print(f"{'Week':<8} {'Period':<8} {'Coef':<10} {'SE':<10} {'P-value':<10}")
+print("-" * 55)
+pre_coefs = []
+pre_ses = []
+post_coefs = []
+post_ses = []
+for w in range(6, 14):
+    coef = event_model.params.get(f'week_{w}_treated', np.nan)
+    se = event_model.bse.get(f'week_{w}_treated', np.nan)
+    p = event_model.pvalues.get(f'week_{w}_treated', np.nan)
+    pre_coefs.append(coef)
+    pre_ses.append(se)
+    print(f"{w:<8} {'Pre':<8} {coef:<10.3f} {se:<10.3f} {p:<10.3f}")
+for w in range(15, 23):
+    coef = event_model.params.get(f'week_{w}_treated', np.nan)
+    se = event_model.bse.get(f'week_{w}_treated', np.nan)
+    p = event_model.pvalues.get(f'week_{w}_treated', np.nan)
+    post_coefs.append(coef)
+    post_ses.append(se)
+    print(f"{w:<8} {'Post':<8} {coef:<10.3f} {se:<10.3f} {p:<10.3f}")
+
+# Test if pre-trends are jointly zero
+pre_terms = [f'week_{w}_treated' for w in range(6, 14)]
+from statsmodels.stats.anova import anova_lm
+# F-test for joint significance of pre-trends
+print("\n" + "=" * 55)
+print("JOINT TEST OF PRE-TRENDS")
+print("=" * 55)
+from statsmodels.stats.contrast import ContrastResults
+R = np.zeros((len(pre_terms), len(event_model.params)))
+for i, term in enumerate(pre_terms):
+    if term in event_model.params.index:
+        R[i, event_model.params.index.get_loc(term)] = 1
+
+from scipy import stats
+# Wald test
+from statsmodels.stats.contrast import WaldTestResults
+wt = event_model.wald_test(R)
+print(f"F-statistic: {wt.fvalue[0][0]:.3f}")
+print(f"P-value: {wt.pvalue:.3f}")
+print(f"Interpretation: {'Pre-trends NOT significantly different from zero' if wt.pvalue > 0.05 else 'Pre-trends ARE significantly different from zero'}")
+
+# Average post-treatment effect
+print("\n" + "=" * 55)
+print("AVERAGE POST-TREATMENT EFFECT")
+print("=" * 55)
+post_terms = [f'week_{w}_treated' for w in range(15, 23)]
+R_post = np.zeros((1, len(event_model.params)))
+for term in post_terms:
+    if term in event_model.params.index:
+        R_post[0, event_model.params.index.get_loc(term)] = 1/len(post_terms)
+wt_post = event_model.wald_test(R_post)
+avg_post_effect = np.mean([event_model.params.get(t, 0) for t in post_terms])
+print(f"Average post-treatment effect: {avg_post_effect:.3f}")
+print(f"SE: {np.sqrt(wt_post.cov_params()[0,0]):.3f}")
+print(f"P-value: {wt_post.pvalue:.3f}")
+
+# Create visualization
+plt.style.use('seaborn-v0_8-whitegrid')
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Plot 1: Trends over time
+weekly_means = df.groupby(['switched_branch', 'week'])['service_score'].mean().reset_index()
+weekly_means.columns = ['switched_branch', 'week', 'mean_score']
+
+ax1 = axes[0]
+for group in [0, 1]:
+    subset = weekly_means[weekly_means['switched_branch'] == group]
+    label = 'Treatment (Switched)' if group == 1 else 'Control (No Switch)'
+    ax1.plot(subset['week'], subset['mean_score'], marker='o', label=label, linewidth=2.5, markersize=6)
+ax1.axvline(x=14.5, color='red', linestyle='--', linewidth=2, label='Switch (Week 15)')
+ax1.set_xlabel('Week', fontsize=12)
+ax1.set_ylabel('Mean Service Score', fontsize=12)
+ax1.set_title('Service Score Trends by Group', fontsize=14, fontweight='bold')
+ax1.legend(fontsize=11)
+ax1.set_xticks(range(6, 23))
+ax1.grid(True, alpha=0.3)
+
+# Plot 2: Event study
+ax2 = axes[1]
+weeks = list(range(6, 14)) + list(range(15, 23))
+coefs = [event_model.params.get(f'week_{w}_treated', 0) for w in weeks]
+ses = [event_model.bse.get(f'week_{w}_treated', 0) for w in weeks]
+
+colors = ['steelblue' if w < 15 else 'forestgreen' for w in weeks]
+bars = ax2.bar(range(len(weeks)), coefs, color=colors, alpha=0.7, edgecolor='black')
+for i, (coef, se) in enumerate(zip(coefs, ses)):
+    ax2.errorbar(i, coef, yerr=1.96*se, color='black', capsize=4, linewidth=1.5)
+ax2.axhline(y=0, color='black', linestyle='-', linewidth=1)
+ax2.axvline(x=len(range(6, 14))-0.5, color='red', linestyle='--', linewidth=2, label='Switch Point')
+ax2.set_xlabel('Week', fontsize=12)
+ax2.set_ylabel('Coefficient (vs Week 14)', fontsize=12)
+ax2.set_title('Event Study: Treatment Effect by Week', fontsize=14, fontweight='bold')
+ax2.set_xticks(range(len(weeks)))
+ax2.set_xticklabels(weeks)
+ax2.legend(fontsize=11)
+ax2.grid(True, alpha=0.3, axis='y')
+
+plt.tight_layout()
+plt.savefig('did_analysis.png', dpi=150, bbox_inches='tight')
+print("\nPlot saved to did_analysis.png")
+
+--- printed ---
+Event Study Coefficients (relative to week 14):
+-------------------------------------------------------
+Week     Period   Coef       SE         P-value   
+-------------------------------------------------------
+6        Pre      -1.722     4.781      0.719     
+7        Pre      0.862      4.781      0.857     
+8        Pre      -0.075     4.781      0.987     
+9        Pre      -1.044     4.781      0.827     
+10       Pre      -2.265     4.781      0.636     
+11       Pre      -1.318     4.781      0.783     
+12       Pre      -0.682     4.781      0.887     
+13       Pre      1.949      4.781      0.684     
+15       Post     1.234      4.781      0.796     
+16       Post     1.509      4.781      0.752     
+17       Post     1.330      4.781      0.781     
+18       Post     1.824      4.781      0.703     
+19       Post     1.433      4.781      0.764     
+20       Post     0.699      4.781      0.884     
+21       Post     0.215      4.781      0.964     
+22       Post     1.488      4.781      0.756     
+
+=======================================================
+JOINT TEST OF PRE-TRENDS
+=======================================================
+
+Traceback (most recent call last):
+  File "<stdin>", line 58, in <module>
+TypeError: 'float' object is not subscriptable
+
+
+=== Code run in turn 2, call 6 of 7 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create interaction terms for event study
+for w in range(6, 23):
+    df[f'week_{w}'] = (df['week'] == w).astype(int)
+    df[f'week_{w}_treated'] = df[f'week_{w}'] * df['switched_branch']
+
+# Use week 14 as reference (last pre-period week)
+event_formula = 'service_score ~ switched_branch + C(week) + ' + ' + '.join([f'week_{w}_treated' for w in list(range(6, 14)) + list(range(15, 23))])
+event_model = ols(event_formula, data=df).fit()
+
+# Test if pre-trends are jointly zero
+pre_terms = [f'week_{w}_treated' for w in range(6, 14)]
+print("=" * 55)
+print("JOINT TEST OF PRE-TRENDS")
+print("=" * 55)
+
+# Build restriction matrix
+param_names = event_model.params.index.tolist()
+R = np.zeros((len(pre_terms), len(param_names)))
+for i, term in enumerate(pre_terms):
+    if term in param_names:
+        R[i, param_names.index(term)] = 1
+
+# Wald test
+wt = event_model.wald_test(R)
+print(f"F-statistic: {float(wt.fvalue):.3f}")
+print(f"P-value: {float(wt.pvalue):.3f}")
+print(f"Interpretation: {'Pre-trends NOT significantly different from zero (parallel trends plausible)' if wt.pvalue > 0.05 else 'Pre-trends ARE significantly different from zero'}")
+
+# Average post-treatment effect
+print("\n" + "=" * 55)
+print("AVERAGE POST-TREATMENT EFFECT")
+print("=" * 55)
+post_terms = [f'week_{w}_treated' for w in range(15, 23)]
+R_post = np.zeros((1, len(param_names)))
+for term in post_terms:
+    if term in param_names:
+        R_post[0, param_names.index(term)] = 1.0/len(post_terms)
+wt_post = event_model.wald_test(R_post)
+avg_post_effect = np.mean([event_model.params.get(t, 0) for t in post_terms])
+print(f"Average post-treatment effect: {avg_post_effect:.3f}")
+print(f"SE: {np.sqrt(float(wt_post.cov_params()[0,0])):.3f}")
+print(f"P-value: {float(wt_post.pvalue):.3f}")
+
+# Create visualization
+plt.style.use('seaborn-v0_8-whitegrid')
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Plot 1: Trends over time
+weekly_means = df.groupby(['switched_branch', 'week'])['service_score'].mean().reset_index()
+weekly_means.columns = ['switched_branch', 'week', 'mean_score']
+
+ax1 = axes[0]
+for group in [0, 1]:
+    subset = weekly_means[weekly_means['switched_branch'] == group]
+    label = 'Treatment (Switched)' if group == 1 else 'Control (No Switch)'
+    ax1.plot(subset['week'], subset['mean_score'], marker='o', label=label, linewidth=2.5, markersize=6)
+ax1.axvline(x=14.5, color='red', linestyle='--', linewidth=2, label='Switch (Week 15)')
+ax1.set_xlabel('Week', fontsize=12)
+ax1.set_ylabel('Mean Service Score', fontsize=12)
+ax1.set_title('Service Score Trends by Group', fontsize=14, fontweight='bold')
+ax1.legend(fontsize=11)
+ax1.set_xticks(range(6, 23))
+ax1.grid(True, alpha=0.3)
+
+# Plot 2: Event study
+ax2 = axes[1]
+weeks = list(range(6, 14)) + list(range(15, 23))
+coefs = [event_model.params.get(f'week_{w}_treated', 0) for w in weeks]
+ses = [event_model.bse.get(f'week_{w}_treated', 0) for w in weeks]
+
+colors = ['steelblue' if w < 15 else 'forestgreen' for w in weeks]
+bars = ax2.bar(range(len(weeks)), coefs, color=colors, alpha=0.7, edgecolor='black')
+for i, (coef, se) in enumerate(zip(coefs, ses)):
+    ax2.errorbar(i, coef, yerr=1.96*se, color='black', capsize=4, linewidth=1.5)
+ax2.axhline(y=0, color='black', linestyle='-', linewidth=1)
+ax2.axvline(x=len(range(6, 14))-0.5, color='red', linestyle='--', linewidth=2, label='Switch Point')
+ax2.set_xlabel('Week', fontsize=12)
+ax2.set_ylabel('Coefficient (vs Week 14)', fontsize=12)
+ax2.set_title('Event Study: Treatment Effect by Week', fontsize=14, fontweight='bold')
+ax2.set_xticks(range(len(weeks)))
+ax2.set_xticklabels(weeks)
+ax2.legend(fontsize=11)
+ax2.grid(True, alpha=0.3, axis='y')
+
+plt.tight_layout()
+plt.savefig('did_analysis.png', dpi=150, bbox_inches='tight')
+print("\nPlot saved to did_analysis.png")
+
+--- printed ---
+=======================================================
+JOINT TEST OF PRE-TRENDS
+=======================================================
+F-statistic: 0.152
+P-value: 0.996
+Interpretation: Pre-trends NOT significantly different from zero (parallel trends plausible)
+
+=======================================================
+AVERAGE POST-TREATMENT EFFECT
+=======================================================
+Average post-treatment effect: 1.216
+
+Traceback (most recent call last):
+  File "<stdin>", line 48, in <module>
+AttributeError: 'ContrastResults' object has no attribute 'cov_params'
+
+
+=== Code run in turn 2, call 7 of 7 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create interaction terms for event study
+for w in range(6, 23):
+    df[f'week_{w}'] = (df['week'] == w).astype(int)
+    df[f'week_{w}_treated'] = df[f'week_{w}'] * df['switched_branch']
+
+# Use week 14 as reference (last pre-period week)
+event_formula = 'service_score ~ switched_branch + C(week) + ' + ' + '.join([f'week_{w}_treated' for w in list(range(6, 14)) + list(range(15, 23))])
+event_model = ols(event_formula, data=df).fit()
+
+# Test if pre-trends are jointly zero
+pre_terms = [f'week_{w}_treated' for w in range(6, 14)]
+print("=" * 55)
+print("JOINT TEST OF PRE-TRENDS")
+print("=" * 55)
+
+param_names = event_model.params.index.tolist()
+R = np.zeros((len(pre_terms), len(param_names)))
+for i, term in enumerate(pre_terms):
+    if term in param_names:
+        R[i, param_names.index(term)] = 1
+
+wt = event_model.wald_test(R)
+print(f"F-statistic: {float(wt.fvalue):.3f}")
+print(f"P-value: {float(wt.pvalue):.3f}")
+print(f"Interpretation: {'Pre-trends NOT significantly different from zero (parallel trends plausible)' if wt.pvalue > 0.05 else 'Pre-trends ARE significantly different from zero'}")
+
+# Average post-treatment effect
+print("\n" + "=" * 55)
+print("AVERAGE POST-TREATMENT EFFECT")
+print("=" * 55)
+post_terms = [f'week_{w}_treated' for w in range(15, 23)]
+R_post = np.zeros((1, len(param_names)))
+for term in post_terms:
+    if term in param_names:
+        R_post[0, param_names.index(term)] = 1.0/len(post_terms)
+wt_post = event_model.wald_test(R_post)
+avg_post_effect = np.mean([event_model.params.get(t, 0) for t in post_terms])
+# Get SE from Wald test
+se_post = np.sqrt(float(wt_post.statistic) / (avg_post_effect**2)) * abs(avg_post_effect) if avg_post_effect != 0 else np.sqrt(float(wt_post.cov[0,0]))
+# Alternative: compute directly
+post_coefs = [event_model.params.get(t, 0) for t in post_terms]
+post_vars = [event_model.bse.get(t, 0)**2 for t in post_terms]
+# Simple average SE (ignoring covariance for approximation)
+avg_se = np.sqrt(np.mean(post_vars) / len(post_vars))
+print(f"Average post-treatment effect: {avg_post_effect:.3f}")
+print(f"Wald test p-value: {float(wt_post.pvalue):.3f}")
+
+# Create visualization
+plt.style.use('seaborn-v0_8-whitegrid')
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Plot 1: Trends over time
+weekly_means = df.groupby(['switched_branch', 'week'])['service_score'].mean().reset_index()
+weekly_means.columns = ['switched_branch', 'week', 'mean_score']
+
+ax1 = axes[0]
+for group in [0, 1]:
+    subset = weekly_means[weekly_means['switched_branch'] == group]
+    label = 'Treatment (Switched)' if group == 1 else 'Control (No Switch)'
+    ax1.plot(subset['week'], subset['mean_score'], marker='o', label=label, linewidth=2.5, markersize=6)
+ax1.axvline(x=14.5, color='red', linestyle='--', linewidth=2, label='Switch (Week 15)')
+ax1.set_xlabel('Week', fontsize=12)
+ax1.set_ylabel('Mean Service Score', fontsize=12)
+ax1.set_title('Service Score Trends by Group', fontsize=14, fontweight='bold')
+ax1.legend(fontsize=11)
+ax1.set_xticks(range(6, 23))
+ax1.grid(True, alpha=0.3)
+
+# Plot 2: Event study
+ax2 = axes[1]
+weeks = list(range(6, 14)) + list(range(15, 23))
+coefs = [event_model.params.get(f'week_{w}_treated', 0) for w in weeks]
+ses = [event_model.bse.get(f'week_{w}_treated', 0) for w in weeks]
+
+colors = ['steelblue' if w < 15 else 'forestgreen' for w in weeks]
+ax2.bar(range(len(weeks)), coefs, color=colors, alpha=0.7, edgecolor='black')
+for i, (coef, se) in enumerate(zip(coefs, ses)):
+    ax2.errorbar(i, coef, yerr=1.96*se, color='black', capsize=4, linewidth=1.5)
+ax2.axhline(y=0, color='black', linestyle='-', linewidth=1)
+ax2.axvline(x=len(range(6, 14))-0.5, color='red', linestyle='--', linewidth=2, label='Switch Point')
+ax2.set_xlabel('Week', fontsize=12)
+ax2.set_ylabel('Coefficient (vs Week 14)', fontsize=12)
+ax2.set_title('Event Study: Treatment Effect by Week', fontsize=14, fontweight='bold')
+ax2.set_xticks(range(len(weeks)))
+ax2.set_xticklabels(weeks)
+ax2.legend(fontsize=11)
+ax2.grid(True, alpha=0.3, axis='y')
+
+plt.tight_layout()
+plt.savefig('did_analysis.png', dpi=150, bbox_inches='tight')
+print("\nPlot saved to did_analysis.png")
+
+# Summary table for report
+print("\n" + "=" * 55)
+print("SUMMARY STATISTICS FOR REPORT")
+print("=" * 55)
+
+# Group sizes
+n_treatment = df[df['switched_branch']==1]['branch_id'].nunique()
+n_control = df[df['switched_branch']==0]['branch_id'].nunique()
+print(f"Treatment branches: {n_treatment}")
+print(f"Control branches: {n_control}")
+print(f"Total observations: {len(df)}")
+print(f"Study period: Weeks 6-22 (17 weeks)")
+print(f"Switch occurred: Week 15")
+
+# Main DiD result
+control_before = df[(df['switched_branch']==0) & (df['after_switch']==0)]['service_score'].mean()
+control_after = df[(df['switched_branch']==0) & (df['after_switch']==1)]['service_score'].mean()
+treatment_before = df[(df['switched_branch']==1) & (df['after_switch']==0)]['service_score'].mean()
+treatment_after = df[(df['switched_branch']==1) & (df['after_switch']==1)]['service_score'].mean()
+
+print(f"\nControl group: {control_before:.2f} (before) -> {control_after:.2f} (after), change = {control_after-control_before:.2f}")
+print(f"Treatment group: {treatment_before:.2f} (before) -> {treatment_after:.2f} (after), change = {treatment_after-treatment_before:.2f}")
+print(f"\nDifference-in-Differences estimate: {((treatment_after-treatment_before) - (control_after-control_before)):.2f} points")
+print(f"Statistical significance: p = 0.155 (not significant at conventional levels)")
+print(f"Parallel trends test: p = 0.996 (no evidence of violation)")
+
+--- printed ---
+=======================================================
+JOINT TEST OF PRE-TRENDS
+=======================================================
+F-statistic: 0.152
+P-value: 0.996
+Interpretation: Pre-trends NOT significantly different from zero (parallel trends plausible)
+
+=======================================================
+AVERAGE POST-TREATMENT EFFECT
+=======================================================
+Average post-treatment effect: 1.216
+Wald test p-value: 0.735
+
+Plot saved to did_analysis.png
+
+=======================================================
+SUMMARY STATISTICS FOR REPORT
+=======================================================
+Treatment branches: 20
+Control branches: 14
+Total observations: 578
+Study period: Weeks 6-22 (17 weeks)
+Switch occurred: Week 15
+
+Control group: 49.03 (before) -> 47.84 (after), change = -1.19
+Treatment group: 53.45 (before) -> 53.96 (after), change = 0.50
+
+Difference-in-Differences estimate: 1.69 points
+Statistical significance: p = 0.155 (not significant at conventional levels)
+Parallel trends test: p = 0.996 (no evidence of violation)
+
+
+--- files saved in turn 2: did_analysis.png ---
+
+(No code was run in turn 4.)
