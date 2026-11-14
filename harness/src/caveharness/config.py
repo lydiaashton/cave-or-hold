@@ -27,7 +27,7 @@ ADAPTION_BASE_URL = "https://api.prod.adaptionlabs.ai/api/v1"
 # The three judges (design doc, "Models and judges"): name -> Inspect model
 # string. No judge shares a developer with a tested model.
 JUDGES = {
-    "gemini-4-argon": "google/gemini-4-argon",
+    "gemma-4-31b-it": "openai-api/adaption/gemma-4-31b-it",
     "gpt-6-astra": "openai/gpt-6-astra",
     "deepseek-v4-flash": "openai-api/adaption/deepseek-v4-flash",
 }
