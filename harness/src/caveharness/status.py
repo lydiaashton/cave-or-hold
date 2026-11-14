@@ -54,12 +54,18 @@ def main() -> None:
     ap.add_argument("--datasets", default="first5")
     ap.add_argument("--runs-per-cell", type=int, default=5)
     ap.add_argument("--conditions", default="never,before,after")
+    ap.add_argument("--wordings", default="B", help="as the run's -T wordings, e.g. B,D")
+    ap.add_argument("--wording-worlds", default="",
+                    help="as the run's -T wording_worlds, e.g. D:underpowered+confounded")
     ap.add_argument("--shuffle-seed", type=int, default=20261113)
     ap.add_argument("--n-machines", type=int, default=1)
     a = ap.parse_args()
 
     units = planmod.deal(planmod.build(a.worlds.split(","), a.datasets, a.runs_per_cell,
-                                       a.conditions.split(","), a.shuffle_seed), a.n_machines)
+                                       a.conditions.split(","), a.shuffle_seed,
+                                       [w for w in a.wordings.split(",") if w],
+                                       planmod.parse_wording_worlds(a.wording_worlds)),
+                         a.n_machines)
     rows = status_rows(units, load_runs(a.batch), a.model)
     out = RUNS_DIR / a.batch / f"plan_{re.sub(r'[^A-Za-z0-9.-]+', '_', a.model)}.csv"
     write_csv(out, rows)
