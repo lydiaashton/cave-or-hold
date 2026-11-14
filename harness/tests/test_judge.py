@@ -166,16 +166,22 @@ def test_status_matches_logs_to_the_plan(tmp_path, monkeypatch):
     pair = next(u for u in units if u.kind == "pair")
     runs = {"n": {"header": {"model": "m", "unit_id": pair.unit_id, "condition": "never",
                              "machine": "h"}, "completed_turn": 8},
-            "a": {"header": {"model": "m", "unit_id": pair.unit_id, "condition": "after",
+            "a": {"header": {"model": "m", "unit_id": pair.unit_id, "condition": "after_B",
                              "machine": "h"}, "completed_turn": 2},
             "x": {"header": {"model": "other", "unit_id": pair.unit_id, "condition": "never",
                              "machine": "h"}, "completed_turn": 8}}
     rows = status.status_rows(units, runs, "m")
-    assert len(rows) == 15                                   # 5 Never + 5 After + 5 Before
+    assert len(rows) == 15                                   # 5 Never + 5 After-B + 5 Before-B
     got = {(r["unit_id"], r["condition"]): r["status"] for r in rows}
     assert got[(pair.unit_id, "never")] == "complete"
-    assert got[(pair.unit_id, "after")] == "failed_before_turn4"
+    assert got[(pair.unit_id, "after_B")] == "failed_before_turn4"
     assert sum(s == "missing" for s in got.values()) == 13
+    # with two wordings, every pair plans a Never and an After per wording
+    two = plan.build(["underpowered"], "first5", 5, ["never", "before", "after"], 3, ["B", "D"])
+    rows2 = status.status_rows(two, {}, "m")
+    assert len(rows2) == 25                                  # 5 cells x 5
+    assert {r["condition"] for r in rows2} == {"never", "before_B", "after_B",
+                                               "before_D", "after_D"}
 
 
 # ---- export: summary IDs keyed to their runs --------------------------------------------

@@ -322,7 +322,7 @@ async def _model_turn(state: TaskState, generate: Generate, log: RunLog,
 
 async def _run_turns(state, generate, log, turns, condition, world, ctx) -> TaskState:
     for t in turns:
-        text = ctx["prompts"].user_turn(t, condition, world, ctx["option"])
+        text = ctx["prompts"].user_turn(t, condition, world)
         state, rec = await _model_turn(state, generate, log, t, text, ctx["max_rounds"],
                                        ctx["roots"])
         if rec["error"]:
@@ -373,7 +373,7 @@ def _run_id(batch: str, model: str, unit_id: str, condition: str) -> str:
 # The solver
 # --------------------------------------------------------------------------
 @solver
-def eight_turns(prompts: Prompts, option: str, max_rounds: int, batch: str,
+def eight_turns(prompts: Prompts, max_rounds: int, batch: str,
                 machine: str, run_settings: dict):
     async def solve(state: TaskState, generate: Generate) -> TaskState:
         md = state.metadata
@@ -390,26 +390,29 @@ def eight_turns(prompts: Prompts, option: str, max_rounds: int, batch: str,
             raise RuntimeError(problem)
         sandbox_in_use = "docker" if cwd == DOCKER_WORKDIR else "local"
         write_roots = WRITE_ROOTS[sandbox_in_use]
-        ctx = {"prompts": prompts, "option": option, "max_rounds": max_rounds,
-               "roots": write_roots}
+        ctx = {"prompts": prompts, "max_rounds": max_rounds, "roots": write_roots}
         settings_sent = _settings_sent()
 
         def header(condition: str, run_id: str, parent: str | None) -> dict:
+            kind, wording = Prompts.split_condition(condition)
             return {
                 "run_id": run_id, "parent_run_id": parent,
                 "branched_after_turn": 2 if parent else None,
-                "condition": condition, "model": model,
+                # condition carries the wording (before_B, after_D); the two
+                # fields after it split it out for convenience
+                "condition": condition, "condition_kind": kind,
+                "expectation_wording": wording, "model": model,
                 "world": world, "dataset_seed": md["seed"],
                 "dataset_rank": md["dataset_rank"], "replicate": md["replicate"],
                 "unit_id": md["unit_id"], "order_index": md["order_index"],
                 "machine_index": md["machine_index"], "machine": machine,
                 "batch": batch, "access_time_utc": _now(),
-                "expectation_option": option,
-                "expectation_sentence": prompts.expectation(world, option),
+                "expectation_sentence": prompts.expectation(world, wording) if wording else None,
+                "board_sentence_included": bool(prompts.raw.get("include_board_sentence")),
                 "prompts_version": prompts.raw.get("version"),
                 "prompts_sha256": prompts.sha256,
                 "system_prompt": prompts.system,
-                "user_turns": {t: prompts.user_turn(t, condition, world, option)
+                "user_turns": {t: prompts.user_turn(t, condition, world)
                                for t in (1, 3, 5, 7)},
                 "tool": {"name": TOOL_NAME, "description": TOOL_DESCRIPTION,
                          "parameters": {"code": TOOL_PARAMETER_DESCRIPTION}},
@@ -431,26 +434,28 @@ def eight_turns(prompts: Prompts, option: str, max_rounds: int, batch: str,
         state.messages = [ChatMessageSystem(content=prompts.system)]
         state.tools = [python_tool()]
 
-        if md["kind"] == "before":
-            rid = _run_id(batch, model, md["unit_id"], "before")
-            log = RunLog(outdir / f"{rid}.jsonl", header("before", rid, None))
-            state.store.set("run_ids", {"before": rid})
-            return await _run_turns(state, generate, log, (1, 3, 5, 7), "before", world, ctx)
+        if md["kind"].startswith("before"):
+            condition = md["conditions"][0]                     # before_B, before_D, ...
+            rid = _run_id(batch, model, md["unit_id"], condition)
+            log = RunLog(outdir / f"{rid}.jsonl", header(condition, rid, None))
+            state.store.set("run_ids", {condition: rid})
+            return await _run_turns(state, generate, log, (1, 3, 5, 7), condition, world, ctx)
 
-        # A pair: Never, then the After run branched from it after turn 2.
+        # A pair: Never, then one After run per wording, each branched from the
+        # Never run's turn 2 with the sandbox files restored.
         never_id = _run_id(batch, model, md["unit_id"], "never")
-        after_id = _run_id(batch, model, md["unit_id"], "after")
-        state.store.set("run_ids", {"never": never_id, "after": after_id})
+        after_ids = {c: _run_id(batch, model, md["unit_id"], c)
+                     for c in md["conditions"] if c.startswith("after")}
+        state.store.set("run_ids", {"never": never_id, **after_ids})
         never = RunLog(outdir / f"{never_id}.jsonl", header("never", never_id, None))
 
         state, t2 = await _model_turn(state, generate, never, 1,
-                                      prompts.user_turn(1, "never", world, option),
+                                      prompts.user_turn(1, "never", world),
                                       max_rounds, write_roots)
-        with_after = "after" in md["conditions"]
         if t2["error"]:
             never.write({"record": "end", "completed_turn": 0, "error": t2["error"]})
-            if with_after:   # logged, so failure counts per condition stay complete
-                RunLog(outdir / f"{after_id}.jsonl", header("after", after_id, never_id)).write(
+            for c, aid in after_ids.items():   # logged, so failure counts per cell stay complete
+                RunLog(outdir / f"{aid}.jsonl", header(c, aid, never_id)).write(
                     {"record": "end", "completed_turn": 0,
                      "error": "the Never run it branches from failed before turn 2"})
             return state
@@ -458,13 +463,13 @@ def eight_turns(prompts: Prompts, option: str, max_rounds: int, batch: str,
         branch_messages = copy.deepcopy(state.messages)
         try:
             branch_files, branch_error = await _snapshot(write_roots), None
-        except Exception as ex:   # the Never run goes on; its After run cannot
+        except Exception as ex:   # the Never run goes on; its After runs cannot
             branch_files, branch_error = {}, f"snapshot at turn 2 failed: {type(ex).__name__}: {ex}"
 
         state = await _run_turns(state, generate, never, (3, 5, 7), "never", world, ctx)
 
-        if with_after:
-            after = RunLog(outdir / f"{after_id}.jsonl", header("after", after_id, never_id))
+        for c, aid in after_ids.items():
+            after = RunLog(outdir / f"{aid}.jsonl", header(c, aid, never_id))
             after.write({**t2, "shared_with": never_id})   # turns 1-2 are the Never run's
             try:
                 if branch_error:
@@ -473,9 +478,10 @@ def eight_turns(prompts: Prompts, option: str, max_rounds: int, batch: str,
             except Exception as ex:
                 after.write({"record": "end", "completed_turn": 2,
                              "error": f"sandbox restore failed: {ex}"})
-                return state
-            state.messages = branch_messages
-            state = await _run_turns(state, generate, after, (3, 5, 7), "after", world, ctx)
+                continue                                   # the next wording may still run
+            # A fresh copy per branch: After-B's turns must never reach After-D.
+            state.messages = copy.deepcopy(branch_messages)
+            state = await _run_turns(state, generate, after, (3, 5, 7), c, world, ctx)
         return state
 
     return solve
@@ -494,24 +500,32 @@ def cave_or_hold(
     datasets: str = "first5",
     runs_per_cell: int = 5,
     conditions: str = "never,before,after",
+    wordings: str = "B",
+    wording_worlds: str = "",
     shuffle_seed: int = 20261113,
     n_machines: int = 1,
     machine_index: int = 0,
-    expectation_option: str = "A",
     batch: str = "dev",
     sandbox_kind: str = "docker",
     max_tool_rounds: int = 30,
     limit_units: int = 0,
 ) -> Task:
+    """conditions: the kinds (never, before, after). wordings: the expectation
+    wordings, each its own Before and After cell (main runs: B,D). wording_worlds:
+    limits a wording to some worlds, e.g. D:underpowered+confounded."""
     prompts = Prompts.load()
-    if expectation_option not in prompts.raw["expectation"]:
-        raise ValueError(f"expectation_option must be one of {list(prompts.raw['expectation'])}")
+    wording_list = _split(wordings) if wordings else []
+    unknown = set(wording_list) - set(prompts.wordings)
+    if unknown:
+        raise ValueError(f"wordings {sorted(unknown)} are not in prompts/turns.toml "
+                         f"(have {prompts.wordings})")
     if int(n_machines) < 1 or not 0 <= int(machine_index) < int(n_machines):
         raise ValueError(f"machine_index must be 0..{int(n_machines) - 1} for n_machines={n_machines}")
     if sandbox_kind not in ("docker", "local"):
         raise ValueError("sandbox_kind must be 'docker' or 'local'")
     units = planmod.deal(planmod.build(_split(worlds), datasets, int(runs_per_cell),
-                                       _split(conditions), int(shuffle_seed)),
+                                       _split(conditions), int(shuffle_seed), wording_list,
+                                       planmod.parse_wording_worlds(wording_worlds)),
                          int(n_machines))
     mine = [u for u in units if u.machine_index == int(machine_index)]
     if limit_units:
@@ -521,6 +535,7 @@ def cave_or_hold(
         "shuffle_seed": int(shuffle_seed), "runs_per_cell": int(runs_per_cell),
         "datasets_used": datasets, "n_machines": int(n_machines),
         "worlds": _split(worlds), "conditions": _split(conditions),
+        "wordings": wording_list, "wording_worlds": wording_worlds,
         "limit_units": int(limit_units),
         "n_units_in_full_plan": len(units),
         # Harness-side only: decides when Inspect itself truncates tool output.
@@ -541,8 +556,7 @@ def cave_or_hold(
         "tool_output_cap_message": f"[output truncated at {TOOL_OUTPUT_CAP} characters]",
         "tool_timeout_seconds": 180,
     }
-    samples = [Sample(id=u.unit_id, input=prompts.user_turn(1, u.conditions[0], u.world,
-                                                           expectation_option),
+    samples = [Sample(id=u.unit_id, input=prompts.user_turn(1, u.conditions[0], u.world),
                       metadata=u.as_metadata(),
                       files={"branches.csv": u.path})
                for u in mine]
@@ -556,6 +570,5 @@ def cave_or_hold(
     # that error out are re-run with `inspect eval-retry` or `--sample-id`.
     return Task(config=TASK_CONFIG,
                 dataset=MemoryDataset(samples, shuffled=False),
-                solver=eight_turns(prompts, expectation_option, int(max_tool_rounds),
-                                   batch, machine, run_settings),
+                solver=eight_turns(prompts, int(max_tool_rounds), batch, machine, run_settings),
                 tools=None, sandbox=sb, fail_on_error=False)

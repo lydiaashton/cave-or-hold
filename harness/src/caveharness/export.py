@@ -18,8 +18,16 @@ summaries folder.
                                   no thinking
         thinking/<id>.txt         the thinking trace and/or reasoning summary the
                                   provider returned for this turn
+    scoring/
+      batch1/summaries/<id>.txt   turn-4 summaries for human scorers
+      batch2/summaries/<id>.txt   turn-6 and turn-8 summaries, released after batch 1
+                                  Only the primary model's never, before_B and
+                                  after_B cells (--primary-model, --scoring-wording,
+                                  --scoring-per-cell). Other wordings go to judges only
     key/
-      KEY.csv                     summary ID -> run, condition, turn, model, dataset
+      KEY.csv                     summary ID -> run, condition (kind and wording),
+                                  turn, model, dataset, quotes_expectation_sentence
+      scoring_sets.csv            which summaries went into each scoring batch
       id_secret.txt               the secret the summary IDs are made from
       run_stats.csv               per run: tokens, cost, completion, errors, tool use
       analysis_estimates.csv      per run x turn: the numbers behind each summary
@@ -55,9 +63,10 @@ from pathlib import Path
 from caveharness.config import EXPORTS_DIR, HARNESS_DIR, RUNS_DIR
 from caveharness.costs import cost, load_prices
 from caveharness.estimates import OTHER_P, per_turn, table_estimates, without_tables
+from caveharness.prompts import Prompts
 
 TURNS = (2, 4, 6, 8)
-EXPORT_OWNED = ("T2", "T4", "T6", "T8", "key", "judges")   # never "judging"
+EXPORT_OWNED = ("T2", "T4", "T6", "T8", "key", "judges", "scoring")   # never "judging"
 PLACEHOLDER = "[model reasoning omitted]"
 # <think>...</think> and <thinking>...</thinking>, with or without attributes.
 THINK = re.compile(r"<(think(?:ing)?)\b[^>]*>.*?</\1>", re.S | re.I)
@@ -298,6 +307,23 @@ def summary_id(secret: str, turn: int, owner_run_id: str) -> str:
                     hashlib.sha256).hexdigest()[:ID_LENGTH]
 
 
+def _norm(text: str) -> str:
+    return " ".join(text.lower().replace("*", "").split()).rstrip(".")
+
+
+EXPECTATION_SENTENCES = [_norm(s) for s in Prompts.load().all_expectation_sentences()]
+
+
+def quotes_expectation_sentence(text: str | None) -> bool:
+    """Whether the summary repeats one of the expectation sentences word for
+    word (any wording, A to D). A narrow text check, not a disclosure measure:
+    a paraphrase ("the team hoped for an effect") is not caught, and a Never
+    summary saying "expected gains" is no longer counted, as the old
+    "contains 'expect'" check did. Disclosure is judged by form B."""
+    t = _norm(clean(text))
+    return any(s in t for s in EXPECTATION_SENTENCES)
+
+
 def write_turn_folders(runs: dict, root: Path, secret: str) -> list[dict]:
     """The T2/T4/T6/T8 folders. Returns the key rows (summary ID -> run)."""
     used, key = set(), []
@@ -326,17 +352,61 @@ def write_turn_folders(runs: dict, root: Path, secret: str) -> list[dict]:
                        for i, v in enumerate(analysis_values(run, t), 1)]
             for rid in rids:
                 h = runs[rid]["header"]
+                kind, _, wording = h["condition"].partition("_")
                 key.append({"summary_id": sid, "turn": t, "run_id": rid,
-                            "condition": h["condition"], "parent_run_id": h["parent_run_id"] or "",
+                            "condition": h["condition"], "condition_kind": kind,
+                            "expectation_wording": wording or h.get("expectation_option") or "",
+                            "parent_run_id": h["parent_run_id"] or "",
                             "model": h["model"], "world": h["world"],
                             "dataset_seed": h["dataset_seed"], "replicate": h["replicate"],
                             "machine": h["machine"],
-                            "mentions_expectation": "expect" in clean(rec["text"]).lower()})
+                            "quotes_expectation_sentence": quotes_expectation_sentence(rec["text"])})
         # Rows in ID order: the order carries no information about the runs.
         values.sort(key=lambda v: (v["summary_id"], v["row"]))
         write_csv(tdir / "analysis" / "analysis_values.csv", values)
     key.sort(key=lambda k: (k["turn"], k["summary_id"], k["run_id"]))
     return key
+
+
+def write_scoring_sets(runs: dict, key: list[dict], root: Path, secret: str,
+                       primary_model: str, wording: str, per_cell: int) -> list[dict]:
+    """The summaries human scorers grade (study lead, 13 Nov): only the primary
+    model's Never, before_<wording> and after_<wording> cells. Other wordings
+    (D) go to the LLM judges only.
+
+    scoring/batch1/summaries/ holds turn 4; scoring/batch2/summaries/ turns 6
+    and 8 of the same runs, released only after every scorer finishes batch 1.
+    Files and IDs are the T4/T6/T8 ones, so nothing new needs keying. With
+    per_cell, an equal number of runs per world x cell is drawn, in an order
+    fixed by the batch secret (the same draw on every re-export). Returns the
+    rows for key/scoring_sets.csv."""
+    cells = ("never", f"before_{wording}", f"after_{wording}")
+    pool: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for rid, run in runs.items():
+        h = run["header"]
+        if h["model"] == primary_model and h["condition"] in cells:
+            pool[(h["world"], h["condition"])].append(rid)
+    draw = lambda rid: hmac.new(secret.encode(), f"draw|{rid}".encode(), hashlib.sha256).hexdigest()
+    drawn = set()
+    for k in sorted(pool):
+        ranked = sorted(pool[k], key=draw)
+        drawn |= set(ranked[:per_cell] if per_cell else ranked)
+    ids = {(k["run_id"], k["turn"]): k["summary_id"] for k in key}
+    rows = []
+    for batch, turns in ((1, (4,)), (2, (6, 8))):
+        out = root / "scoring" / f"batch{batch}" / "summaries"
+        out.mkdir(parents=True, exist_ok=True)
+        for rid in sorted(drawn):
+            for t in turns:
+                sid = ids.get((rid, t))
+                if sid is None:          # that turn is not gradeable (failed, or blank)
+                    continue
+                shutil.copyfile(root / f"T{t}" / "summaries" / f"{sid}.txt", out / f"{sid}.txt")
+                h = runs[rid]["header"]
+                rows.append({"summary_id": sid, "scoring_batch": batch, "turn": t, "run_id": rid,
+                             "condition": h["condition"], "world": h["world"],
+                             "dataset_seed": h["dataset_seed"]})
+    return sorted(rows, key=lambda r: (r["scoring_batch"], r["summary_id"]))
 
 
 # --------------------------------------------------------------------------
@@ -447,11 +517,21 @@ def main() -> None:
                     help="Inspect log folder, for deployment fingerprints")
     ap.add_argument("--replace-ids", action="store_true",
                     help="re-export a batch made before keyed IDs, renaming every summary")
+    ap.add_argument("--primary-model", default=None,
+                    help="model whose summaries humans score; default: the batch's only model")
+    ap.add_argument("--scoring-wording", default="B",
+                    help="the wording whose Before/After cells humans score (others: judges only)")
+    ap.add_argument("--scoring-per-cell", type=int, default=0,
+                    help="runs per world x cell for human scoring (0 = all)")
     a = ap.parse_args()
 
     runs = load_runs(a.batch)
     if not runs:
         raise SystemExit(f"no runs under {RUNS_DIR / a.batch}")
+    models = sorted({r["header"]["model"] for r in runs.values()})
+    primary = a.primary_model or (models[0] if len(models) == 1 else None)
+    if primary is None:
+        raise SystemExit(f"several models in the batch; pass --primary-model (one of {models})")
     root = EXPORTS_DIR / a.batch
     secret = _secret(root, a.replace_ids)
     for name in EXPORT_OWNED:   # regenerated whole; judging/ belongs to the judge runner
@@ -461,6 +541,9 @@ def main() -> None:
 
     key = write_turn_folders(runs, root, secret)
     write_csv(root / "key" / "KEY.csv", key)
+    scoring = write_scoring_sets(runs, key, root, secret, primary, a.scoring_wording,
+                                 a.scoring_per_cell)
+    write_csv(root / "key" / "scoring_sets.csv", scoring)
     stats = run_stats(runs, fingerprints(Path(a.logs), set(runs)), load_prices())
     write_csv(root / "key" / "run_stats.csv", stats)
     write_csv(root / "key" / "analysis_estimates.csv",
@@ -478,13 +561,20 @@ def main() -> None:
         "batch": a.batch,
         "exported_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "summary_ids": "HMAC-SHA256(key/id_secret.txt, 'T<turn>|<run_id>')[:10]",
-        "models": sorted({r["header"]["model"] for r in runs.values()}),
+        "models": models, "primary_model": primary,
+        "human_scoring": {"cells": ["never", f"before_{a.scoring_wording}",
+                                    f"after_{a.scoring_wording}"],
+                          "per_cell": a.scoring_per_cell or "all",
+                          "batch1_summaries": sum(r["scoring_batch"] == 1 for r in scoring),
+                          "batch2_summaries": sum(r["scoring_batch"] == 2 for r in scoring)},
         "runs": len(runs), "summaries_per_turn": per_turn_ids,
         "judge_items": len(judge), "judge_log_cap_chars": JUDGE_LOG_CAP,
         "judge_log_keep_per_call_chars": CALL_OUTPUT_KEEP}, indent=1), encoding="utf-8")
     print(f"{len(runs)} runs -> {sum(per_turn_ids.values())} summaries "
           f"({', '.join(f'T{t}: {n}' for t, n in per_turn_ids.items())}), "
-          f"{len(judge)} judge items\nwritten to {root}")
+          f"{len(judge)} judge items; human scoring: "
+          f"{sum(r['scoring_batch'] == 1 for r in scoring)} in batch 1, "
+          f"{sum(r['scoring_batch'] == 2 for r in scoring)} in batch 2\nwritten to {root}")
 
 
 if __name__ == "__main__":

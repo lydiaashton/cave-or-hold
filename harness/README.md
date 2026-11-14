@@ -66,16 +66,22 @@ Each sandbox takes up to 2 GB; if Docker Desktop has little memory, add
 | `worlds` | comma list: underpowered, confounded, strong |
 | `datasets` | `first5` (the five lowest seeds per world) or `all` (ten) |
 | `runs_per_cell` | runs per world x condition; must be a multiple of the datasets used |
-| `conditions` | default `never,before,after`; After needs Never |
+| `conditions` | the kinds, default `never,before,after`; After needs Never |
+| `wordings` | expectation wordings, each its own Before and After cell; default `B`. Main runs: `B,D` gives never, before_B, after_B, before_D, after_D. There is no fallback wording |
+| `wording_worlds` | limits a wording to some worlds, e.g. `D:underpowered+confounded` (default: every wording in every world) |
 | `shuffle_seed` | seed for the run order; recorded in every run |
 | `n_machines`, `machine_index` | every machine passes the same plan and its own index (0-based) |
-| `expectation_option` | A (default), B, C or D from the prompt draft |
 | `batch` | name for this set of runs; logs go to `runs/<batch>/` |
 | `limit_units` | run only the first N units (smoke tests; breaks balance) |
 | `sandbox_kind` | `docker` (required for real runs) or `local` (development only) |
 
-A unit is one Inspect sample: a Never run plus the After run branched from it,
-or a Before run. Every machine builds the same shuffled plan from the same
+A unit is one Inspect sample: a Never run plus one After run per wording, all
+branched from its turn 2 with the sandbox restored for each, or a Before run.
+Which models run D is decided by which runs you pass `wordings=B,D` to.
+
+The board sentence ("The board will use your summary to decide...") is switched
+in `prompts/turns.toml` (`include_board_sentence`, off by default): it is part
+of the wording the study lead signs off, so it lives with the prompts. Every machine builds the same shuffled plan from the same
 seed and takes its share (round-robin within each world x condition stratum).
 
 Other models: `openai-api/adaption/glm-5.2`; Claude needs `ANTHROPIC_API_KEY`
@@ -86,7 +92,7 @@ and `--model anthropic/claude-opus-5` (not yet tested live).
     uv run python -m caveharness.status --batch pilot1 --model openai-api/adaption/qwen3.5-397b \
         --worlds underpowered,confounded --datasets first5 --runs-per-cell 5 --n-machines 2
 
-Same plan arguments as the run. Rebuilds the plan, writes it with each run's
+Same plan arguments as the run (`--wordings`, `--wording-worlds` too). Rebuilds the plan, writes it with each run's
 status to `runs/<batch>/plan_<model>.csv`, and prints per machine how many runs
 have turn 4 on disk, the runs by machine x world x condition (handoff 8: machine
 must not stand in for condition), and the `--sample-id` list that re-runs only
@@ -115,9 +121,20 @@ they receive only the scoring page built from a `summaries/` folder.
           thinking/<id>.txt         the thinking trace / reasoning summary the provider returned
       key/        KEY.csv (summary ID -> run, condition, turn, model, dataset), id_secret.txt,
                   run_stats.csv, analysis_estimates.csv, manifest.json, pilot_report.md
+      scoring/    batch1/summaries (turn 4) and batch2/summaries (turns 6 and 8): what
+                  human scorers grade. Only the primary model's never, before_B and
+                  after_B cells; other wordings (D) go to the judges only
       judges/     judge_items.jsonl (what the judges may see: no user messages, condition
                   or thinking)
       judging/    written by the judge runner (below); the export never deletes it
+
+Options: `--primary-model` (whose summaries humans score; default the batch's
+only model), `--scoring-wording` (default `B`), `--scoring-per-cell N` (an equal
+number of runs per world x cell, drawn the same way on every re-export; default
+all). The scoring page is built from `scoring/batch1/summaries`; batch 2 is
+released only after every scorer finishes batch 1. `key/scoring_sets.csv` lists
+what went where. `quotes_expectation_sentence` in the key is a narrow text check
+(the expectation sentence repeated word for word), not a disclosure measure.
 
 Summary IDs are a keyed hash of (turn, run) under a secret made once per batch
 (`key/id_secret.txt`). Every summary keeps its ID on every re-export, even when
