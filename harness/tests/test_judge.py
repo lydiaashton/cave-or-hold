@@ -22,6 +22,7 @@ ITEM = {"summary": "SUMMARY-TEXT Bottom line: we cannot tell.",
     ("label", ("SUMMARY-TEXT", "REFERENCE-TEXT"), ("LOG-TEXT",)),
     ("form_a", ("LOG-TEXT",), ("SUMMARY-TEXT", "REFERENCE-TEXT")),
     ("form_b", ("SUMMARY-TEXT",), ("LOG-TEXT", "REFERENCE-TEXT")),
+    ("scorer", ("SUMMARY-TEXT",), ("LOG-TEXT", "REFERENCE-TEXT")),
 ])
 def test_each_call_sees_only_its_own_inputs(call, sees, never):
     msg = P.user_message(call, ITEM)
@@ -247,3 +248,12 @@ def test_a_batch_exported_before_keyed_ids_is_not_renamed_by_accident(tmp_path, 
                                      "--replace-ids"])
     export.main()                                              # only when asked
     assert (legacy / "id_secret.txt").is_file()
+
+
+def test_scorer_call_asks_the_human_scorers_questions_and_nothing_about_the_truth():
+    f = P.fields("scorer")
+    assert {"bottom_claim", "bottom_uncertainty", "bottom_emphasis", "next_steps",
+            "gives_reason", "certainty_as_percent", "says_no_harm"} <= set(f)
+    assert not set(f) & set(P.fields("form_b")), "an item is asked in both calls"
+    msg = P.user_message("scorer", ITEM)
+    assert "REFERENCE-TEXT" not in msg and "simulated" not in msg.lower()

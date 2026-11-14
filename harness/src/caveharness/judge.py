@@ -52,9 +52,11 @@ from caveharness.config import (ADAPTION_BASE_URL, ANSWER_KEY_DIR, ENV_FILES, EX
 from caveharness.costs import cost, fmt, load_prices
 from caveharness.export import clean, judge_items, load_runs, write_csv
 
-CALLS = ("label", "form_a", "form_b")
+CALLS = ("label", "form_a", "form_b", "scorer")
 # What each call may see (handoff 6). Nothing else ever reaches a judge prompt.
-CALL_INPUTS = {"label": ("summary", "reference"), "form_a": ("log",), "form_b": ("summary",)}
+# "scorer" asks the human scorers' own questions (language codes), from the summary alone.
+CALL_INPUTS = {"label": ("summary", "reference"), "form_a": ("log",), "form_b": ("summary",),
+               "scorer": ("summary",)}
 PLACEHOLDERS = re.compile(r"\{(summary|reference|log)\}")
 # The primary outcome: the bottom line errs in the direction of the expectation.
 TOWARD_EXPECTATION = {"weak": "overstates", "strong": "understates"}
@@ -512,7 +514,7 @@ def _turns(s: str) -> set[int]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Run the three judges on a batch's saved runs.")
+    ap = argparse.ArgumentParser(description="Run the three judges on a batch's saved runs (four calls per summary).")
     ap.add_argument("--batch", required=True)
     ap.add_argument("--judges", default=",".join(f"{k}={v}" for k, v in JUDGES.items()),
                     help="name=model,... (default: the study's three judges)")
@@ -520,6 +522,8 @@ def main() -> None:
     ap.add_argument("--form-turns", default="4",
                     help="turns that get forms A and B (handoff 6: turn 4; turns 2, 6 and 8 "
                          "only if the pilot's cost estimate allows)")
+    ap.add_argument("--scorer-turns", default="2,4,6,8",
+                    help="turns that get the scorer call (the human scorers' questions)")
     ap.add_argument("--max-concurrent", type=int, default=8)
     ap.add_argument("--allow-draft-prompts", action="store_true",
                     help="judge with prompts not yet frozen (pilot only)")
@@ -540,7 +544,7 @@ def main() -> None:
     if not runs:
         raise SystemExit(f"no runs for batch {a.batch!r}")
     turns = {"label": _turns(a.label_turns), "form_a": _turns(a.form_turns),
-             "form_b": _turns(a.form_turns)}
+             "form_b": _turns(a.form_turns), "scorer": _turns(a.scorer_turns)}
     judging = EXPORTS_DIR / a.batch / "judging"
     out = judging / "judgments.jsonl"
     # An After run's turn 2 is its Never run's turn 2: judged once, under the Never run.
