@@ -33,13 +33,26 @@ from inspect_ai.util import OutputLimitExceededError, sandbox, store
 
 from caveharness import plan as planmod
 from caveharness.config import HARNESS_DIR, RUNS_DIR
+from caveharness.export import PLACEHOLDER, clean
 from caveharness.prompts import Prompts
 
 TOOL_NAME = "python"
 TOOL_DESCRIPTION = ("Run Python code in the working directory and return what it "
                     "printed. Each call starts a new Python process. Files written "
                     "to the working directory are kept between calls.")
+TOOL_PARAMETER_DESCRIPTION = "The Python code to run."
 COMPOSE = HARNESS_DIR / "sandbox" / "compose.yaml"
+# Where the model's code can write. In Docker that is /work, /tmp and /dev/shm
+# (the rest of the container is read-only, see sandbox/compose.yaml), all
+# snapshotted for the After branch. The local sandbox is the host: only its
+# working directory is ever touched. Which one applies is decided from the
+# sandbox actually running (its working directory), never from a parameter,
+# so an Inspect --sandbox override can never clear the host's /tmp.
+WRITE_ROOTS = {"docker": (".", "/tmp", "/dev/shm"), "local": (".",)}
+DOCKER_WORKDIR = "/work"
+DATASET_HEADER = ("branch_id,week,switched_branch,after_switch,service_score,"
+                  "staffing_index,visits_index")
+OFFLINE_MODELS = ("cavefake/", "mockllm/")   # may use the local sandbox
 TOOL_OUTPUT_CAP = 20_000              # characters the model is shown per tool call
 INSPECT_MAX_TOOL_OUTPUT = 10_000_000  # bytes; keeps Inspect's own truncation out of the way
 TASK_CONFIG = GenerateConfig(max_tool_output=INSPECT_MAX_TOOL_OUTPUT)
@@ -102,26 +115,72 @@ def python_tool(timeout: int = 180, max_output: int = TOOL_OUTPUT_CAP):
 # --------------------------------------------------------------------------
 # Sandbox file listing, snapshot and restore
 # --------------------------------------------------------------------------
-_LIST = ("import os,json;print(json.dumps(sorted([[os.path.relpath(os.path.join(r,f)),"
-         "os.path.getsize(os.path.join(r,f)),os.path.getmtime(os.path.join(r,f))]"
-         " for r,_,fs in os.walk('.') for f in fs])))")
-_CLEAR = ("import os,shutil\nfor p in os.listdir('.'):\n"
-          "    shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)")
+# Both scripts take the write roots as arguments. Paths under "." are relative
+# (as before), others absolute. Only regular files are listed (a link to a
+# file is restored as a copy, as before; dangling links, sockets and pipes are
+# skipped), and /tmp/mpl is matplotlib's cache, not the model's.
+_LIST = """\
+import json, os, sys
+out = []
+for root in sys.argv[1:]:
+    for r, ds, fs in os.walk(root):
+        if r == '/tmp':
+            ds[:] = [d for d in ds if d != 'mpl']
+        for f in fs:
+            p = os.path.normpath(os.path.join(r, f))
+            if os.path.isfile(p):
+                st = os.stat(p)
+                out.append([p, st.st_size, st.st_mtime])
+print(json.dumps(sorted(out)))
+"""
+_CLEAR = """\
+import os, shutil, sys
+for root in sys.argv[1:]:
+    for name in os.listdir(root):
+        p = os.path.join(root, name)
+        if root == '/tmp' and name == 'mpl':
+            continue
+        if os.path.isdir(p) and not os.path.islink(p):
+            shutil.rmtree(p)
+        else:
+            os.remove(p)
+"""
 
 
-async def _files() -> dict[str, tuple[int, float]]:
-    r = await sandbox().exec(["python", "-c", _LIST])
-    return {p: (s, m) for p, s, m in json.loads(r.stdout or "[]")}
+async def _files(roots: tuple[str, ...]) -> dict[str, tuple[int, float]]:
+    r = await sandbox().exec(["python", "-c", _LIST, *roots])
+    if not r.success:   # never read a failed listing as "no files"
+        raise RuntimeError(f"listing the sandbox files failed: {r.stderr.strip()[-500:]}")
+    return {p: (s, m) for p, s, m in json.loads(r.stdout)}
 
 
-async def _snapshot() -> dict[str, bytes]:
-    return {p: await sandbox().read_file(p, text=False) for p in await _files()}
+async def _snapshot(roots: tuple[str, ...]) -> dict[str, bytes]:
+    return {p: await sandbox().read_file(p, text=False) for p in await _files(roots)}
 
 
-async def _restore(snap: dict[str, bytes]) -> None:
-    await sandbox().exec(["python", "-c", _CLEAR])
+async def _restore(snap: dict[str, bytes], roots: tuple[str, ...]) -> None:
+    r = await sandbox().exec(["python", "-c", _CLEAR, *roots])
+    if not r.success:
+        raise RuntimeError(f"clearing the sandbox failed: {r.stderr.strip()[-500:]}")
     for p, data in snap.items():
         await sandbox().write_file(p, data)
+
+
+def _sandbox_problem(model: str, cwd: str, first_line: str) -> str | None:
+    """Why this sandbox must not run this model, or None (handoff 2, work plan 3).
+
+    Real models need the Docker sandbox: the local one runs their code on the
+    host, where the answer key, the world-named folders and the API keys are
+    readable. This also catches an Inspect --sandbox override, which the run
+    header would not show. And branches.csv must be a dataset file: if its
+    host file vanished, Inspect would have written the host path (which names
+    the world) into it instead."""
+    if first_line != DATASET_HEADER:
+        return "branches.csv in the sandbox is not a dataset file"
+    if cwd != DOCKER_WORKDIR and not model.startswith(OFFLINE_MODELS):
+        return ("real models must run in the Docker sandbox (harness/sandbox/compose.yaml); "
+                "the local sandbox is for the offline fake model only")
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -178,17 +237,19 @@ def _reasoning(m: ChatMessageAssistant) -> list[dict]:
 
 
 async def _model_turn(state: TaskState, generate: Generate, log: RunLog,
-                      user_turn: int, text: str, max_rounds: int) -> tuple[TaskState, dict]:
+                      user_turn: int, text: str, max_rounds: int,
+                      roots: tuple[str, ...]) -> tuple[TaskState, dict]:
     """Send one user turn, run the tool loop, log the model turn. Returns its record."""
     state.messages.append(ChatMessageUser(content=text))
     store().set("full_outputs", [])   # nothing left over from an earlier failed turn
     rec: dict = {"record": "turn", "user_turn": user_turn, "turn": user_turn + 1,
                  "user_message": text, "started": _now(), "text": None,
+                 "assistant_messages": [],
                  "tool_calls": [], "code_tool_called": False, "reasoning": [],
                  "usage": {}, "model_calls": 0, "returned_models": [],
                  "stop_reasons": [], "files_saved": [], "error": None}
     try:
-        before = await _files()
+        before = await _files(roots)
     except Exception as ex:
         before = {}
         rec["files_listing_error"] = f"{type(ex).__name__}: {ex}"
@@ -207,6 +268,10 @@ async def _model_turn(state: TaskState, generate: Generate, log: RunLog,
             assistants = [m for m in new if isinstance(m, ChatMessageAssistant)]
             for a in assistants:
                 rec["reasoning"] += _reasoning(a)
+                # Every assistant message (handoff 5), including text written
+                # next to a tool call; "text" below stays the turn's last reply.
+                rec["assistant_messages"].append(
+                    {"text": a.text, "tool_call_ids": [tc.id for tc in a.tool_calls or []]})
                 for tc in a.tool_calls or []:
                     res = results.get(tc.id)
                     code = (tc.arguments or {}).get("code")
@@ -228,12 +293,24 @@ async def _model_turn(state: TaskState, generate: Generate, log: RunLog,
                 break
         else:
             rec["error"] = f"tool-round cap of {max_rounds} reached before a final reply"
+        # Inspect returns some provider failures (context length, content
+        # filter) as ordinary replies whose text is the error message. That is
+        # not a summary and must not be graded as one; nor is a blank reply.
+        stop = state.output.stop_reason
+        if rec["error"] is None:
+            if stop in ("model_length", "content_filter"):
+                rec["error"] = f"the provider ended the reply with stop_reason={stop}"
+            elif not clean(rec["text"]).replace(PLACEHOLDER, "").strip():
+                # blank, or only reasoning (e.g. cut off mid-thought): nothing to grade
+                rec["error"] = "the final reply has no text besides reasoning"
+            elif stop == "max_tokens":
+                rec["reply_cut_off"] = True   # kept and graded, but flagged
     except Exception as ex:  # a failed turn ends the run; earlier turns stay logged
         rec["error"] = f"{type(ex).__name__}: {ex}"
     # The turn record must reach disk even if the sandbox has died, so a
     # failed file listing is recorded rather than raised.
     try:
-        after = await _files()
+        after = await _files(roots)
         rec["files_saved"] = sorted(p for p, v in after.items() if before.get(p) != v)
     except Exception as ex:
         rec["files_listing_error"] = f"{type(ex).__name__}: {ex}"
@@ -246,7 +323,8 @@ async def _model_turn(state: TaskState, generate: Generate, log: RunLog,
 async def _run_turns(state, generate, log, turns, condition, world, ctx) -> TaskState:
     for t in turns:
         text = ctx["prompts"].user_turn(t, condition, world, ctx["option"])
-        state, rec = await _model_turn(state, generate, log, t, text, ctx["max_rounds"])
+        state, rec = await _model_turn(state, generate, log, t, text, ctx["max_rounds"],
+                                       ctx["roots"])
         if rec["error"]:
             log.write({"record": "end", "completed_turn": t - 1, "error": rec["error"]})
             return state
@@ -270,6 +348,23 @@ def _access(model: str) -> dict:
             "base_url": base_url}
 
 
+def _settings_sent() -> dict:
+    """Generation settings in effect (handoff 3: record, don't set). The harness
+    sets none. This records anything given on the command line, and the
+    max_tokens Inspect itself sends where a provider requires one (Anthropic:
+    32,000 for Claude 5); null means none is sent."""
+    try:
+        # Not exported publicly by Inspect; inspect-ai is pinned in uv.lock.
+        from inspect_ai.model._generate_config import active_generate_config
+        m = get_model()
+        cfg = m.config.merge(active_generate_config())
+        return {"generate_config_in_effect": cfg.model_dump(exclude_none=True),
+                "max_tokens_sent": (cfg.max_tokens or m.api.max_tokens_for_config(cfg)
+                                    or m.api.max_tokens())}
+    except Exception as ex:   # reporting only: never fail a run over it
+        return {"settings_sent_error": f"{type(ex).__name__}: {ex}"}
+
+
 def _run_id(batch: str, model: str, unit_id: str, condition: str) -> str:
     return hashlib.sha256(f"{batch}|{model}|{unit_id}|{condition}".encode()).hexdigest()[:16]
 
@@ -284,8 +379,20 @@ def eight_turns(prompts: Prompts, option: str, max_rounds: int, batch: str,
         md = state.metadata
         model = str(state.model)
         world = md["world"]
-        ctx = {"prompts": prompts, "option": option, "max_rounds": max_rounds}
         outdir = RUNS_DIR / batch / machine
+
+        # Before anything is sent or logged: is this a sandbox the model may use?
+        probe = await sandbox().exec(["python", "-c", "import os; print(os.getcwd()); "
+                                      "print(open('branches.csv').readline().strip())"])
+        cwd, first_line = (probe.stdout.splitlines() + ["", ""])[:2]
+        problem = _sandbox_problem(model, cwd, first_line)
+        if problem:
+            raise RuntimeError(problem)
+        sandbox_in_use = "docker" if cwd == DOCKER_WORKDIR else "local"
+        write_roots = WRITE_ROOTS[sandbox_in_use]
+        ctx = {"prompts": prompts, "option": option, "max_rounds": max_rounds,
+               "roots": write_roots}
+        settings_sent = _settings_sent()
 
         def header(condition: str, run_id: str, parent: str | None) -> dict:
             return {
@@ -304,11 +411,18 @@ def eight_turns(prompts: Prompts, option: str, max_rounds: int, batch: str,
                 "system_prompt": prompts.system,
                 "user_turns": {t: prompts.user_turn(t, condition, world, option)
                                for t in (1, 3, 5, 7)},
-                "tool": {"name": TOOL_NAME, "description": TOOL_DESCRIPTION},
+                "tool": {"name": TOOL_NAME, "description": TOOL_DESCRIPTION,
+                         "parameters": {"code": TOOL_PARAMETER_DESCRIPTION}},
                 "access": _access(model),
-                "sampling_settings": "none set by the harness: provider defaults "
-                                     "(no temperature, max tokens, seed or thinking "
-                                     "parameter is sent)",
+                "sampling_settings": "none set by the harness: provider defaults. "
+                                     "generate_config_in_effect lists anything given on "
+                                     "the command line; max_tokens_sent is the value "
+                                     "Inspect itself sends where the provider requires "
+                                     "one (null: none sent)",
+                **settings_sent,
+                # what actually ran (an Inspect --sandbox override can differ
+                # from -T sandbox_kind, which run_settings records)
+                "sandbox_in_use": sandbox_in_use, "restored_paths": list(write_roots),
                 "post_processing": "none in this log; exports replace inline "
                                    "<think> blocks with a placeholder",
                 **run_settings,
@@ -331,21 +445,36 @@ def eight_turns(prompts: Prompts, option: str, max_rounds: int, batch: str,
 
         state, t2 = await _model_turn(state, generate, never, 1,
                                       prompts.user_turn(1, "never", world, option),
-                                      max_rounds)
+                                      max_rounds, write_roots)
+        with_after = "after" in md["conditions"]
         if t2["error"]:
             never.write({"record": "end", "completed_turn": 0, "error": t2["error"]})
+            if with_after:   # logged, so failure counts per condition stay complete
+                RunLog(outdir / f"{after_id}.jsonl", header("after", after_id, never_id)).write(
+                    {"record": "end", "completed_turn": 0,
+                     "error": "the Never run it branches from failed before turn 2"})
             return state
 
         branch_messages = copy.deepcopy(state.messages)
-        branch_files = await _snapshot()
+        try:
+            branch_files, branch_error = await _snapshot(write_roots), None
+        except Exception as ex:   # the Never run goes on; its After run cannot
+            branch_files, branch_error = {}, f"snapshot at turn 2 failed: {type(ex).__name__}: {ex}"
 
         state = await _run_turns(state, generate, never, (3, 5, 7), "never", world, ctx)
 
-        if "after" in md["conditions"]:
-            await _restore(branch_files)
-            state.messages = branch_messages
+        if with_after:
             after = RunLog(outdir / f"{after_id}.jsonl", header("after", after_id, never_id))
             after.write({**t2, "shared_with": never_id})   # turns 1-2 are the Never run's
+            try:
+                if branch_error:
+                    raise RuntimeError(branch_error)
+                await _restore(branch_files, write_roots)
+            except Exception as ex:
+                after.write({"record": "end", "completed_turn": 2,
+                             "error": f"sandbox restore failed: {ex}"})
+                return state
+            state.messages = branch_messages
             state = await _run_turns(state, generate, after, (3, 5, 7), "after", world, ctx)
         return state
 
@@ -391,6 +520,8 @@ def cave_or_hold(
     run_settings = {
         "shuffle_seed": int(shuffle_seed), "runs_per_cell": int(runs_per_cell),
         "datasets_used": datasets, "n_machines": int(n_machines),
+        "worlds": _split(worlds), "conditions": _split(conditions),
+        "limit_units": int(limit_units),
         "n_units_in_full_plan": len(units),
         # Harness-side only: decides when Inspect itself truncates tool output.
         # Nothing here is sent to the provider.
@@ -398,7 +529,8 @@ def cave_or_hold(
         "sandbox": sandbox_kind,
         "sandbox_image": ("caveharness-sandbox:1 (harness/sandbox/Dockerfile; "
                           "Python 3.11.18, packages in sandbox/requirements.txt; "
-                          "no network; 1 CPU; 2 GB memory)")
+                          "no network; 1 CPU; 2 GB memory; read-only except /work, "
+                          "/tmp and /dev/shm, all restored for the After branch)")
         if sandbox_kind == "docker" else "local (development only)",
         "session_state": "full conversation replayed every call; each tool call is a "
                          "fresh Python process; files persist in the working directory",
@@ -419,8 +551,11 @@ def cave_or_hold(
     # your call to python was too long to be displayed...") that the model
     # reads. Raise its limit far above the tool's own cap so that only the
     # tool's cap, with its one neutral line, ever applies.
+    # fail_on_error=False: one unit whose sandbox dies must not stop every other
+    # unit on this machine. Turn errors are logged by the solver anyway; units
+    # that error out are re-run with `inspect eval-retry` or `--sample-id`.
     return Task(config=TASK_CONFIG,
                 dataset=MemoryDataset(samples, shuffled=False),
                 solver=eight_turns(prompts, expectation_option, int(max_tool_rounds),
                                    batch, machine, run_settings),
-                tools=None, sandbox=sb)
+                tools=None, sandbox=sb, fail_on_error=False)

@@ -41,6 +41,9 @@ class Unit:
 
 def build(worlds: list[str], which: str, runs_per_cell: int,
           conditions: list[str], shuffle_seed: int) -> list[Unit]:
+    unknown = set(conditions) - {"never", "before", "after"}
+    if unknown or not conditions:   # a typo would otherwise drop a whole condition
+        raise ValueError(f"conditions must be among never, before, after; got {conditions}")
     if "after" in conditions and "never" not in conditions:
         raise ValueError("After runs branch from Never runs; include 'never'.")
     units: list[Unit] = []
