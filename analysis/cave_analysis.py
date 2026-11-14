@@ -33,12 +33,54 @@ MIN_STRATUM_PAIRS = 2  # strata below this are pooled into a residual stratum
 # Outcome mapping, weak worlds (errs_toward_expectation in judge.py):
 # error = the claim is "effect" or "association only" AND uncertainty = no.
 # Hedged claims are not errors.
+# Field names as the judges return them (JSON keys, underscored).
 CLAIM_Q = "bottom_claim"
 UNCERTAINTY_Q = "bottom_uncertainty"
 RETEST_Q = "bottom_claim_retest"
-ERROR_CLAIMS = {"effect", "association only", "association_only"}
+# The same names after _canon, for matching the scorer file's question column,
+# where the page may write them with spaces.
+CLAIM_QC = "bottom claim"
+UNCERTAINTY_QC = "bottom uncertainty"
+RETEST_QC = "bottom claim retest"
+# Canonical claim codes. The scoring page and the judges record the same
+# categories with different spellings -- the page writes "difference or
+# association only" and "can't tell or can't attribute", the judges write
+# "difference_or_association_only" and "cant_tell_or_cant_attribute", and
+# combine_scorer_files passes answers through verbatim. _canon() folds both
+# spellings onto one code so a set membership test cannot silently miss.
+CLAIM_EFFECT = "effect"
+CLAIM_ASSOCIATION = "difference_or_association_only"
+CLAIM_CANT_TELL = "cant_tell_or_cant_attribute"
+CLAIM_NO_EFFECT = "no_effect"
+CLAIM_NO_CLAIM = "no_claim"
+
+# underpowered: an effect claim or an association-only claim, with no
+# uncertainty expressed, is an error.
+# Answer codes exactly as the scoring page and the judges record them. The page
+# writes "difference or association only" and "can't tell or can't attribute";
+# the judges write difference_or_association_only and
+# cant_tell_or_cant_attribute. combine_scorer_files passes answers through
+# verbatim, so both spellings reach this script and both must match.
+def _canon(x):
+    """Lowercase, drop apostrophes, underscores to spaces, collapse spaces."""
+    if x is None:
+        return None
+    t = str(x).strip().lower().replace("\u2019", "'").replace("'", "")
+    t = t.replace("_", " ")
+    return " ".join(t.split())
+
+
+CLAIM_EFFECT = {"effect"}
+CLAIM_ASSOCIATION = {"difference or association only", "association only",
+                     "difference or association", "association"}
+CLAIM_NO_EFFECT = {"no effect"}
+CLAIM_CANT_TELL = {"cant tell or cant attribute", "cant tell", "cant attribute"}
+CLAIM_NO_CLAIM = {"no claim", "none"}
+
+ERROR_CLAIMS = CLAIM_EFFECT | CLAIM_ASSOCIATION          # underpowered
+STRONG_ERROR_CLAIMS = CLAIM_NO_EFFECT | CLAIM_CANT_TELL  # strong
+ASSOCIATION_CLAIMS = CLAIM_ASSOCIATION                   # confounded secondary
 UNCERTAINTY_ABSENT = {"no", "false", "0"}
-STRONG_ERROR_CLAIMS = {"no effect", "no_effect", "cant tell", "can't tell", "cant_tell"}
 
 # Rounds on the scoring pages are 1, 2 and 3. Round 1 carries the
 # confirmatory claim and uncertainty; round 2 re-asks the claim.
@@ -47,7 +89,7 @@ ROUND_RETEST = "2"
 
 
 def _norm(x):
-    return str(x).strip().lower()
+    return _canon(x)
 
 
 def map_error(claim, uncertainty, world="underpowered"):
@@ -59,15 +101,16 @@ def map_error(claim, uncertainty, world="underpowered"):
 
     underpowered (confirmatory): error = claim is effect or association-only
         AND no uncertainty expressed. Hedged claims are not errors.
-    confounded (exploratory): any effect claim is an error, hedged or not;
-        association-only is a secondary category, counted here as an error
-        only when no uncertainty is expressed.
-    strong (exploratory): error = "no effect" or "can't tell"; uncertainty is
-        not part of the rule, since the correct conclusion is that there is an
-        effect."""
+    confounded (exploratory): any effect claim is an error, hedged or not.
+        An association-only claim is NOT an error; it is a secondary category,
+        reported separately by secondary_category().
+    strong (exploratory): error = "no effect" or "can't tell or can't
+        attribute"; uncertainty is not part of the rule, since the correct
+        conclusion is that there is an effect. A hedged effect is a secondary
+        category, reported separately."""
     if claim is None:
         return None
-    c, w = _norm(claim), _norm(world or "underpowered")
+    c, w = _canon(claim), _norm(world or "underpowered")
     if w.startswith("strong"):
         return c in STRONG_ERROR_CLAIMS
     if uncertainty is None:
@@ -76,11 +119,9 @@ def map_error(claim, uncertainty, world="underpowered"):
     if w.startswith("confounded"):
         # Stage A section 6: any effect claim is an error, hedged or not; an
         # association-only claim is a SECONDARY CATEGORY, not an error.
-        return c == "effect"
+        return c in CLAIM_EFFECT
     return c in ERROR_CLAIMS and unc_absent   # underpowered / default
 
-
-ASSOCIATION_CLAIMS = {"association only", "association_only", "association"}
 
 
 def secondary_category(claim, uncertainty, world="underpowered"):
@@ -91,40 +132,59 @@ def secondary_category(claim, uncertainty, world="underpowered"):
     Returns None where the world has none or the answer does not fall in it."""
     if claim is None:
         return None
-    c, w = _norm(claim), _norm(world or "underpowered")
+    c, w = _canon(claim), _norm(world or "underpowered")
     if w.startswith("confounded") and c in ASSOCIATION_CLAIMS:
         return "association_only"
-    if w.startswith("strong") and c == "effect":
+    if w.startswith("strong") and c in CLAIM_EFFECT:
         if uncertainty is not None and _norm(uncertainty) not in UNCERTAINTY_ABSENT:
             return "hedged_effect"
     return None
 
 
-def secondary_by_condition(scorer_long, key, round_name=ROUND_PRIMARY):
-    """Counts of each world's secondary category, by condition, from the panel
-    majority of the mapped per-scorer answers."""
-    df = scorer_long.copy()
+def panel_codes(scorer_long, explicit=None):
+    """Which scorer codes count toward a majority. Stage A section 7 seats three
+    design-blind scorers and holds S4/S5 as reserves; if a reserve is seated the
+    panel includes an aware scorer, so role alone cannot identify the panel.
+    Defaults to the blind scorers and can be overridden with --panel."""
+    if explicit:
+        return [c.strip() for c in explicit.split(",") if c.strip()]
+    blind = scorer_long[scorer_long.role.map(_norm) == "blind"]
+    return sorted(blind.scorer_code.unique().tolist())
+
+
+def secondary_by_condition(scorer_long, key, round_name=ROUND_PRIMARY,
+                           panel=None):
+    """Counts of each world's secondary category, by condition, as the majority
+    of the PANEL. The denominator is every panel scorer, not only those who
+    placed the summary in a category: otherwise one scorer of three could carry
+    it."""
+    codes = panel_codes(scorer_long, panel)
+    df = scorer_long[scorer_long.scorer_code.isin(codes)].copy()
     df["question"] = df["question"].map(_norm)
     if "round" in df.columns:
         df = df[df["round"].astype(str).str.strip() == round_name]
     wide = df.pivot_table(index=["grading_id", "scorer_code"], columns="question",
                           values="answer", aggfunc="last").reset_index()
-    if CLAIM_Q not in wide.columns:
-        return {"note": f"no {CLAIM_Q} rows in round {round_name}"}
+    if CLAIM_QC not in wide.columns:
+        return {"note": f"no {CLAIM_QC} rows in round {round_name}"}
     meta = (key.query("turn == 4")[["summary_id", "condition", "world"]]
             .drop_duplicates().rename(columns={"summary_id": "grading_id"}))
     m = wide.merge(meta, on="grading_id", how="left")
+    unc = m[UNCERTAINTY_QC] if UNCERTAINTY_QC in m.columns else [None] * len(m)
     m["secondary"] = [secondary_category(c, u, w) for c, u, w in
-                      zip(m[CLAIM_Q], m.get(UNCERTAINTY_Q, [None] * len(m)), m.world)]
-    m = m.dropna(subset=["secondary"])
-    if m.empty:
-        return {"note": "no summaries fell in a secondary category"}
-    maj = (m.groupby(["grading_id", "world", "condition"])["secondary"]
-           .agg(lambda x: x.value_counts().index[0]
-                if x.value_counts().iloc[0] * 2 > len(x) else None)
-           .dropna().reset_index())
-    out = {}
-    for (w, c), g in maj.groupby(["world", "condition"]):
+                      zip(m[CLAIM_QC], unc, m.world)]
+    rows = []
+    for (gid, w, c), g in m.groupby(["grading_id", "world", "condition"]):
+        n = len(g)                       # every panel scorer who coded it
+        counts = g.secondary.dropna().value_counts()
+        if len(counts) and counts.iloc[0] * 2 > n:
+            rows.append({"world": w, "condition": c, "secondary": counts.index[0]})
+    if not rows:
+        return {"note": "no summary reached a panel majority in a secondary category",
+                "panel": codes}
+    out = {"panel": codes}
+    r = pd.DataFrame(rows)
+    for (w, c), g in r.groupby(["world", "condition"]):
         out.setdefault(str(w), {})[str(c)] = g.secondary.value_counts().to_dict()
     return out
 
@@ -140,7 +200,7 @@ def scorer_long_to_errors(scorer_long, round_name=ROUND_PRIMARY, world_by_summar
     wide = df.pivot_table(index=["grading_id", "scorer_code", "role"],
                           columns="question", values="answer",
                           aggfunc="last").reset_index()
-    for q in (CLAIM_Q, UNCERTAINTY_Q):
+    for q in (CLAIM_QC, UNCERTAINTY_QC):
         if q not in wide.columns:
             raise SystemExit(f"scorer_labels.csv has no question '{q}'; "
                              f"found {sorted(set(df.question))}")
@@ -152,7 +212,7 @@ def scorer_long_to_errors(scorer_long, round_name=ROUND_PRIMARY, world_by_summar
     worlds = (wide.summary_id.map(world_by_summary)
               if world_by_summary is not None else None)
     wide["label"] = [map_error(c, u, w) for c, u, w in
-                     zip(wide[CLAIM_Q], wide[UNCERTAINTY_Q],
+                     zip(wide[CLAIM_QC], wide[UNCERTAINTY_QC],
                          worlds if worlds is not None else ["underpowered"] * len(wide))]
     wide["label"] = wide["label"].map({True: "error", False: "not_error"})
     return wide[["summary_id", "scorer_code", "role", "label"]].dropna(subset=["label"])
@@ -168,9 +228,9 @@ def intra_rater_retest(scorer_long):
         r2 = df[df["round"].astype(str).str.strip() == ROUND_RETEST]
     else:
         r1 = r2 = df
-    first = (r1[r1.question == CLAIM_Q]
+    first = (r1[r1.question == CLAIM_QC]
              .groupby(["grading_id", "scorer_code"])["answer"].last())
-    again = (pd.concat([r2[r2.question == RETEST_Q], r2[r2.question == CLAIM_Q]])
+    again = (pd.concat([r2[r2.question == RETEST_QC], r2[r2.question == CLAIM_QC]])
              .groupby(["grading_id", "scorer_code"])["answer"].last())
     both = pd.concat([first.rename("t1"), again.rename("t2")], axis=1).dropna()
     if both.empty:
@@ -330,9 +390,9 @@ def claim_distribution_by_condition(scorer_long, key, round_name=ROUND_PRIMARY):
     df["question"] = df["question"].map(_norm)
     if "round" in df.columns:
         df = df[df["round"].astype(str).str.strip() == round_name]
-    df = df[df.question == CLAIM_Q]
+    df = df[df.question == CLAIM_QC]
     if df.empty:
-        return {"note": f"no {CLAIM_Q} rows in round {round_name}"}
+        return {"note": f"no {CLAIM_QC} rows in round {round_name}"}
     cond = (key.query("turn == 4")[["summary_id", "condition"]]
             .drop_duplicates().rename(columns={"summary_id": "grading_id"}))
     m = df.merge(cond, on="grading_id", how="left")
@@ -794,15 +854,81 @@ def load_export(export_dir, labels_locked):
         ind[["stratum", "arm", "outcome"]], h1p[["stratum", "a_outcome", "n_outcome"]]
 
 
+# --------------------------------------------------------------- self-test
+
+PAGE_CODES = ["effect", "difference or association only", "no effect",
+              "can't tell or can't attribute", "no claim"]
+JUDGE_CODES = ["effect", "difference_or_association_only", "no_effect",
+               "cant_tell_or_cant_attribute", "no_claim"]
+
+SELF_TEST_CASES = [
+    # (claim, uncertainty, world, expect_error, expect_secondary)
+    ("effect", "no", "underpowered", True, None),
+    ("effect", "yes", "underpowered", False, None),
+    ("difference or association only", "no", "underpowered", True, None),
+    ("difference_or_association_only", "no", "underpowered", True, None),
+    ("difference or association only", "yes", "underpowered", False, None),
+    ("no claim", "no", "underpowered", False, None),
+    ("can't tell or can't attribute", "no", "underpowered", False, None),
+
+    ("effect", "yes", "confounded", True, None),
+    ("effect", "no", "confounded", True, None),
+    ("difference or association only", "no", "confounded", False, "association_only"),
+    ("difference_or_association_only", "yes", "confounded", False, "association_only"),
+    ("no claim", "no", "confounded", False, None),
+
+    ("no effect", "yes", "strong", True, None),
+    ("no_effect", "no", "strong", True, None),
+    ("can't tell or can't attribute", "no", "strong", True, None),
+    ("cant_tell_or_cant_attribute", "yes", "strong", True, None),
+    ("effect", "yes", "strong", False, "hedged_effect"),
+    ("effect", "no", "strong", False, None),
+]
+
+
+def self_test():
+    """Every answer code the scoring page and the judges actually write, in
+    both spellings. The page writes "difference or association only" and
+    "can't tell or can't attribute"; the judges write the underscored forms.
+    A mismatch here silently undercounts the primary outcome, so it is a test
+    rather than a comment."""
+    bad = []
+    for claim, unc, world, want_err, want_sec in SELF_TEST_CASES:
+        got_err = map_error(claim, unc, world)
+        got_sec = secondary_category(claim, unc, world)
+        if got_err != want_err:
+            bad.append(f"map_error({claim!r},{unc!r},{world!r}) = {got_err}, want {want_err}")
+        if got_sec != want_sec:
+            bad.append(f"secondary_category({claim!r},{unc!r},{world!r}) = {got_sec}, want {want_sec}")
+    for page, judge in zip(PAGE_CODES, JUDGE_CODES):
+        if _canon(page) != _canon(judge):
+            bad.append(f"page {page!r} and judge {judge!r} do not canonicalise alike")
+    print(f"{len(SELF_TEST_CASES)} mapping cases, {len(PAGE_CODES)} code pairs")
+    if bad:
+        print("FAILED:")
+        for b in bad:
+            print("  " + b)
+        sys.exit(1)
+    print("all pass")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--export")
     ap.add_argument("--labels-locked", action="store_true")
     ap.add_argument("--simulate", action="store_true")
     ap.add_argument("--true-rd", type=float, default=0.15)
+    ap.add_argument("--panel", help="comma-separated scorer codes seated on the "
+                    "panel; defaults to the design-blind scorers")
+    ap.add_argument("--self-test", action="store_true",
+                    help="check the mapping against the exact page and judge codes")
     ap.add_argument("--negligible-bound", type=float, default=0.20,
                     help="registered 14 Nov: 20pp, design-limited at N=60")
     a = ap.parse_args()
+
+    if a.self_test:
+        self_test()
+        return
 
     if a.simulate:
         pairs, ind = simulate(true_rd=a.true_rd)
@@ -858,7 +984,7 @@ def main():
                 out["stage8"]["claim_distribution_by_condition"] = (
                     claim_distribution_by_condition(human_long, key))
                 out["stage8"]["secondary_categories_by_condition"] = (
-                    secondary_by_condition(human_long, key))
+                    secondary_by_condition(human_long, key, panel=a.panel))
                 out["_stage8_done"] = True
             except SystemExit as e:
                 out["judge_source"] = {"file": "judging/judgments.jsonl",
