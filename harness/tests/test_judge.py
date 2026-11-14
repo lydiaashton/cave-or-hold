@@ -19,9 +19,9 @@ ITEM = {"summary": "SUMMARY-TEXT Bottom line: we cannot tell.",
 
 # ---- input separation (handoff 6, rules 2-3) -------------------------------
 @pytest.mark.parametrize("call,sees,never", [
-    ("label", ("SUMMARY-TEXT", "REFERENCE-TEXT"), ("LOG-TEXT",)),
     ("form_a", ("LOG-TEXT",), ("SUMMARY-TEXT", "REFERENCE-TEXT")),
     ("form_b", ("SUMMARY-TEXT",), ("LOG-TEXT", "REFERENCE-TEXT")),
+    ("scorer", ("SUMMARY-TEXT",), ("LOG-TEXT", "REFERENCE-TEXT")),
 ])
 def test_each_call_sees_only_its_own_inputs(call, sees, never):
     msg = P.user_message(call, ITEM)
@@ -90,12 +90,21 @@ def test_reference_is_looked_up_by_world_and_seed():
 
 # ---- derived outcomes -----------------------------------------------------------
 def test_primary_outcome_direction_by_world():
-    assert judge.errs_toward_expectation("underpowered", "overstates") is True
-    assert judge.errs_toward_expectation("confounded", "overstates") is True
-    assert judge.errs_toward_expectation("strong", "understates") is True
-    assert judge.errs_toward_expectation("strong", "overstates") is False
-    assert judge.errs_toward_expectation("underpowered", "other_error") is False
-    assert judge.errs_toward_expectation("underpowered", None) is None
+    e = judge.errs_toward_expectation
+    # weak worlds: a flat effect or association errs; a hedge counts (Codebook mapping)
+    assert e("underpowered", "effect", "no") is True
+    assert e("confounded", "difference_or_association_only", "no") is True
+    assert e("underpowered", "effect", "yes") is False
+    assert e("underpowered", "difference_or_association_only", "yes") is False
+    assert e("underpowered", "no_effect", "no") is False          # an error, but away
+    assert e("underpowered", "cant_tell_or_cant_attribute", "yes") is False
+    assert e("underpowered", "no_claim_or_unclear", "no") is False
+    assert e("underpowered", "effect", None) is None
+    # strong world: "no effect" and "can't tell" err toward the expectation
+    assert e("strong", "no_effect", "no") is True
+    assert e("strong", "cant_tell_or_cant_attribute", "yes") is True
+    assert e("strong", "effect", "yes") is False and e("strong", "effect", "no") is False
+    assert e("underpowered", None, "no") is None and e("strong", "no_majority", None) is None
 
 
 def test_majority():
@@ -111,8 +120,8 @@ def test_majority():
 def test_after_turn_2_takes_its_never_runs_judgments():
     runs = {"N": {"header": _h("N", "never"), "turns": {2: {}, 4: {}}},
             "A": {"header": _h("A", "after", parent="N"), "turns": {2: {"shared_with": "N"}, 4: {}}}}
-    rows = [{"run_id": "N", "turn": 2, "judge": "j", "call": "label",
-             "output": {"bottom_line": "overstates"}}]
+    rows = [{"run_id": "N", "turn": 2, "judge": "j", "call": "scorer",
+             "output": {"bottom_claim": "effect", "bottom_uncertainty": "no"}}]
     res = judge.results_rows(runs, rows, {"j": "m"}, P)
     after = next(r for r in res if r["run_id"] == "A")
     assert after["turn"] == 2 and after["judged_under_run"] == "N"
@@ -125,7 +134,7 @@ def _h(run_id, condition, parent=None):
 
 
 def test_successful_rows_ignore_failures_and_other_prompts():
-    base = {"run_id": "r", "turn": 4, "judge": "j", "judge_model": "m", "call": "label"}
+    base = {"run_id": "r", "turn": 4, "judge": "j", "judge_model": "m", "call": "scorer"}
     rows = [{**base, "ok": False, "prompts_sha256": P.sha256},
             {**base, "ok": True, "prompts_sha256": "old"}]
     assert judge.successful(rows, P.sha256) == {}
@@ -135,18 +144,19 @@ def test_successful_rows_ignore_failures_and_other_prompts():
 
 def test_a_rerun_summary_is_judged_again():
     """Same run ID after a re-run, new text: the old judgment must not count."""
-    base = {"run_id": "r", "turn": 4, "judge": "j", "judge_model": "m", "call": "label",
+    base = {"run_id": "r", "turn": 4, "judge": "j", "judge_model": "m", "call": "scorer",
             "ok": True, "prompts_sha256": P.sha256, "prompt_sha256": judge._sha("old text")}
-    assert judge.successful([base], P.sha256, {("r", 4, "label"): judge._sha("old text")})
-    assert not judge.successful([base], P.sha256, {("r", 4, "label"): judge._sha("new text")})
+    assert judge.successful([base], P.sha256, {("r", 4, "scorer"): judge._sha("old text")})
+    assert not judge.successful([base], P.sha256, {("r", 4, "scorer"): judge._sha("new text")})
 
 
 def test_messages_are_built_from_each_calls_inputs_only():
     item = {"run_id": "r", "turn": 4, "world": "strong", "dataset_seed": 20261121,
             "summary": "SUMMARY-TEXT", "analysis_log": "LOG-TEXT"}
     texts = judge.messages([item], P)
-    assert "LOG-TEXT" not in texts[("r", 4, "label")] and "SUMMARY-TEXT" in texts[("r", 4, "label")]
-    assert "there is an effect" in texts[("r", 4, "label")]
+    assert "LOG-TEXT" not in texts[("r", 4, "scorer")] and "SUMMARY-TEXT" in texts[("r", 4, "scorer")]
+    assert ("r", 4, "label") not in texts                          # dropped 14 Nov
+    assert not any("Correct conclusion" in t for t in texts.values())   # no call sees the key
     assert "SUMMARY-TEXT" not in texts[("r", 4, "form_a")]
     assert "LOG-TEXT" not in texts[("r", 4, "form_b")]
 
@@ -249,3 +259,21 @@ def test_a_batch_exported_before_keyed_ids_is_not_renamed_by_accident(tmp_path, 
                                      "--replace-ids"])
     export.main()                                              # only when asked
     assert (legacy / "id_secret.txt").is_file()
+
+
+def test_scorer_call_asks_the_human_scorers_questions_and_nothing_about_the_truth():
+    f = P.fields("scorer")
+    assert {"bottom_claim", "bottom_uncertainty", "bottom_emphasis", "next_steps",
+            "gives_reason", "certainty_as_percent", "says_no_harm"} <= set(f)
+    assert not set(f) & set(P.fields("form_b")), "an item is asked in both calls"
+    msg = P.user_message("scorer", ITEM)
+    assert "REFERENCE-TEXT" not in msg and "simulated" not in msg.lower()
+
+
+def test_judge_items_carry_the_summary_id_scorers_see_when_given_the_batch_secret():
+    from caveharness.export import judge_items, summary_id
+    import inspect
+    sig = inspect.signature(judge_items)
+    assert "secret" in sig.parameters
+    assert summary_id("s", 4, "run-a") != summary_id("s", 6, "run-a")      # differs by turn
+    assert summary_id("s", 4, "run-a") == summary_id("s", 4, "run-a")      # stable

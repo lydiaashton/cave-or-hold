@@ -63,11 +63,11 @@ Each sandbox takes up to 2 GB; if Docker Desktop has little memory, add
 
 | Parameter | Meaning |
 |---|---|
-| `worlds` | comma list: underpowered, confounded, strong |
+| `worlds` | comma list: underpowered, confounded, strong; default all three |
 | `datasets` | `firstN`: the N lowest seeds per world (`first5`, `first20`, ...; refused if N exceeds what `release/` holds), or `all` (sixty per world). Confounded and strong: the first ten are the 13 Nov release. Underpowered: reselected 14 Nov (primary p .10 to .13; `generator/select_underpowered.py`), so its first five are not the pilots' five `pilot` / `pilotN` read `release_pilot/` instead: ten pilot datasets per world that never appear in `release/` |
 | `runs_per_cell` | runs per world x condition; must be a multiple of the datasets used |
 | `conditions` | the kinds, default `never,before,after`; After needs Never |
-| `wordings` | expectation wordings, each its own Before and After cell; default `B`. Main runs: `B,D` gives never, before_B, after_B, before_D, after_D. There is no fallback wording |
+| `wordings` | expectation wordings, each its own Before and After cell; default `B,D` (the main design): never, before_B, after_B, before_D, after_D. There is no fallback wording |
 | `wording_worlds` | limits a wording to some worlds, e.g. `D:underpowered+confounded` (default: every wording in every world) |
 | `shuffle_seed` | seed for the run order; recorded in every run |
 | `n_machines`, `machine_index` | every machine passes the same plan and its own index (0-based) |
@@ -77,10 +77,10 @@ Each sandbox takes up to 2 GB; if Docker Desktop has little memory, add
 
 A unit is one Inspect sample: a Never run plus one After run per wording, all
 branched from its turn 2 with the sandbox restored for each, or a Before run.
-Which models run D is decided by which runs you pass `wordings=B,D` to.
+The defaults (all three worlds, `B,D`) are the main design: every model runs every world and both wordings, 15 cells per model.
 
 The board sentence ("The board will use your summary to decide...") is switched
-in `prompts/turns.toml` (`include_board_sentence`, off by default): it is part
+in `prompts/turns.toml` (`include_board_sentence`, on since 13 Nov): it is part
 of the wording the study lead signs off, so it lives with the prompts. Every machine builds the same shuffled plan from the same
 seed and takes its share (round-robin within each world x condition stratum).
 
@@ -153,13 +153,15 @@ Thinking files quote the user's messages and so reveal the condition, and
 
     uv run python -m caveharness.judge --batch pilot1 --allow-draft-prompts
 
-Three calls per summary per judge (handoff 6): the label (summary + rubric +
-that dataset's correct conclusion and reference results from
-`release/answer_key/`), form A (analysis log only) and form B (summary only).
-Each call is stateless and sees only its own inputs; no judge sees the user's
-messages, the condition or the thinking. Turn 4 gets all three; turns 2, 6 and
-8 get the label (`--form-turns 2,4,6,8` adds the forms, e.g. to price them in
-the pilot). An After run's turn 2 is its Never run's, judged once.
+Three calls per summary per judge: the scorer call (summary only: the human
+scorers' questions from the Codebook tab), form A (analysis log only) and form B
+(summary only). No call sees the answer key: the primary outcome is worked out
+from the scorer call's claim and uncertainty answers through the Codebook's
+mapping table (the label call, which graded against the answer key, was dropped
+on 14 Nov). Each call is stateless and sees only its own inputs; no judge sees
+the user's messages, the condition or the thinking. Turn 4 gets all three; turns
+2, 6 and 8 get the scorer call (`--form-turns 2,4,6,8` adds the forms). An After
+run's turn 2 is its Never run's, judged once.
 
 Every call is appended to `exports/<batch>/judging/judgments.jsonl` as it
 returns; `judge_results.csv` and `judge_report.md` are written beside it. A
@@ -177,15 +179,15 @@ judge alone is never reported as the majority.
 
 The prompts are in `prompts/judges.toml`. **They are an engineering draft until
 the study lead sends the frozen ones** (handoff 10): the runner refuses draft
-prompts unless `--allow-draft-prompts` is given (pilot only). Replace the three
-templates and their fields, set `frozen = true`, and judge again; every row
+prompts unless `--allow-draft-prompts` is given (pilot only). Once the study lead
+signs them off, set `frozen = true` and judge again; every row
 carries the prompt file's sha256.
 
 ## Cost
 
 Fill `prices.toml` (per million tokens, per model, in any unit, e.g. Adaption
 credits). The pilot report then shows the estimated cost per run of the tested
-model, and the judge report the cost per run of each judge and call (label,
+model, and the judge report the cost per run of each judge and call (scorer,
 form A, form B). Models without a price show "price not set".
 
 ## Where everything is saved

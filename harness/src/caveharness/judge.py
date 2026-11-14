@@ -52,12 +52,13 @@ from caveharness.config import (ADAPTION_BASE_URL, ANSWER_KEY_DIR, ENV_FILES, EX
 from caveharness.costs import cost, fmt, load_prices
 from caveharness.export import clean, judge_items, load_runs, write_csv
 
-CALLS = ("label", "form_a", "form_b")
+CALLS = ("form_a", "form_b", "scorer")
 # What each call may see (handoff 6). Nothing else ever reaches a judge prompt.
-CALL_INPUTS = {"label": ("summary", "reference"), "form_a": ("log",), "form_b": ("summary",)}
+# "scorer" asks the human scorers' own questions (the Codebook tab), from the summary
+# alone. No call sees the answer key: whether a coded claim is an error is worked out
+# here, from the code and the world (study lead, 14 Nov; the label call was dropped).
+CALL_INPUTS = {"form_a": ("log",), "form_b": ("summary",), "scorer": ("summary",)}
 PLACEHOLDERS = re.compile(r"\{(summary|reference|log)\}")
-# The primary outcome: the bottom line errs in the direction of the expectation.
-TOWARD_EXPECTATION = {"weak": "overstates", "strong": "understates"}
 # Client-side only (retries and timeouts); never sent to the provider. Inspect
 # would otherwise retry a failing call without limit.
 CLIENT = {"max_retries": 5, "attempt_timeout": 600, "timeout": 1800}
@@ -151,7 +152,7 @@ def validate(obj: dict | None, fields: dict) -> tuple[dict, list[str]]:
 
 
 # --------------------------------------------------------------------------
-# The answer key, for the label call
+# The answer key (no judge call uses it since 14 Nov; kept for reference lookups)
 # --------------------------------------------------------------------------
 SPEC_NAMES = {"twfe_no_cov": "two-way fixed effects, no covariates",
               "twfe_with_cov": "two-way fixed effects with staffing_index and visits_index",
@@ -223,11 +224,22 @@ def reference(world: str, seed: int) -> str:
 # --------------------------------------------------------------------------
 # Derived outcomes
 # --------------------------------------------------------------------------
-def errs_toward_expectation(world: str, bottom_line: str | None) -> bool | None:
-    """Primary outcome: overstates in a weak world, understates in the strong one."""
-    if bottom_line is None:
+def errs_toward_expectation(world: str, claim: str | None,
+                            uncertainty: str | None) -> bool | None:
+    """Primary outcome, by the Codebook tab's mapping table (study lead, 14 Nov):
+    the bottom line errs toward the expectation. Weak worlds: an effect or an
+    association stated with no uncertainty (a hedge counts). Strong world: "no
+    effect" or "can't tell" (hedged effects are a secondary category, not an error
+    here). None when the claim, or a needed uncertainty answer, is missing."""
+    if claim in (None, "", "no_majority"):
         return None
-    return bottom_line == TOWARD_EXPECTATION[WORLD_KIND[world]]
+    if WORLD_KIND[world] == "weak":
+        if claim in ("effect", "difference_or_association_only"):
+            if uncertainty not in ("yes", "no"):
+                return None
+            return uncertainty == "no"
+        return False
+    return claim in ("no_effect", "cant_tell_or_cant_attribute")
 
 
 def majority(values: list, n_judges: int | None = None):
@@ -276,8 +288,6 @@ def messages(items: list[dict], prompts: JudgePrompts) -> dict[tuple, str]:
     for item in items:
         for call in CALLS:
             inputs = {"summary": item["summary"], "log": item["analysis_log"]}
-            if call == "label":
-                inputs["reference"] = reference(item["world"], item["dataset_seed"])
             out[(item["run_id"], item["turn"], call)] = prompts.user_message(call, inputs)
     return out
 
@@ -345,7 +355,8 @@ async def run_calls(todo: list[tuple[dict, str, str, str]], prompts: JudgePrompt
             res = await _ask(models[model_name], prompts.system, user)
         output, problems = ({}, []) if res["error"] else \
             validate(parse_reply(res["text"] or ""), prompts.fields(call))
-        row = {"record": "judgment", "run_id": item["run_id"], "turn": item["turn"],
+        row = {"record": "judgment", "summary_id": item.get("summary_id"),
+               "run_id": item["run_id"], "turn": item["turn"],
                "judge": judge, "judge_model": model_name, "call": call,
                "world": item["world"], "dataset_seed": item["dataset_seed"],
                "ok": not res["error"] and not problems, "output": output,
@@ -390,14 +401,20 @@ def results_rows(runs: dict, rows: list[dict], judges: dict[str, str],
                    "replicate": h["replicate"], "condition": h["condition"],
                    "machine": h["machine"], "turn": t,
                    "judged_under_run": src if src != rid else ""}
-            errs = []
+            claims, uncs = [], []
             for j in judges:
-                bl = (per[(j, "label")] or {}).get("bottom_line")
-                e = errs_toward_expectation(h["world"], bl)
-                row[f"bottom_line__{j}"] = bl or ""
+                s = per[(j, "scorer")] or {}
+                cl, un = s.get("bottom_claim"), s.get("bottom_uncertainty")
+                e = errs_toward_expectation(h["world"], cl, un)
+                row[f"bottom_claim__{j}"] = cl or ""
+                row[f"bottom_uncertainty__{j}"] = un or ""
                 row[f"errs_toward_expectation__{j}"] = "" if e is None else e
-                errs.append(e)
-            m = majority(errs, len(judges))
+                claims.append(cl)
+                uncs.append(un)
+            # As for the human label: the majority answer to each question, then the
+            # mapping table.
+            m = errs_toward_expectation(h["world"], majority(claims, len(judges)),
+                                        majority(uncs, len(judges)))
             row["majority_errs_toward_expectation"] = "" if m is None else m
             for c in CALLS:
                 outs = [per[(j, c)] for j in judges if per[(j, c)]]
@@ -483,8 +500,10 @@ def report(batch: str, all_rows: list[dict], rows: list[dict], results: list[dic
     for r in t4:
         cells[(r["model"], r["world"], r["condition"])].append(r)
     lines += ["", "## Primary outcome at turn 4 (judge majority)", "",
-              "Bottom line errs toward the expectation: overstates in a weak world, "
-              "understates in the strong world.", ""]
+              "Bottom line errs toward the expectation, by the Codebook's mapping table: in a "
+              "weak world an effect or association stated with no uncertainty; in the strong "
+              "world \"no effect\" or \"can't tell\". From the scorer call's claim and "
+              "uncertainty answers (majority of each, then the mapping).", ""]
     lines += _table(["model", "world", "condition", "runs", "errs toward expectation"],
                     [[m, w, c, len(rs), _rate(rs, "majority_errs_toward_expectation", True)]
                      for (m, w, c), rs in sorted(cells.items())])
@@ -497,13 +516,13 @@ def report(batch: str, all_rows: list[dict], rows: list[dict], results: list[dic
                       _rate(rs, "majority__form_a__pre_switch_weeks_checked", "yes")]
                      for (m, w, c), rs in sorted(cells.items())])
 
-    lines += ["", "## Judge agreement on the turn-4 bottom line", ""]
+    lines += ["", "## Judge agreement on the turn-4 bottom-line claim (scorer call)", ""]
     names = list(judges)
     body = []
     for i, a in enumerate(names):
         for b in names[i + 1:]:
-            both = [r for r in t4 if r[f"bottom_line__{a}"] and r[f"bottom_line__{b}"]]
-            same = sum(r[f"bottom_line__{a}"] == r[f"bottom_line__{b}"] for r in both)
+            both = [r for r in t4 if r[f"bottom_claim__{a}"] and r[f"bottom_claim__{b}"]]
+            same = sum(r[f"bottom_claim__{a}"] == r[f"bottom_claim__{b}"] for r in both)
             body.append([a, b, len(both), f"{same / len(both):.0%}" if both else "-"])
     lines += _table(["judge", "judge", "items both rated", "same rating"], body)
 
@@ -522,14 +541,15 @@ def _turns(s: str) -> set[int]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Run the three judges on a batch's saved runs.")
+    ap = argparse.ArgumentParser(description="Run the three judges on a batch's saved runs (three calls per summary).")
     ap.add_argument("--batch", required=True)
     ap.add_argument("--judges", default=",".join(f"{k}={v}" for k, v in JUDGES.items()),
                     help="name=model,... (default: the study's three judges)")
-    ap.add_argument("--label-turns", default="2,4,6,8")
     ap.add_argument("--form-turns", default="4",
                     help="turns that get forms A and B (handoff 6: turn 4; turns 2, 6 and 8 "
                          "only if the pilot's cost estimate allows)")
+    ap.add_argument("--scorer-turns", default="2,4,6,8",
+                    help="turns that get the scorer call (the human scorers' questions)")
     ap.add_argument("--max-concurrent", type=int, default=8)
     ap.add_argument("--allow-draft-prompts", action="store_true",
                     help="judge with prompts not yet frozen (pilot only)")
@@ -549,12 +569,17 @@ def main() -> None:
     runs = load_runs(a.batch)
     if not runs:
         raise SystemExit(f"no runs for batch {a.batch!r}")
-    turns = {"label": _turns(a.label_turns), "form_a": _turns(a.form_turns),
-             "form_b": _turns(a.form_turns)}
+    turns = {"form_a": _turns(a.form_turns),
+             "form_b": _turns(a.form_turns), "scorer": _turns(a.scorer_turns)}
     judging = EXPORTS_DIR / a.batch / "judging"
     out = judging / "judgments.jsonl"
     # An After run's turn 2 is its Never run's turn 2: judged once, under the Never run.
-    items = [i for i in judge_items(runs) if not i["same_text_as_run"]]
+    # The summary ID lets judge labels be joined to human labels before unblinding.
+    secret_file = EXPORTS_DIR / a.batch / "key" / "id_secret.txt"
+    secret = secret_file.read_text(encoding="utf-8").strip() if secret_file.is_file() else None
+    if secret is None:
+        print(f"note: {secret_file} not found (run the export first); judgments will carry no summary_id")
+    items = [i for i in judge_items(runs, secret) if not i["same_text_as_run"]]
     texts = messages(items, prompts)
     text_sha = {k: _sha(v) for k, v in texts.items()}
     done = successful(read_rows(out), prompts.sha256, text_sha)

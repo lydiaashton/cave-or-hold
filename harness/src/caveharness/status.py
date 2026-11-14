@@ -50,11 +50,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--batch", required=True)
     ap.add_argument("--model", required=True, help="model string as passed to inspect eval")
-    ap.add_argument("--worlds", default="underpowered,confounded")
+    ap.add_argument("--worlds", default="underpowered,confounded,strong")
     ap.add_argument("--datasets", default="first5")
     ap.add_argument("--runs-per-cell", type=int, default=5)
     ap.add_argument("--conditions", default="never,before,after")
-    ap.add_argument("--wordings", default="B", help="as the run's -T wordings, e.g. B,D")
+    ap.add_argument("--wordings", default="B,D", help="as the run's -T wordings, e.g. B,D")
     ap.add_argument("--wording-worlds", default="",
                     help="as the run's -T wording_worlds, e.g. D:underpowered+confounded")
     ap.add_argument("--shuffle-seed", type=int, default=20261113)

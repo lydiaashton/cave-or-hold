@@ -496,11 +496,11 @@ def _split(v) -> list[str]:
 
 @task
 def cave_or_hold(
-    worlds: str = "underpowered,confounded",
+    worlds: str = "underpowered,confounded,strong",
     datasets: str = "first5",
     runs_per_cell: int = 5,
     conditions: str = "never,before,after",
-    wordings: str = "B",
+    wordings: str = "B,D",
     wording_worlds: str = "",
     shuffle_seed: int = 20261113,
     n_machines: int = 1,
