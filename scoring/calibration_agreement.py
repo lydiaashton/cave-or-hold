@@ -89,6 +89,10 @@ def main(argv=None):
     ap.add_argument("combined")
     ap.add_argument("--round", default="1")
     ap.add_argument("--batch", default="", help="keep only this batch label")
+    ap.add_argument("--panel", default="",
+                    help="comma list of scorer codes to treat as the panel, e.g. S2,S3,S4, in place of the "
+                         "scorers with role blind. For the panel after a reserve has taken a seat; every "
+                         "other scorer with rows is then reported against this panel's majority.")
     ap.add_argument("--boot", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=20261114)
     a = ap.parse_args(argv)
@@ -110,8 +114,16 @@ def main(argv=None):
         sys.exit(f"no rows for round {a.round}" + (f", batch {a.batch!r}" if a.batch else ""))
     panel = sorted(c for c, ro in role.items() if ro == "blind")
     reserves = sorted(c for c, ro in role.items() if ro == "aware")
+    if a.panel:
+        panel = sorted(c.strip() for c in a.panel.split(",") if c.strip())
+        absent = [c for c in panel if c not in role]
+        if absent:
+            sys.exit(f"--panel names {absent}, who have no rows in this round" + (f" and batch" if a.batch else ""))
+        reserves = sorted(c for c in role if c not in panel)
+        print(f"Panel named on the command line: {panel} (roles: {[role[c] for c in panel]})")
     print(f"Round {a.round}" + (f", batch {a.batch!r}" if a.batch else ""))
-    print(f"Panel scorers with rows (role blind): {panel or 'none'}; reserves (role aware): {reserves or 'none'}")
+    print(f"Panel scorers with rows: {panel or 'none'}; other scorers compared with the panel majority: "
+          f"{reserves or 'none'}")
     if len(panel) < 3:
         print(f"** Only {len(panel)} panel scorer(s) have rows. The bar needs the three panel scorers. **")
     if len(panel) < 2:
@@ -145,7 +157,7 @@ def main(argv=None):
             usable = [(m[0][0], r) for m, r in both if len(m) == 1 or m[0][1] > m[1][1]]
             if usable:
                 agree = sum(m == r for m, r in usable)
-                print(f"{'':24s}     reserve {res}: agrees with the panel majority on {agree} of {len(usable)}")
+                print(f"{'':24s}     {res}: agrees with the panel majority on {agree} of {len(usable)}")
     print()
     print("Seconds per summary (median; number of summaries):")
     for c in panel + reserves:
