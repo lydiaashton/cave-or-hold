@@ -20,8 +20,8 @@ drawn in [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
    is identical; the image also limits math libraries to one thread, see the Dockerfile.
 4. Put the keys in `harness/.env` or in the repository root's `.env` (both
    gitignored; `harness/.env` wins): `ADAPTION_API_KEY=...` for the Adaption
-   models and the DeepSeek judge, `GOOGLE_API_KEY` and `OPENAI_API_KEY` for the
-   other two judges, `ANTHROPIC_API_KEY` for the Claude models.
+   models and the Gemma and DeepSeek judges, `OPENAI_API_KEY` for the GPT judge,
+   `ANTHROPIC_API_KEY` for the Claude models.
    On Windows PowerShell use `-Encoding ascii`; the default adds a byte-order
    mark that breaks the variable name.
 5. On Windows, keep the repository near the top of a drive (e.g. `C:\work\cave-or-hold`):
@@ -64,7 +64,7 @@ Each sandbox takes up to 2 GB; if Docker Desktop has little memory, add
 | Parameter | Meaning |
 |---|---|
 | `worlds` | comma list: underpowered, confounded, strong |
-| `datasets` | `first5` (the five lowest seeds per world) or `all` (ten) |
+| `datasets` | `firstN`: the N lowest seeds per world (`first5`, `first20`, ...; refused if N exceeds what `release/` holds), or `all` (sixty per world). Confounded and strong: the first ten are the 13 Nov release. Underpowered: reselected 14 Nov (primary p .10 to .13; `generator/select_underpowered.py`), so its first five are not the pilots' five `pilot` / `pilotN` read `release_pilot/` instead: ten pilot datasets per world that never appear in `release/` |
 | `runs_per_cell` | runs per world x condition; must be a multiple of the datasets used |
 | `conditions` | the kinds, default `never,before,after`; After needs Never |
 | `wordings` | expectation wordings, each its own Before and After cell; default `B`. Main runs: `B,D` gives never, before_B, after_B, before_D, after_D. There is no fallback wording |
@@ -85,7 +85,7 @@ of the wording the study lead signs off, so it lives with the prompts. Every mac
 seed and takes its share (round-robin within each world x condition stratum).
 
 Other models: `openai-api/adaption/glm-5.2`; Claude needs `ANTHROPIC_API_KEY`
-and `--model anthropic/claude-opus-5` (not yet tested live).
+and `--model anthropic/claude-opus-5-5` or `anthropic/claude-sonnet-5-5` (not yet tested live).
 
 ## Status: what is done, what to re-run
 

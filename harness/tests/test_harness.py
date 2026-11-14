@@ -10,7 +10,7 @@ import pytest
 import yaml
 
 from caveharness import export, plan
-from caveharness.config import PROMPTS_FILE, datasets
+from caveharness.config import PROMPTS_FILE, WORLD_KIND, datasets
 from caveharness.export import (PLACEHOLDER, analysis_log, clean, cross_checks, form_a_log,
                                 gradeable)
 from caveharness.prompts import Prompts
@@ -23,12 +23,49 @@ EXPECT_STRONG = "We expected no effect."
 
 
 # ---- data (handoff 2) ------------------------------------------------------
-def test_ten_datasets_per_world_and_first5_are_the_lowest_seeds():
-    assert len(datasets(which="all")) == 30
+def test_sixty_datasets_per_world_and_firstN_are_the_lowest_seeds():
+    assert len(datasets(which="all")) == 180
     assert len(datasets(which="first5")) == 15
+    assert len(datasets(which="first10")) == 30
+    assert len(datasets(which="first60")) == 180
+    for w in WORLD_KIND:
+        seeds = sorted(d.seed for d in datasets(w, "all"))
+        for n in (5, 10, 23, 60):
+            assert sorted(d.seed for d in datasets(w, f"first{n}")) == seeds[:n]
+    with pytest.raises(ValueError, match="holds 60"):
+        datasets(which="first61")
+    for bad in ("first0", "first", "five", "first05"):
+        with pytest.raises(ValueError):
+            datasets(which=bad)
     for w in ("underpowered", "confounded", "strong"):
         seeds = sorted(d.seed for d in datasets(w, "all"))
         assert sorted(d.seed for d in datasets(w, "first5")) == seeds[:5]
+
+
+def test_first10_seeds_are_pinned():
+    # confounded and strong: the 13 Nov release; underpowered: the 14 Nov
+    # selection (select_underpowered.py: primary p .10 to .13, defensible specs >= .10,
+    # bootstrap floor .105)
+    released = {
+        "underpowered": [20261172, 20261175, 20261735, 20261801, 20261910,
+                         20262207, 20262236, 20262550, 20262971, 20263015],
+        "confounded": [20261120, 20261122, 20261123, 20261124, 20261128,
+                       20261133, 20261138, 20261139, 20261141, 20261142],
+        "strong": [20261121, 20261140, 20261144, 20261148, 20261163,
+                   20261180, 20261181, 20261188, 20261208, 20261222]}
+    for w, seeds in released.items():
+        assert [d.seed for d in datasets(w, "first10")] == seeds
+
+
+def test_pilot_datasets_are_ten_per_world_and_never_in_the_main_set():
+    pilot = datasets(which="pilot")
+    assert len(pilot) == 30 and len(datasets(which="pilot7")) == 21
+    assert all(d.path.parent.parent.name == "release_pilot" for d in pilot)
+    assert all(d.path.name == "branches.csv" for d in pilot)
+    main = {(d.world, d.seed) for d in datasets(which="all")}
+    assert not main & {(d.world, d.seed) for d in pilot}
+    with pytest.raises(ValueError, match="release_pilot/ holds 10"):
+        datasets(which="pilot11")
 
 
 def test_dataset_paths_are_only_branches_csv():
@@ -306,7 +343,7 @@ def test_dockerfile_copies_only_the_requirements():
 
 
 def test_every_sample_gets_only_its_own_branches_csv():
-    t = cave_or_hold(worlds="underpowered,confounded,strong", datasets="all", runs_per_cell=10)
+    t = cave_or_hold(worlds="underpowered,confounded,strong", datasets="first10", runs_per_cell=10)
     assert t.sandbox.type == "docker"
     assert len(t.dataset) == 3 * 10 * 2          # a pair and a Before per dataset x replicate
     for s in t.dataset:
