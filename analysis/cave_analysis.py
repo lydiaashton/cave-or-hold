@@ -312,6 +312,24 @@ def stratified_mcnemar(pairs):
             "per_stratum": t.to_dict("records")}
 
 
+def paired_bootstrap(pairs, n_boot=10000, seed=20261114):
+    """Cluster bootstrap over pairs: resample pairs with replacement and take
+    the percentile interval of the paired risk difference. Set beside the exact
+    interval, not in place of it. Degenerate when no pair ever differs, which
+    is reported rather than papered over."""
+    if pairs is None or not len(pairs):
+        return {"note": "no pairs"}
+    d = (pairs.a_outcome.astype(int) - pairs.n_outcome.astype(int)).to_numpy()
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, len(d), size=(n_boot, len(d)))
+    reps = d[idx].mean(axis=1)
+    lo, hi = np.percentile(reps, [2.5, 97.5])
+    return {"method": f"cluster bootstrap over {len(d)} pairs, {n_boot} reps",
+            "paired_rd": float(d.mean()),
+            "ci95_percentile": (float(lo), float(hi)),
+            "degenerate": bool(np.all(d == 0))}
+
+
 def cmh_and_mh_rd(df):
     """df: stratum, arm (1=After, 0=Before), outcome (0/1).
     CMH test plus the Mantel-Haenszel pooled risk difference with the
@@ -368,22 +386,58 @@ def cmh_and_mh_rd(df):
             "n_strata_used": len(rows), "per_stratum": rows}
 
 
-def stage10(pairs, independent, negligible_bound=None):
-    """Gatekeeping: H2 at full alpha, H1 only if H2 rejects. Both two-sided."""
+def stage10(pairs, independent, negligible_bound=None, h1_pairs=None):
+    """Gatekeeping: H2 at full alpha, H1 only if H2 rejects. Both two-sided.
+
+    With one run per dataset per cell (R = datasets = runs per cell), both
+    contrasts are matched by dataset, so both are McNemar. With a binary
+    outcome and exact 1:1 matching, conditional logit with one pair per
+    stratum reduces algebraically to McNemar: they are the same estimator and
+    McNemar is the exact version, needing no bootstrap. CMH on the unpaired
+    arms is kept as a robustness check only.
+
+    The two pairings are not equally tight and that is reported: never/after_B
+    share the same turn-2 analysis (one run, branched), while before_B/after_B
+    share only the dataset. H2's matching removes analysis variance as well as
+    dataset variance; H1's removes dataset variance alone."""
     h2 = stratified_mcnemar(pairs)
     res = {"multiplicity": "gatekeeping: H2 at alpha=.05, H1 conditional on H2",
+           "pairing_note": ("H2 pairs share the turn-2 analysis; H1 pairs share "
+                            "only the dataset. Not equivalent matching."),
            "H2_after_vs_never_paired": h2}
 
+    def h1_primary():
+        if h1_pairs is not None and len(h1_pairs):
+            out = stratified_mcnemar(h1_pairs)
+            out["matched_on"] = "dataset_seed (before_B vs after_B)"
+            return out
+        return {"test": "not available",
+                "reason": "no matched before_B/after_B pairs; falls back to the "
+                          "unpaired CMH route below"}
+
     if h2["p"] is not None and h2["p"] < ALPHA:
-        res["H1_after_vs_before_independent"] = cmh_and_mh_rd(independent)
+        res["H1_after_vs_before_paired"] = h1_primary()
         res["gate"] = "H2 rejected; H1 tested"
     else:
-        res["H1_after_vs_before_independent"] = {
+        res["H1_after_vs_before_paired"] = {
             "test": "not performed",
             "reason": "gate not passed: H2 did not reject at alpha=.05, so the "
                       "timing contrast H1 asks is not tested confirmatorily"}
         res["gate"] = "H2 did not reject; H1 reported as exploratory only"
-        res["H1_exploratory"] = cmh_and_mh_rd(independent)
+        res["H1_exploratory_paired"] = h1_primary()
+
+    # Robustness. Under R = datasets = runs per cell there is one run per arm
+    # per dataset, so the unpaired CMH route can never run (its guard fires).
+    # The check that does work is a cluster bootstrap over pairs, which gives a
+    # percentile interval to set beside the exact one. The fixed-effects
+    # regression is not a third option: with exact 1:1 matching the within
+    # estimator is the mean of the within-pair differences, i.e. the same point
+    # estimate, differing only in how its interval is obtained.
+    res["robustness"] = {
+        "H2_paired_bootstrap": paired_bootstrap(pairs),
+        "H1_paired_bootstrap": paired_bootstrap(h1_pairs) if h1_pairs is not None else None,
+        "unpaired_cmh": cmh_and_mh_rd(independent),
+    }
 
     if negligible_bound is not None:
         lo, hi = h2["ci95"]
@@ -470,8 +524,24 @@ def load_export(export_dir, labels_locked):
     ind = ind.rename(columns={"dataset_seed": "stratum", "caved": "outcome"})
     ind["outcome"] = ind.outcome.astype(int)
 
+    # H1 matched by dataset: one run per dataset per cell, so before_B and
+    # after_B pair on dataset_seed. Merged one-to-one; a dataset with more than
+    # one run in either cell is excluded from the paired route and counted.
+    b = jr[jr.condition == "before_B"][["dataset_seed", "caved"]]
+    aB = jr[jr.condition == "after_B"][["dataset_seed", "caved"]]
+    dup = int((b.dataset_seed.duplicated().sum()) + (aB.dataset_seed.duplicated().sum()))
+    h1p = (aB.drop_duplicates("dataset_seed")
+             .merge(b.drop_duplicates("dataset_seed"), on="dataset_seed",
+                    suffixes=("_after", "_before"))
+             .rename(columns={"dataset_seed": "stratum",
+                              "caved_after": "a_outcome",
+                              "caved_before": "n_outcome"}))
+    h1p["a_outcome"] = h1p.a_outcome.astype(int)
+    h1p["n_outcome"] = h1p.n_outcome.astype(int)
+    h1p.attrs["duplicates_dropped"] = dup
+
     return key, human_long, jr, pairs[["stratum", "a_outcome", "n_outcome"]], \
-        ind[["stratum", "arm", "outcome"]]
+        ind[["stratum", "arm", "outcome"]], h1p[["stratum", "a_outcome", "n_outcome"]]
 
 
 def main():
@@ -485,7 +555,8 @@ def main():
 
     if a.simulate:
         pairs, ind = simulate(true_rd=a.true_rd)
-        res = stage10(pairs, ind, a.negligible_bound)
+        h1p = pairs.copy()   # simulated: treat Before/After as dataset-matched too
+        res = stage10(pairs, ind, a.negligible_bound, h1_pairs=h1p)
         res["_simulation"] = {"true_rd": a.true_rd,
                               "recovered_paired_rd": res["H2_after_vs_never_paired"]["paired_rd"]}
         print(json.dumps(res, indent=2, default=str))
@@ -494,7 +565,7 @@ def main():
     if not a.export:
         sys.exit("--export or --simulate required")
 
-    key, human_long, jr, pairs, ind = load_export(a.export, a.labels_locked)
+    key, human_long, jr, pairs, ind, h1p = load_export(a.export, a.labels_locked)
     out = {"pair_match_check": pair_match_check(jr)}
     if not out["pair_match_check"]["pair_aware"]:
         out["pair_match_check"]["warning"] = (
@@ -529,7 +600,7 @@ def main():
         out["stage8"] = {"skipped": "key/scorer_labels.csv not present"}
 
     if out["pair_match_check"]["pair_aware"]:
-        out["stage10"] = stage10(pairs, ind, a.negligible_bound)
+        out["stage10"] = stage10(pairs, ind, a.negligible_bound, h1_pairs=h1p)
     else:
         out["stage10"] = {"refused": out["pair_match_check"]["warning"]}
     print(json.dumps(out, indent=2, default=str))
