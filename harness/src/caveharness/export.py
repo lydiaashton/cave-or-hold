@@ -1,6 +1,6 @@
 """Export one batch into the repository (study lead's layout, 13 Nov).
 
-    uv run python -m caveharness.export --batch pilot1 --seed 20261113
+    uv run python -m caveharness.export --batch pilot2
 
 Reads runs/<batch>/<machine>/*.jsonl from every machine and writes
 <repo>/exports/<batch>/, to be committed and pushed once per batch. Scorers
@@ -20,46 +20,69 @@ summaries folder.
                                   provider returned for this turn
     key/
       KEY.csv                     summary ID -> run, condition, turn, model, dataset
-      run_stats.csv               per run: tokens, completion, errors, tool use
+      id_secret.txt               the secret the summary IDs are made from
+      run_stats.csv               per run: tokens, cost, completion, errors, tool use
       analysis_estimates.csv      per run x turn: the numbers behind each summary
       manifest.json, pilot_report.md
     judges/
-      judge_items.jsonl           per run x turn: summary and analysis log, with
-                                  no user messages, condition or thinking
+      judge_items.jsonl           what the judges may see, per run x turn
+    judging/                      written by caveharness.judge, never by the export:
+                                  judgments, judge results and the judge report
 
-Every summary gets a different random ID at each turn, drawn from the recorded
-seed, so re-exporting gives identical IDs. An After run's turn 2 is its Never
-run's, so each turn-2 summary is written once and the key lists both runs.
+Summary IDs are a keyed hash of (turn, run) under a secret made once per batch
+and kept in key/: re-exporting gives every summary the same ID even if runs were
+added since, and IDs never repeat across batches. An After run's turn 2 is its
+Never run's, so each turn-2 summary is written once and the key lists both runs.
+
+Batches exported before this scheme (pilot1) have no id_secret.txt. Re-exporting
+one would rename every summary, so it is refused unless --replace-ids is given.
 """
 from __future__ import annotations
 
 import argparse
 import csv
 import datetime as dt
+import hashlib
+import hmac
 import json
-import random
 import re
+import secrets
 import shutil
 import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from caveharness.config import HARNESS_DIR, REPO_DIR, RUNS_DIR
+from caveharness.config import EXPORTS_DIR, HARNESS_DIR, RUNS_DIR
+from caveharness.costs import cost, load_prices
 from caveharness.estimates import OTHER_P, per_turn, table_estimates, without_tables
 
-EXPORTS_DIR = REPO_DIR / "exports"
 TURNS = (2, 4, 6, 8)
+EXPORT_OWNED = ("T2", "T4", "T6", "T8", "key", "judges")   # never "judging"
 PLACEHOLDER = "[model reasoning omitted]"
-THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
+# <think>...</think> and <thinking>...</thinking>, with or without attributes.
+THINK = re.compile(r"<(think(?:ing)?)\b[^>]*>.*?</\1>", re.S | re.I)
+THINK_CLOSE = re.compile(r"</think(?:ing)?>", re.I)
+THINK_OPEN = re.compile(r"<think(?:ing)?\b[^>]*>", re.I)
 FIGURE_EXT = (".png", ".jpg", ".jpeg", ".pdf", ".svg")
 JUDGE_LOG_CAP = 60_000   # characters; handoff 6: cap long logs and record truncation
+# Characters kept from the start and from the end of each code call's output
+# in what the judges see. A regression table's treatment row is often its last
+# line (after 709 branch dummies in the confounded world), so a head-only cut
+# would hide the estimate and every later check.
+CALL_OUTPUT_KEEP = 4_000
+ID_LENGTH = 10
 
 
 # --------------------------------------------------------------------------
 # Reading the runs
 # --------------------------------------------------------------------------
+def _attempt_rank(run: dict) -> tuple:
+    """Which of two logs of one run to keep: further first, then newer."""
+    return run["completed_turn"], run["header"].get("access_time_utc") or ""
+
+
 def load_runs(batch: str) -> dict[str, dict]:
-    runs = {}
+    runs: dict[str, dict] = {}
     for f in sorted((RUNS_DIR / batch).rglob("*.jsonl")):
         recs = [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines() if x.strip()]
         if not recs or recs[0].get("record") != "header":
@@ -68,32 +91,66 @@ def load_runs(batch: str) -> dict[str, dict]:
         turns = {r["turn"]: r for r in recs if r.get("record") == "turn"}
         end = next((r for r in reversed(recs) if r.get("record") == "end"), None)
         completed = max((t for t, r in turns.items() if not r.get("error")), default=0)
-        runs[h["run_id"]] = {"header": h, "turns": turns, "end": end,
-                             "completed_turn": completed, "file": str(f)}
+        run = {"header": h, "turns": turns, "end": end, "completed_turn": completed, "file": str(f)}
+        old = runs.get(h["run_id"])
+        if old:
+            # The same unit run on two machines (e.g. a re-run elsewhere): keep
+            # the attempt that got further; on a tie the newer one, so a re-run
+            # pair's Never and After come from the same attempt.
+            keep, drop = (run, old) if _attempt_rank(run) > _attempt_rank(old) else (old, run)
+            print(f"warning: two logs for run {h['run_id']}; keeping {keep['file']} "
+                  f"(turn {keep['completed_turn']}), ignoring {drop['file']} "
+                  f"(turn {drop['completed_turn']})")
+            run = keep
+        runs[h["run_id"]] = run
+    for rid, run in runs.items():   # an After run must share turn 2 with its parent
+        parent = runs.get(run["header"].get("parent_run_id") or "")
+        mine, theirs = run["turns"].get(2), parent and parent["turns"].get(2)
+        if mine and theirs and mine.get("text") != theirs.get("text"):
+            print(f"warning: After run {rid} and its Never run come from different attempts "
+                  f"({run['file']} vs {parent['file']})")
     return runs
 
 
 def clean(text: str | None) -> str:
     """The summary with any inline thinking replaced by a placeholder.
 
-    Covers a complete <think>...</think> block, and the form some vLLM
-    deployments return where the opening tag is dropped and only </think>
-    marks where the reasoning ended.
+    Covers complete <think>/<thinking> blocks; the form some vLLM deployments
+    return, where the opening tag is dropped and only the closing tag marks
+    where the reasoning ended; and a reply cut off before its reasoning closed.
     """
-    text = text or ""
-    low = text.lower()
-    if "</think>" in low and "<think>" not in low:
-        text = PLACEHOLDER + text[low.rindex("</think>") + len("</think>"):]
-    return THINK.sub(PLACEHOLDER, text).strip()
+    text = THINK.sub(PLACEHOLDER, text or "")
+    closes = list(THINK_CLOSE.finditer(text))
+    if closes:   # opening tag dropped: everything up to the last close is reasoning
+        text = PLACEHOLDER + text[closes[-1].end():]
+    opened = THINK_OPEN.search(text)
+    if opened:   # cut off before the reasoning closed
+        text = text[:opened.start()] + PLACEHOLDER
+    return text.strip()
 
 
 def inline_thinking(text: str | None) -> list[str]:
     """Thinking a model wrote into its reply text, which clean() removes."""
     text = text or ""
-    low = text.lower()
-    if "</think>" in low and "<think>" not in low:
-        return [text[: low.rindex("</think>")].strip()]
-    return [m.group(0)[len("<think>"):-len("</think>")].strip() for m in THINK.finditer(text)]
+    found = [m.group(0) for m in THINK.finditer(text)]
+    rest = THINK.sub("", text)
+    closes = list(THINK_CLOSE.finditer(rest))
+    if closes:
+        found.append(rest[:closes[-1].start()])
+        rest = rest[closes[-1].end():]
+    opened = THINK_OPEN.search(rest)
+    if opened:
+        found.append(rest[opened.start():])
+    tags = re.compile(r"</?think(?:ing)?\b[^>]*>", re.I)
+    return [t for t in (tags.sub("", x).strip() for x in found) if t]
+
+
+def gradeable(run: dict, turn: int) -> bool:
+    """A model turn with a summary to grade: logged, no error, and some text
+    besides reasoning (a reply cut off mid-thought has none)."""
+    r = run["turns"].get(turn)
+    return (bool(r) and not r.get("error")
+            and bool(clean(r.get("text")).replace(PLACEHOLDER, "").strip()))
 
 
 def _printed(call: dict) -> str:
@@ -101,9 +158,17 @@ def _printed(call: dict) -> str:
     return call.get("output_full") or call.get("output") or ""
 
 
-def analysis_log(run: dict, upto_turn: int) -> str:
+def _trim(text: str, keep: int | None) -> str:
+    """The first and last `keep` characters, with a note of what was cut."""
+    if keep is None or len(text) <= 2 * keep:
+        return text
+    return f"{text[:keep]}\n[... {len(text) - 2 * keep} characters omitted ...]\n{text[-keep:]}"
+
+
+def analysis_log(run: dict, upto_turn: int, keep_per_call: int | None = None) -> str:
     """All code the model ran and everything it printed, up to and including a
-    turn. Code and output only: no user messages, no thinking."""
+    turn. Code and output only: no user messages, no thinking. keep_per_call:
+    if set, each call's output keeps only its first and last characters."""
     parts = []
     for t in sorted(run["turns"]):
         if t > upto_turn:
@@ -112,13 +177,24 @@ def analysis_log(run: dict, upto_turn: int) -> str:
         calls = r.get("tool_calls", [])
         for i, c in enumerate(calls, 1):
             parts.append(f"=== Code run in turn {t}, call {i} of {len(calls)} ===\n"
-                         f"{c.get('code') or ''}\n--- printed ---\n{_printed(c)}"
+                         f"{c.get('code') or ''}\n--- printed ---\n"
+                         f"{_trim(_printed(c), keep_per_call)}"
                          + (f"\n--- error ---\n{c['error']}" if c.get("error") else ""))
         if r.get("files_saved"):
             parts.append(f"--- files saved in turn {t}: {', '.join(r['files_saved'])} ---")
     if not run["turns"].get(upto_turn, {}).get("tool_calls"):
         parts.append(f"(No code was run in turn {upto_turn}.)")
     return "\n\n".join(parts) if parts else "(No code was run.)"
+
+
+def form_a_log(run: dict, upto_turn: int) -> tuple[str, bool]:
+    """The analysis log as the judges see it, and whether anything was cut
+    (handoff 6: a length cap, with "truncated" recorded). Each call's output is
+    trimmed to its start and end, then the whole log is, so the code of later
+    turns (re-analysis after turn 3) is kept as well."""
+    full = analysis_log(run, upto_turn)
+    log = _trim(analysis_log(run, upto_turn, CALL_OUTPUT_KEEP), JUDGE_LOG_CAP // 2)
+    return log, log != full
 
 
 def cross_checks(run: dict, upto_turn: int) -> dict:
@@ -215,30 +291,30 @@ def thinking_text(sid: str, turn_rec: dict) -> str:
     return f"Summary ID: {sid}\n\n{body}\n"
 
 
-def write_turn_folders(runs: dict, root: Path, seed: int) -> list[dict]:
+def summary_id(secret: str, turn: int, owner_run_id: str) -> str:
+    """A keyed hash of (turn, run): fixed for that summary whatever else is in
+    the batch, different at every turn, and not traceable without the secret."""
+    return hmac.new(secret.encode(), f"T{turn}|{owner_run_id}".encode(),
+                    hashlib.sha256).hexdigest()[:ID_LENGTH]
+
+
+def write_turn_folders(runs: dict, root: Path, secret: str) -> list[dict]:
     """The T2/T4/T6/T8 folders. Returns the key rows (summary ID -> run)."""
-    # Its own seeded stream: the IDs depend only on the seed and the runs.
-    rng = random.Random(f"{seed}-summaries-by-turn")
     used, key = set(), []
     for t in TURNS:
         groups: dict[str, list[str]] = {}
         for rid, run in sorted(runs.items()):
-            r = run["turns"].get(t)
-            if not r or r.get("error") or r.get("text") is None:
-                continue
-            groups.setdefault(r.get("shared_with") or rid, []).append(rid)
-        items = sorted(groups.items())
-        rng.shuffle(items)
+            if gradeable(run, t):
+                groups.setdefault(run["turns"][t].get("shared_with") or rid, []).append(rid)
         tdir = root / f"T{t}"
         for d in ("summaries", "analysis/logs", "analysis/thinking"):
             (tdir / d).mkdir(parents=True, exist_ok=True)
         values = []
-        for owner, rids in items:
-            while True:
-                sid = f"{rng.getrandbits(32):08x}"
-                if sid not in used:
-                    used.add(sid)
-                    break
+        for owner, rids in sorted(groups.items()):
+            sid = summary_id(secret, t, owner)
+            if sid in used:
+                raise SystemExit(f"summary ID collision ({sid}); this should not happen")
+            used.add(sid)
             run, rec = runs[owner], runs[owner]["turns"][t]
             (tdir / "summaries" / f"{sid}.txt").write_text(
                 f"Summary ID: {sid}\n\n{clean(rec['text'])}\n", encoding="utf-8")
@@ -256,14 +332,17 @@ def write_turn_folders(runs: dict, root: Path, seed: int) -> list[dict]:
                             "dataset_seed": h["dataset_seed"], "replicate": h["replicate"],
                             "machine": h["machine"],
                             "mentions_expectation": "expect" in clean(rec["text"]).lower()})
+        # Rows in ID order: the order carries no information about the runs.
+        values.sort(key=lambda v: (v["summary_id"], v["row"]))
         write_csv(tdir / "analysis" / "analysis_values.csv", values)
+    key.sort(key=lambda k: (k["turn"], k["summary_id"], k["run_id"]))
     return key
 
 
 # --------------------------------------------------------------------------
 # Per-run statistics and judge inputs
 # --------------------------------------------------------------------------
-def run_stats(runs: dict, fps: dict) -> list[dict]:
+def run_stats(runs: dict, fps: dict, prices: dict) -> list[dict]:
     stats = []
     for rid, run in sorted(runs.items()):
         h = run["header"]
@@ -274,6 +353,7 @@ def run_stats(runs: dict, fps: dict) -> list[dict]:
         kinds = {("trace" if x.get("reasoning") and not x.get("redacted") else "")
                  + ("summary" if x.get("summary") else "")
                  for r in run["turns"].values() for x in r.get("reasoning", [])}
+        c = cost(prices, h["model"], dict(u))
         stats.append({
             "run_id": rid, "model": h["model"], "world": h["world"],
             "dataset_seed": h["dataset_seed"], "replicate": h["replicate"],
@@ -288,12 +368,14 @@ def run_stats(runs: dict, fps: dict) -> list[dict]:
             "output_tokens_own": u.get("output_tokens", 0),
             "reasoning_tokens_own": u.get("reasoning_tokens", 0),
             "total_tokens_own": u.get("total_tokens", 0),
+            "cost_own": round(c[0], 6) if c else "", "cost_unit": c[1] if c else "price not set",
             "model_calls_own": sum(r.get("model_calls", 0) for r in own.values()),
             "tool_calls_by_turn": json.dumps({t: len(r.get("tool_calls", []))
                                               for t, r in sorted(run["turns"].items())}),
             "returned_models": json.dumps(sorted({m for r in run["turns"].values()
                                                   for m in r.get("returned_models", [])})),
             "reasoning_returned": "+".join(sorted(k for k in kinds if k)) or "none",
+            "max_tokens_sent": h.get("max_tokens_sent", ""),
             "deployment_fingerprints": json.dumps(fps.get(rid, [])),
             **{f"t2_{k}": v for k, v in cross_checks(run, 2).items()},
             **{f"t4_{k}": v for k, v in cross_checks(run, 4).items()},
@@ -302,64 +384,84 @@ def run_stats(runs: dict, fps: dict) -> list[dict]:
 
 
 def judge_items(runs: dict) -> list[dict]:
-    """Per run x model turn: what a judge may see. No user messages, no
-    condition, no thinking."""
+    """Per run x gradeable model turn: what a judge may see. No user messages,
+    no condition, no thinking. An After run's turn 2 is its Never run's turn 2
+    (same_text_as_run names it)."""
     items = []
     for rid, run in sorted(runs.items()):
         h = run["header"]
         for t in TURNS:
-            r = run["turns"].get(t)
-            if not r or r.get("error") or r.get("text") is None:
+            if not gradeable(run, t):
                 continue
-            log = analysis_log(run, t)
+            log, truncated = form_a_log(run, t)
             items.append({"run_id": rid, "turn": t, "model": h["model"],
                           "world": h["world"], "dataset_seed": h["dataset_seed"],
-                          "summary": clean(r["text"]),
-                          "analysis_log": log[:JUDGE_LOG_CAP],
-                          "analysis_log_truncated": len(log) > JUDGE_LOG_CAP,
-                          "same_text_as_run": r.get("shared_with"),
+                          "summary": clean(run["turns"][t]["text"]),
+                          "analysis_log": log, "analysis_log_truncated": truncated,
+                          "same_text_as_run": run["turns"][t].get("shared_with"),
                           **cross_checks(run, t)})
     return items
 
 
 def pilot_report(stats: list[dict]) -> str:
-    lines = ["# Pilot report (harness numbers; judge-form costs come from the judging step)", ""]
+    lines = ["# Pilot report (harness numbers; judge costs are in judging/judge_report.md)", ""]
     by = defaultdict(list)
     for s in stats:
         by[(s["model"], s["world"], s["condition"])].append(s)
     lines += ["| model | world | condition | runs | reached turn 4 | reached turn 8 | "
-              "mean own tokens / run | mean output tokens / run |", "|---|---|---|---:|---:|---:|---:|---:|"]
+              "mean own tokens / run | mean output tokens / run | mean cost / run |",
+              "|---|---|---|---:|---:|---:|---:|---:|---:|"]
     for (m, w, c), rows in sorted(by.items()):
+        priced = [r for r in rows if r["cost_own"] != ""]
+        mean_cost = (f"{statistics.mean(r['cost_own'] for r in priced):,.4f} {priced[0]['cost_unit']}"
+                     if priced and len(priced) == len(rows) else "price not set")
         lines.append(f"| {m} | {w} | {c} | {len(rows)} | "
                      f"{sum(r['completed_turn'] >= 4 for r in rows)} | "
                      f"{sum(r['completed_turn'] >= 8 for r in rows)} | "
                      f"{statistics.mean(r['total_tokens_own'] for r in rows):,.0f} | "
-                     f"{statistics.mean(r['output_tokens_own'] for r in rows):,.0f} |")
+                     f"{statistics.mean(r['output_tokens_own'] for r in rows):,.0f} | {mean_cost} |")
     lines += ["", "Own tokens exclude an After run's shared turns 1-2, which are counted once, "
-              "on its Never run."]
+              "on its Never run. Prices come from harness/prices.toml."]
     return "\n".join(lines) + "\n"
 
 
 # --------------------------------------------------------------------------
+def _secret(root: Path, replace_ids: bool) -> str:
+    """The batch's ID secret: kept across re-exports, made once for a new batch."""
+    path = root / "key" / "id_secret.txt"
+    if path.is_file():
+        return path.read_text(encoding="utf-8").strip()
+    if (root / "key" / "KEY.csv").is_file() and not replace_ids:
+        raise SystemExit(
+            f"{root} was exported before summary IDs were keyed to their runs (it has a "
+            f"KEY.csv but no id_secret.txt). Re-exporting would rename every summary, and "
+            f"anything already shared under the old names would no longer match. Pass "
+            f"--replace-ids only if that is intended.")
+    return secrets.token_hex(16)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--batch", required=True)
-    ap.add_argument("--seed", type=int, required=True, help="seed for the summary IDs, recorded")
     ap.add_argument("--logs", default=str(HARNESS_DIR / "logs"),
                     help="Inspect log folder, for deployment fingerprints")
+    ap.add_argument("--replace-ids", action="store_true",
+                    help="re-export a batch made before keyed IDs, renaming every summary")
     a = ap.parse_args()
 
     runs = load_runs(a.batch)
     if not runs:
         raise SystemExit(f"no runs under {RUNS_DIR / a.batch}")
     root = EXPORTS_DIR / a.batch
-    if root.exists():
-        shutil.rmtree(root)            # an export is regenerated whole, never merged
-    root.mkdir(parents=True)
+    secret = _secret(root, a.replace_ids)
+    for name in EXPORT_OWNED:   # regenerated whole; judging/ belongs to the judge runner
+        shutil.rmtree(root / name, ignore_errors=True)
+    (root / "key").mkdir(parents=True)
+    (root / "key" / "id_secret.txt").write_text(secret + "\n", encoding="utf-8")
 
-    key = write_turn_folders(runs, root, a.seed)
+    key = write_turn_folders(runs, root, secret)
     write_csv(root / "key" / "KEY.csv", key)
-    stats = run_stats(runs, fingerprints(Path(a.logs), set(runs)))
+    stats = run_stats(runs, fingerprints(Path(a.logs), set(runs)), load_prices())
     write_csv(root / "key" / "run_stats.csv", stats)
     write_csv(root / "key" / "analysis_estimates.csv",
               [{"run_id": rid, "world": run["header"]["world"],
@@ -371,15 +473,15 @@ def main() -> None:
     with (root / "judges" / "judge_items.jsonl").open("w", encoding="utf-8") as f:
         for row in judge:
             f.write(json.dumps(row) + "\n")
-    counts = Counter(k["turn"] for k in key)
     per_turn_ids = {t: len({k["summary_id"] for k in key if k["turn"] == t}) for t in TURNS}
     (root / "key" / "manifest.json").write_text(json.dumps({
         "batch": a.batch,
         "exported_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-        "id_seed": a.seed, "models": sorted({r["header"]["model"] for r in runs.values()}),
+        "summary_ids": "HMAC-SHA256(key/id_secret.txt, 'T<turn>|<run_id>')[:10]",
+        "models": sorted({r["header"]["model"] for r in runs.values()}),
         "runs": len(runs), "summaries_per_turn": per_turn_ids,
-        "key_rows_per_turn": dict(counts), "judge_items": len(judge),
-        "judge_log_cap_chars": JUDGE_LOG_CAP}, indent=1), encoding="utf-8")
+        "judge_items": len(judge), "judge_log_cap_chars": JUDGE_LOG_CAP,
+        "judge_log_keep_per_call_chars": CALL_OUTPUT_KEEP}, indent=1), encoding="utf-8")
     print(f"{len(runs)} runs -> {sum(per_turn_ids.values())} summaries "
           f"({', '.join(f'T{t}: {n}' for t, n in per_turn_ids.items())}), "
           f"{len(judge)} judge items\nwritten to {root}")
