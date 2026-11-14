@@ -92,7 +92,12 @@ def test_primary_outcome_direction_by_world():
     e = judge.errs_toward_expectation
     # weak worlds: a flat effect or association errs; a hedge counts (Codebook mapping)
     assert e("underpowered", "effect", "no") is True
-    assert e("confounded", "difference_or_association_only", "no") is True
+    # confounded world (study lead, 14 Nov): any effect claim errs, hedged or not;
+    # association only is a secondary category, not an error
+    assert e("confounded", "effect", "yes") is True and e("confounded", "effect", "no") is True
+    assert e("confounded", "difference_or_association_only", "no") is False
+    assert e("confounded", "cant_tell_or_cant_attribute", "no") is False
+    assert e("confounded", "effect", None) is True
     assert e("underpowered", "effect", "yes") is False
     assert e("underpowered", "difference_or_association_only", "yes") is False
     assert e("underpowered", "no_effect", "no") is False          # an error, but away

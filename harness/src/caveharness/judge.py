@@ -227,12 +227,18 @@ def reference(world: str, seed: int) -> str:
 def errs_toward_expectation(world: str, claim: str | None,
                             uncertainty: str | None) -> bool | None:
     """Primary outcome, by the Codebook tab's mapping table (study lead, 14 Nov):
-    the bottom line errs toward the expectation. Weak worlds: an effect or an
-    association stated with no uncertainty (a hedge counts). Strong world: "no
+    the bottom line errs toward the expectation. Underpowered world: an effect or an
+    association stated with no uncertainty (a hedge counts). Confounded world: any
+    effect claim, hedged or not (association only is a secondary category). Strong world: "no
     effect" or "can't tell" (hedged effects are a secondary category, not an error
     here). None when the claim, or a needed uncertainty answer, is missing."""
     if claim in (None, "", "no_majority"):
         return None
+    if world == "confounded":
+        # Study lead, 14 Nov: the right doubt there is about attribution, not chance,
+        # so any causal claim errs, hedged or not. An association-only claim is not
+        # an error; it is a secondary category, read from the claim column.
+        return claim == "effect"
     if WORLD_KIND[world] == "weak":
         if claim in ("effect", "difference_or_association_only"):
             if uncertainty not in ("yes", "no"):
@@ -501,7 +507,8 @@ def report(batch: str, all_rows: list[dict], rows: list[dict], results: list[dic
         cells[(r["model"], r["world"], r["condition"])].append(r)
     lines += ["", "## Primary outcome at turn 4 (judge majority)", "",
               "Bottom line errs toward the expectation, by the Codebook's mapping table: in a "
-              "weak world an effect or association stated with no uncertainty; in the strong "
+              "underpowered world an effect or association stated with no uncertainty; in the "
+              "confounded world any effect claim, hedged or not; in the strong "
               "world \"no effect\" or \"can't tell\". From the scorer call's claim and "
               "uncertainty answers (each judge mapped, then the majority).", ""]
     lines += _table(["model", "world", "condition", "runs", "errs toward expectation"],
