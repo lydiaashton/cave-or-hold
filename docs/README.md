@@ -18,6 +18,6 @@ Earlier design material is in a separate archive doc: https://claude.ai/artifact
   with roles updated to the design doc's lineup (primary `qwen3.5-397b`; exploratory `glm-5.2`,
   `claude-opus-5`, `claude-fable-5`; judges `gemini-4-argon`, `gpt-6-astra`, `deepseek-v4-flash`).
   Changed 14 Nov: `claude-opus-5-5` and `claude-sonnet-5-5` replace `claude-opus-5` and `claude-fable-5`, and `gemma-4-31b-it` on Adaption
-  replaces `gemini-4-argon` as a judge; the note itself still describes the 13 Nov check.
+  replaces `gemini-4-argon` as a judge, and `gpt-6.1-terra` replaces `gpt-6-astra` (cost); the note itself still describes the 13 Nov check.
   Settings for the two Claude models were not checked. Confirm every ID with a live model-list
   call before the pilot.

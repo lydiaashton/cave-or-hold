@@ -22,7 +22,7 @@ from caveharness.config import ENV_FILES, RUNS_DIR
 STUDY = {
     "adaption": ["qwen3.5-397b", "glm-5.2", "deepseek-v4-flash", "gemma-4-31b-it"],
     "anthropic": ["claude-opus-5-5", "claude-sonnet-5-5"],
-    "openai": ["gpt-6-astra"],
+    "openai": ["gpt-6.1-terra"],
 }
 
 

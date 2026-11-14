@@ -44,7 +44,7 @@ flowchart TD
 
     subgraph JAPIS["Judge providers"]
         GEMMA["Adaption<br/>gemma-4-31b-it"]
-        GPT["OpenAI<br/>gpt-6-astra"]
+        GPT["OpenAI<br/>gpt-6.1-terra"]
         DEEPSEEK["Adaption<br/>deepseek-v4-flash"]
     end
 
@@ -209,7 +209,7 @@ flowchart TD
     FORMB["form B<br/>sees: summary only"]
 
     J1["gemma-4-31b-it"]
-    J2["gpt-6-astra"]
+    J2["gpt-6.1-terra"]
     J3["deepseek-v4-flash"]
 
     OUT["exports/BATCH/judging/judgments.jsonl<br/>one row per run x turn x judge x call,<br/>appended as each call returns"]
