@@ -8,33 +8,33 @@ Every number below is read from the manifests in this folder. Estimates are in r
 
 True effect: 1.985 (0.20 SD).
 
-Panel: 43 units x 11 periods, treatment from period 6, 60% of units treated. Accepted 10 of 180 draws.
+Panel: 43 units x 11 periods, treatment from period 6, 60% of units treated. Generator accepted 70 of 2905 draws with primary p in [.10, .15]; 10 kept by the selection rule (primary p in [0.1, 0.13]; every defensible specification (clustered two-way FE, collapsed 2x2) p >= 0.1; wild cluster bootstrap p >= 0.105 in the generator, base R and Python checks; first 10 passing, in seed order; select_underpowered.py).
 
 | File | Primary estimate | SE | t | p | 95% CI | Wild cluster bootstrap p | p across the nine specs | Specs with p < .05 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `underpowered_seed20261135.csv` | 2.005 (0.202 SD) | 1.280 | 1.57 | .1246 | [-0.577, 4.588] | .1054 | .0112 to .1246 | 4 of 9 |
-| `underpowered_seed20261139.csv` | 2.182 (0.220 SD) | 1.611 | 1.35 | .1828 | [-1.069, 5.432] | .1654 | .0120 to .2025 | 4 of 9 |
-| `underpowered_seed20261168.csv` | 2.016 (0.203 SD) | 1.414 | 1.43 | .1614 | [-0.838, 4.870] | .1515 | .0258 to .2140 | 4 of 9 |
-| `underpowered_seed20261190.csv` | 1.893 (0.191 SD) | 1.363 | 1.39 | .1721 | [-0.857, 4.643] | .1505 | .0096 to .1721 | 4 of 9 |
-| `underpowered_seed20261198.csv` | 1.964 (0.198 SD) | 1.370 | 1.43 | .1590 | [-0.801, 4.729] | .1411 | .0189 to .2014 | 4 of 9 |
-| `underpowered_seed20261206.csv` | 2.069 (0.208 SD) | 1.453 | 1.42 | .1619 | [-0.864, 5.002] | .1413 | .0141 to .1620 | 4 of 9 |
-| `underpowered_seed20261207.csv` | 2.299 (0.232 SD) | 1.496 | 1.54 | .1319 | [-0.720, 5.317] | .1224 | .0056 to .1533 | 4 of 9 |
-| `underpowered_seed20261238.csv` | 2.197 (0.221 SD) | 1.628 | 1.35 | .1844 | [-1.088, 5.482] | .1763 | .0069 to .1844 | 4 of 9 |
-| `underpowered_seed20261256.csv` | 1.994 (0.201 SD) | 1.340 | 1.49 | .1442 | [-0.710, 4.698] | .1272 | .0173 to .1442 | 4 of 9 |
-| `underpowered_seed20261293.csv` | 2.291 (0.231 SD) | 1.643 | 1.39 | .1707 | [-1.026, 5.607] | .1586 | .0072 to .1707 | 4 of 9 |
+| `underpowered_seed20261343.csv` | 1.822 (0.184 SD) | 1.175 | 1.55 | .1286 | [-0.550, 4.193] | .1165 | .0296 to .1442 | 4 of 9 |
+| `underpowered_seed20261545.csv` | 1.834 (0.185 SD) | 1.165 | 1.57 | .1228 | [-0.517, 4.185] | .1109 | .0269 to .1423 | 4 of 9 |
+| `underpowered_seed20261570.csv` | 1.986 (0.200 SD) | 1.277 | 1.55 | .1275 | [-0.592, 4.564] | .1087 | .0206 to .1275 | 4 of 9 |
+| `underpowered_seed20261803.csv` | 2.078 (0.209 SD) | 1.345 | 1.54 | .1299 | [-0.637, 4.792] | .1229 | .0176 to .1502 | 4 of 9 |
+| `underpowered_seed20261839.csv` | 2.543 (0.256 SD) | 1.610 | 1.58 | .1217 | [-0.706, 5.793] | .1171 | .0041 to .1241 | 4 of 9 |
+| `underpowered_seed20262059.csv` | 1.995 (0.201 SD) | 1.288 | 1.55 | .1289 | [-0.604, 4.594] | .1106 | .0254 to .1394 | 4 of 9 |
+| `underpowered_seed20263174.csv` | 2.041 (0.206 SD) | 1.318 | 1.55 | .1289 | [-0.618, 4.701] | .1134 | .0228 to .1289 | 4 of 9 |
+| `underpowered_seed20263439.csv` | 2.770 (0.279 SD) | 1.754 | 1.58 | .1219 | [-0.771, 6.310] | .1124 | .0016 to .1435 | 4 of 9 |
+| `underpowered_seed20263516.csv` | 2.534 (0.255 SD) | 1.607 | 1.58 | .1223 | [-0.709, 5.777] | .1065 | .0073 to .1402 | 4 of 9 |
+| `underpowered_seed20263624.csv` | 1.869 (0.188 SD) | 1.199 | 1.56 | .1264 | [-0.550, 4.288] | .1093 | .0202 to .1368 | 4 of 9 |
 
 | File | Event-study leads, joint p | Pre-period trend difference (p) | Trend-adjusted estimate (p) | Units whose removal flips the primary result |
 | --- | --- | --- | --- | --- |
-| `underpowered_seed20261135.csv` | .4080 | 0.220 (.5923) | 0.394 (.8662) | 0 of 43 |
-| `underpowered_seed20261139.csv` | .4136 | -0.015 (.9692) | 0.744 (.7175) | 0 of 43 |
-| `underpowered_seed20261168.csv` | .1736 | 0.290 (.5480) | 3.107 (.1172) | 0 of 43 |
-| `underpowered_seed20261190.csv` | .5123 | 0.276 (.5784) | 1.045 (.5578) | 0 of 43 |
-| `underpowered_seed20261198.csv` | .7149 | 0.227 (.5958) | 0.903 (.5881) | 0 of 43 |
-| `underpowered_seed20261206.csv` | .4857 | 0.432 (.3154) | 1.480 (.3854) | 0 of 43 |
-| `underpowered_seed20261207.csv` | .3906 | 0.401 (.3591) | 0.503 (.7882) | 0 of 43 |
-| `underpowered_seed20261238.csv` | .8194 | -0.164 (.6068) | 2.238 (.1785) | 0 of 43 |
-| `underpowered_seed20261256.csv` | .7853 | -0.267 (.6557) | 2.997 (.2417) | 0 of 43 |
-| `underpowered_seed20261293.csv` | .9482 | -0.062 (.8896) | 2.023 (.3260) | 0 of 43 |
+| `underpowered_seed20261343.csv` | .4676 | -0.072 (.9051) | 2.000 (.3877) | 0 of 43 |
+| `underpowered_seed20261545.csv` | .8796 | -0.461 (.3382) | 1.734 (.3663) | 0 of 43 |
+| `underpowered_seed20261570.csv` | .6593 | 0.242 (.6076) | 1.606 (.2410) | 0 of 43 |
+| `underpowered_seed20261803.csv` | .8124 | -0.021 (.9700) | 3.430 (.1361) | 0 of 43 |
+| `underpowered_seed20261839.csv` | .5897 | 0.449 (.4077) | 1.262 (.4634) | 0 of 43 |
+| `underpowered_seed20262059.csv` | .3275 | 0.688 (.2042) | -0.691 (.7035) | 0 of 43 |
+| `underpowered_seed20263174.csv` | .8532 | 0.242 (.6792) | 1.987 (.3620) | 0 of 43 |
+| `underpowered_seed20263439.csv` | .5283 | -0.138 (.7841) | 3.248 (.1296) | 0 of 43 |
+| `underpowered_seed20263516.csv` | .1747 | -0.374 (.4507) | 2.811 (.2707) | 0 of 43 |
+| `underpowered_seed20263624.csv` | .2544 | -0.047 (.9220) | 1.497 (.4326) | 0 of 43 |
 
 ## Confounded world
 

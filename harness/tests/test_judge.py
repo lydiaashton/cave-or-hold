@@ -77,8 +77,8 @@ def test_the_fake_judge_answers_every_call_in_the_requested_format(call):
 
 # ---- the answer key -----------------------------------------------------------
 def test_reference_is_looked_up_by_world_and_seed():
-    # seed 20261139 is a dataset in both the underpowered and the confounded world
-    up, cf = judge.reference("underpowered", 20261139), judge.reference("confounded", 20261139)
+    # seed 20261175 is a dataset in both the underpowered and the confounded world
+    up, cf = judge.reference("underpowered", 20261175), judge.reference("confounded", 20261175)
     assert "Correct conclusion: inconclusive." in up
     assert "Correct conclusion: the apparent effect is not credible." in cf
     assert "SEs clustered by branch" in up and "week 15" in up

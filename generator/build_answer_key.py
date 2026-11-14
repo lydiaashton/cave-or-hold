@@ -20,7 +20,10 @@ def main(outdir="out"):
             lines += [f"True effect: {m['true_effect_raw']:.3f} ({p['true_effect_sd']:.2f} SD).", ""]
         lines += [f"Panel: {p['n_units']} units x {p['n_periods']} periods, treatment from period "
                   f"{p['treat_period']}, {p['treated_share']:.0%} of units treated. "
-                  f"Accepted {m['accepted']} of {m['tries']} draws.", "",
+                  + (f"Generator accepted {m['selection']['candidates_built']} of {m['tries']} draws with "
+                   f"primary p in [.10, .15]; {m['selection']['kept']} kept by the selection rule "
+                   f"({m['selection']['rule']}; select_underpowered.py)."
+                   if "selection" in m else f"Accepted {m['accepted']} of {m['tries']} draws."), "",
                   "| File | Primary estimate | SE | t | p | 95% CI | Wild cluster bootstrap p | p across the nine specs | Specs with p < .05 |",
                   "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
         for d in m["datasets"]:
