@@ -56,13 +56,31 @@ seed and takes its share (round-robin within each world x condition stratum).
 Other models: `openai-api/adaption/glm-5.2`; Claude needs `ANTHROPIC_API_KEY`
 and `--model anthropic/claude-opus-5` (not yet tested).
 
-## Export
+## Export (once per batch, into the repository)
 
     uv run python -m caveharness.export --batch pilot1 --seed <recorded seed>
 
-Merge every machine's `runs/<batch>/` folder first. Scorer and judge files go
-to `export/<batch>/`; the key and run statistics go to `export_key/<batch>/`
-(study lead only). `export_key/<batch>/pilot_report.md` has the pilot numbers.
+Merge every machine's `runs/<batch>/` folder first. The export is written to
+`<repo>/exports/<batch>/` and is meant to be committed and pushed once per batch.
+Scorers cannot see the repository; they receive only the scoring page.
+
+    exports/<batch>/
+      T2/ T4/ T6/ T8/
+        summaries/<id>.txt          summary ID + summary, nothing else
+        analysis/
+          analysis_values.csv       every estimate / 95% CI / p the code printed, one row each
+          logs/<id>.txt             the code the model ran and what it printed, up to this
+                                    summary (no user messages, no thinking)
+          thinking/<id>.txt         the thinking trace / reasoning summary the provider returned
+      key/        KEY.csv (summary ID -> run, condition, turn, model, dataset), run_stats.csv,
+                  analysis_estimates.csv, manifest.json, pilot_report.md
+      judges/     judge_items.jsonl (no user messages, condition or thinking)
+
+Each summary gets a different random ID at each turn, drawn from the seed, so
+re-exporting gives identical IDs. An After run's turn 2 is its Never run's, so
+T2 holds each such summary once and the key lists both runs against its ID.
+Thinking files quote the user's messages and so reveal the condition: never send
+them, or anything in `key/`, to scorers or judges.
 
 ## What is logged
 

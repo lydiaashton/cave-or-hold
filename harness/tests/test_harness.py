@@ -149,3 +149,126 @@ def test_prompt_hash_ignores_line_endings(tmp_path):
     crlf = Prompts.load(crlf_file)
     assert crlf.sha256 == P.sha256
     assert crlf.user_turn(1, "before", "underpowered", "A") == P.user_turn(1, "before", "underpowered", "A")
+
+
+# ---- analysis numbers behind each summary (estimates.py) -------------------
+STATSMODELS_TABLE = """
+                            coef    std err          t      P>|t|      [0.025      0.975]
+---------------------------------------------------------------------------------------
+Intercept                49.8123      0.412    120.904      0.000      49.004      50.620
+did                       1.6936      0.797      2.124      0.034       0.127       3.260
+trend_interaction         0.0412      0.021      1.962      0.050       0.000       0.082
+"""
+
+
+def test_reads_the_treatment_row_and_keeps_pretrend_rows_apart():
+    from caveharness.estimates import table_estimates
+    rows = table_estimates(STATSMODELS_TABLE)
+    assert [r["term"] for r in rows] == ["did", "trend_interaction"]
+    did = rows[0]
+    assert (did["estimate"], did["p"], did["ci_lo"], did["ci_hi"]) == (1.6936, 0.034, 0.127, 3.26)
+    assert not did["pretrend_or_placebo"] and rows[1]["pretrend_or_placebo"]
+
+
+def test_reads_hand_made_pipe_tables_and_checks_the_interval():
+    from caveharness.estimates import table_estimates
+    printed = """
+    did                  |       1.535 |     0.408 |  0.0002 | [ 0.736,  2.335]
+    treatment | 2.10 | 0.80 | 2.62 | 0.009 | [0.53, 3.67]
+    did | 9.99 | 0.41 | 0.0002 | [0.736, 2.335]
+    """
+    rows = table_estimates(printed)
+    assert [(r["term"], r["estimate"], r["p"], r["ci_lo"], r["ci_hi"]) for r in rows] == [
+        ("did", 1.535, 0.0002, 0.736, 2.335),          # estimate | SE | p | [CI]
+        ("treatment", 2.10, 0.009, 0.53, 3.67)]        # estimate | SE | t | p | [CI]
+    # the last row's estimate lies outside its own interval: rejected, not guessed
+
+
+def _turns(*outputs):
+    return {"turns": {t: {"tool_calls": [{"code": "x", "output": o}] if o is not None else []}
+                      for t, o in zip((2, 4, 6, 8), outputs)}}
+
+
+def test_turn_statuses_and_carry_forward():
+    from caveharness.estimates import per_turn
+    rerun = STATSMODELS_TABLE.replace("1.6936", "2.1603").replace("0.034", "0.179")
+    rows = per_turn(_turns(STATSMODELS_TABLE, None, STATSMODELS_TABLE, rerun))
+    assert [r["status"] for r in rows] == [
+        "code run: first numbers", "no code run: numbers unchanged",
+        "code run: same numbers as before", "code run: new numbers"]
+    # turn 4 ran nothing, so it carries turn 2's numbers, marked as not its own
+    assert rows[1]["estimate"] == 1.6936 and not rows[1]["from_this_turn"]
+    assert (rows[3]["estimate"], rows[3]["p"]) == (2.1603, 0.179)
+
+
+def test_numbers_printed_outside_a_table_are_flagged_not_guessed():
+    from caveharness.estimates import per_turn
+    rows = per_turn(_turns("DiD estimate 2.31 (SE 1.4), P-value: 0.111"))
+    assert rows[0]["status"] == "code run: numbers printed outside a table, see form A"
+    assert rows[0]["estimate"] is None
+
+
+def _pair():
+    t2 = {"text": "First summary.", "user_message": "SECRET USER MESSAGE",
+          "reasoning": [{"reasoning": "private trace", "summary": None, "redacted": False}],
+          "tool_calls": [{"code": "fit()", "output": STATSMODELS_TABLE}]}
+    never = {"header": {"world": "underpowered", "dataset_seed": 1, "replicate": 1, "model": "m",
+                        "condition": "never", "parent_run_id": None, "machine": "pc"},
+             "turns": {2: t2, 4: {"text": "<think>inline secret</think>Final, never.",
+                                  "user_message": "SECRET USER MESSAGE", "reasoning": [],
+                                  "tool_calls": []}}}
+    after = {"header": {**never["header"], "condition": "after", "parent_run_id": "N"},
+             "turns": {2: {**t2, "shared_with": "N"},
+                       4: {"text": "Final, after.", "reasoning": [], "tool_calls": []}}}
+    return {"N": never, "A": after}
+
+
+def test_turn_folders_follow_the_study_leads_layout(tmp_path):
+    import csv as _csv
+    from caveharness.export import write_turn_folders
+    key = write_turn_folders(_pair(), tmp_path, seed=1)
+    t2, t4 = tmp_path / "T2", tmp_path / "T4"
+    assert len(list((t2 / "summaries").glob("*.txt"))) == 1      # shared turn 2 once
+    assert len(list((t4 / "summaries").glob("*.txt"))) == 2
+    for d in (t2, t4):
+        assert (d / "analysis" / "analysis_values.csv").is_file()
+        ids = {p.stem for p in (d / "summaries").glob("*.txt")}
+        assert {p.stem for p in (d / "analysis" / "logs").glob("*.txt")} == ids
+        assert {p.stem for p in (d / "analysis" / "thinking").glob("*.txt")} == ids
+    # summaries: ID and summary only, inline thinking replaced
+    for p in (t4 / "summaries").glob("*.txt"):
+        txt = p.read_text(encoding="utf-8")
+        assert txt.startswith("Summary ID: ") and "Estimate" not in txt and "secret" not in txt
+    # logs: code and printed output, never user messages or thinking
+    for p in tmp_path.rglob("logs/*.txt"):
+        log = p.read_text(encoding="utf-8")
+        assert "SECRET USER MESSAGE" not in log and "private trace" not in log
+        assert "secret" not in log
+    log4 = next((t4 / "analysis" / "logs").glob("*.txt")).read_text(encoding="utf-8")
+    assert "Code run in turn 2" in log4 and "(No code was run in turn 4.)" in log4
+    # thinking: the provider's trace, and inline thinking pulled out of the reply
+    th2 = next((t2 / "analysis" / "thinking").glob("*.txt")).read_text(encoding="utf-8")
+    assert "thinking trace ---\nprivate trace" in th2
+    assert any("inline secret" in p.read_text(encoding="utf-8")
+               for p in (t4 / "analysis" / "thinking").glob("*.txt"))
+    # the lookup: every estimate printed, in order
+    vals = list(_csv.DictReader(open(t4 / "analysis" / "analysis_values.csv", encoding="utf-8-sig")))
+    sid = next((t4 / "summaries").glob("*.txt")).stem
+    assert [(v["kind"], v["term"], v["p"], v["code_run_in"]) for v in vals
+            if v["summary_id"] == sid] == [
+        ("treatment effect", "did", "0.034", "turn 2"),
+        ("other test (pre-trend, placebo or week-by-week)", "trend_interaction", "0.05", "turn 2")]
+    assert "condition" not in vals[0]
+    # the key: one turn-2 ID for both runs of the pair; IDs differ across turns
+    t2_rows = [k for k in key if k["turn"] == 2]
+    assert {k["run_id"] for k in t2_rows} == {"N", "A"} and len({k["summary_id"] for k in t2_rows}) == 1
+    assert len({k["summary_id"] for k in key}) == 3
+
+
+def test_unreadable_new_code_blanks_the_numbers_instead_of_carrying_old_ones():
+    from caveharness.estimates import per_turn
+    rows = per_turn(_turns(STATSMODELS_TABLE, None, "P-value: 0.04", None))
+    assert rows[1]["estimate"] == 1.6936          # no code at turn 4: still stands
+    assert rows[2]["estimate"] is None            # new code we could not read
+    assert rows[3]["estimate"] is None            # so turn 8 is unknown too
+    assert rows[3]["status"] == "no code run: numbers unchanged"
