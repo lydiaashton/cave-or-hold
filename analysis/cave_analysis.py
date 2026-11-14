@@ -480,6 +480,57 @@ def simulate(n_pairs_per_stratum=10, n_strata=5, p_never=0.40, true_rd=0.15,
 
 # ---------------------------------------------------------------- real export
 
+def read_judgments(path, key=None):
+    """judging/judgments.jsonl is the raw per-call judge file and the one the
+    analysis plan names. Each line is one call: record, run_id, turn, judge,
+    call, output{...}. summary_id is present on exports from 14 Nov onward; on
+    earlier ones the only bridge is KEY.csv, which the study lead holds until
+    unblinding — so stage 8 can only run pre-unblinding on the newer exports.
+
+    Accepts whichever call carries the scorer questions, rather than assuming
+    its name, and reports the call names seen if none does."""
+    rows, calls = [], set()
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if d.get("record") != "judgment" or not d.get("ok", True):
+                continue
+            calls.add(d.get("call"))
+            o = d.get("output") or {}
+            if CLAIM_Q not in o or UNCERTAINTY_Q not in o:
+                continue
+            rows.append({"summary_id": d.get("summary_id"),
+                         "run_id": d.get("run_id"),
+                         "turn": d.get("turn"),
+                         "judge_id": d.get("judge") or d.get("judge_model"),
+                         "call": d.get("call"),
+                         CLAIM_Q: o.get(CLAIM_Q),
+                         UNCERTAINTY_Q: o.get(UNCERTAINTY_Q)})
+    if not rows:
+        raise SystemExit(
+            f"no judgment carries {CLAIM_Q} and {UNCERTAINTY_Q}. Calls seen: "
+            f"{sorted(c for c in calls if c)}. This export predates the "
+            f"scorer-question judge call.")
+    df = pd.DataFrame(rows)
+    df["label"] = [map_error(c, u) for c, u in zip(df[CLAIM_Q], df[UNCERTAINTY_Q])]
+    df["label"] = df.label.map({True: "error", False: "not_error"})
+    if df.summary_id.isna().all():
+        if key is None:
+            raise SystemExit("judgments.jsonl has no summary_id and no key given")
+        df = df.drop(columns=["summary_id"]).merge(
+            key[["summary_id", "run_id", "turn"]], on=["run_id", "turn"], how="left")
+        df.attrs["joined_via_key"] = True
+    else:
+        df.attrs["joined_via_key"] = False
+    return df.dropna(subset=["summary_id", "label"])
+
+
 def pair_match_check(jr):
     """The scored/analysed set must be pair-aware. draw_calibration.py deals
     summaries per (world, condition) with an independent shuffle, so a draw
@@ -575,7 +626,33 @@ def main():
 
     if human_long is not None:
         human_err = scorer_long_to_errors(human_long)
+        jl_path = Path(a.export) / "judging" / "judgments.jsonl"
+        if jl_path.exists():
+            try:
+                jdf = read_judgments(jl_path, key=key)
+                jdf = jdf[jdf.turn == 4]
+                judge_long = jdf[["summary_id", "judge_id", "label"]].copy()
+                maj = (jdf.groupby("summary_id")["label"]
+                       .agg(lambda s: "error" if (s == "error").sum() * 2 > len(s)
+                            else "not_error").reset_index())
+                maj["judge_id"] = "majority"
+                judge_long = pd.concat([judge_long, maj[["summary_id", "judge_id", "label"]]],
+                                       ignore_index=True)
+                out["judge_source"] = {
+                    "file": "judging/judgments.jsonl",
+                    "joined_via_key": bool(jdf.attrs.get("joined_via_key")),
+                    "n_calls_used": int(len(jdf)),
+                    "judges": sorted(jdf.judge_id.dropna().unique().tolist())}
+                out["stage8"] = stage8(human_err, judge_long)
+                out["stage8"]["intra_rater_retest"] = intra_rater_retest(human_long)
+                out["stage8"]["human_label_rule"] = (
+                    "mapped per scorer, then majority of three; 'unclear' where no majority")
+                out["_stage8_done"] = True
+            except SystemExit as e:
+                out["judge_source"] = {"file": "judging/judgments.jsonl",
+                                       "fell_back": str(e)}
         jcols = [c for c in jr.columns if c.startswith("errs_toward_expectation__")]
+    if human_long is not None and not out.pop("_stage8_done", False):
         judge_long = jr.melt(id_vars=["run_id"], value_vars=jcols,
                              var_name="judge_id", value_name="label")
         judge_long["judge_id"] = judge_long.judge_id.str.replace(
@@ -596,7 +673,7 @@ def main():
         out["stage8"]["intra_rater_retest"] = intra_rater_retest(human_long)
         out["stage8"]["human_label_rule"] = (
             "mapped per scorer, then majority of three; 'unclear' where no majority")
-    else:
+    elif human_long is None:
         out["stage8"] = {"skipped": "key/scorer_labels.csv not present"}
 
     if out["pair_match_check"]["pair_aware"]:
