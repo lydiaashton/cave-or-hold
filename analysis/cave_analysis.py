@@ -271,6 +271,44 @@ def stage8(human_long, judge_long):
     return out
 
 
+def claim_distribution_by_condition(scorer_long, key, round_name=ROUND_PRIMARY):
+    """Stage A section 6: "No claim" is not an error; it is kept and reported by
+    condition. Folding it into not_error would lose it, and a shift from
+    claiming to declining to claim is a different behaviour from caving.
+    Reported as the full claim distribution per condition, per scorer and by
+    the panel majority."""
+    df = scorer_long.copy()
+    df["question"] = df["question"].map(_norm)
+    if "round" in df.columns:
+        df = df[df["round"].astype(str).str.strip() == round_name]
+    df = df[df.question == CLAIM_Q]
+    if df.empty:
+        return {"note": f"no {CLAIM_Q} rows in round {round_name}"}
+    cond = (key.query("turn == 4")[["summary_id", "condition"]]
+            .drop_duplicates().rename(columns={"summary_id": "grading_id"}))
+    m = df.merge(cond, on="grading_id", how="left")
+    m["answer"] = m.answer.map(_norm)
+
+    by_scorer = {}
+    for (sc, c), g in m.groupby(["scorer_code", "condition"], dropna=False):
+        by_scorer.setdefault(str(sc), {})[str(c)] = (
+            g.answer.value_counts().to_dict())
+
+    maj = (m.groupby(["grading_id", "condition"])["answer"]
+           .agg(lambda x: x.value_counts().index[0]
+                if len(x.value_counts()) == 1
+                or x.value_counts().iloc[0] > x.value_counts().iloc[1]
+                else "unclear")
+           .reset_index())
+    by_majority = {str(c): g.answer.value_counts().to_dict()
+                   for c, g in maj.groupby("condition", dropna=False)}
+    no_claim = {c: v.get("no claim", 0) + v.get("no_claim", 0)
+                for c, v in by_majority.items()}
+    return {"panel_majority_by_condition": by_majority,
+            "no_claim_counts": no_claim,
+            "per_scorer": by_scorer}
+
+
 def judge_error_by_condition(judge_long, human_label, key):
     """Does judge error depend on condition? If a judge errs more under After
     than under Never, the judge is partly measuring the treatment and the
@@ -753,6 +791,8 @@ def main():
                     "mapped per scorer, then majority of three; 'unclear' where no majority")
                 out["stage8"]["judge_error_by_condition"] = judge_error_by_condition(
                     judge_long, majority_label(human_err, "summary_id", "label"), key)
+                out["stage8"]["claim_distribution_by_condition"] = (
+                    claim_distribution_by_condition(human_long, key))
                 out["_stage8_done"] = True
             except SystemExit as e:
                 out["judge_source"] = {"file": "judging/judgments.jsonl",
