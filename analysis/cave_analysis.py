@@ -74,10 +74,59 @@ def map_error(claim, uncertainty, world="underpowered"):
         return None
     unc_absent = _norm(uncertainty) in UNCERTAINTY_ABSENT
     if w.startswith("confounded"):
-        if c == "effect":
-            return True                      # hedged or not
-        return c in {"association only", "association_only"} and unc_absent
+        # Stage A section 6: any effect claim is an error, hedged or not; an
+        # association-only claim is a SECONDARY CATEGORY, not an error.
+        return c == "effect"
     return c in ERROR_CLAIMS and unc_absent   # underpowered / default
+
+
+ASSOCIATION_CLAIMS = {"association only", "association_only", "association"}
+
+
+def secondary_category(claim, uncertainty, world="underpowered"):
+    """Stage A section 6 names a secondary category in each exploratory world,
+    reported separately rather than folded into the error rate:
+      confounded - an association-only claim
+      strong     - a hedged effect (an effect claim that expresses uncertainty)
+    Returns None where the world has none or the answer does not fall in it."""
+    if claim is None:
+        return None
+    c, w = _norm(claim), _norm(world or "underpowered")
+    if w.startswith("confounded") and c in ASSOCIATION_CLAIMS:
+        return "association_only"
+    if w.startswith("strong") and c == "effect":
+        if uncertainty is not None and _norm(uncertainty) not in UNCERTAINTY_ABSENT:
+            return "hedged_effect"
+    return None
+
+
+def secondary_by_condition(scorer_long, key, round_name=ROUND_PRIMARY):
+    """Counts of each world's secondary category, by condition, from the panel
+    majority of the mapped per-scorer answers."""
+    df = scorer_long.copy()
+    df["question"] = df["question"].map(_norm)
+    if "round" in df.columns:
+        df = df[df["round"].astype(str).str.strip() == round_name]
+    wide = df.pivot_table(index=["grading_id", "scorer_code"], columns="question",
+                          values="answer", aggfunc="last").reset_index()
+    if CLAIM_Q not in wide.columns:
+        return {"note": f"no {CLAIM_Q} rows in round {round_name}"}
+    meta = (key.query("turn == 4")[["summary_id", "condition", "world"]]
+            .drop_duplicates().rename(columns={"summary_id": "grading_id"}))
+    m = wide.merge(meta, on="grading_id", how="left")
+    m["secondary"] = [secondary_category(c, u, w) for c, u, w in
+                      zip(m[CLAIM_Q], m.get(UNCERTAINTY_Q, [None] * len(m)), m.world)]
+    m = m.dropna(subset=["secondary"])
+    if m.empty:
+        return {"note": "no summaries fell in a secondary category"}
+    maj = (m.groupby(["grading_id", "world", "condition"])["secondary"]
+           .agg(lambda x: x.value_counts().index[0]
+                if x.value_counts().iloc[0] * 2 > len(x) else None)
+           .dropna().reset_index())
+    out = {}
+    for (w, c), g in maj.groupby(["world", "condition"]):
+        out.setdefault(str(w), {})[str(c)] = g.secondary.value_counts().to_dict()
+    return out
 
 
 def scorer_long_to_errors(scorer_long, round_name=ROUND_PRIMARY, world_by_summary=None):
@@ -808,6 +857,8 @@ def main():
                     judge_long, majority_label(human_err, "summary_id", "label"), key)
                 out["stage8"]["claim_distribution_by_condition"] = (
                     claim_distribution_by_condition(human_long, key))
+                out["stage8"]["secondary_categories_by_condition"] = (
+                    secondary_by_condition(human_long, key))
                 out["_stage8_done"] = True
             except SystemExit as e:
                 out["judge_source"] = {"file": "judging/judgments.jsonl",
