@@ -271,6 +271,42 @@ def stage8(human_long, judge_long):
     return out
 
 
+def judge_error_by_condition(judge_long, human_label, key):
+    """Does judge error depend on condition? If a judge errs more under After
+    than under Never, the judge is partly measuring the treatment and the
+    correction cannot be applied as a single marginal rate. Reported per judge
+    per condition, with the discordance counted both ways so the direction of
+    the error is visible rather than just its size."""
+    cond = key.query("turn == 4")[["summary_id", "condition", "world"]].drop_duplicates()
+    m = (judge_long.merge(human_label, on="summary_id", suffixes=("_judge", "_human"))
+                   .merge(cond, on="summary_id", how="left"))
+    out = {}
+    for (jid, c), g in m.groupby(["judge_id", "condition"], dropna=False):
+        n = len(g)
+        if not n:
+            continue
+        fp = int(((g.label_judge == "error") & (g.label_human == "not_error")).sum())
+        fn_ = int(((g.label_judge == "not_error") & (g.label_human == "error")).sum())
+        out.setdefault(str(jid), {})[str(c)] = {
+            "n": n,
+            "agreement": float((g.label_judge == g.label_human).mean()),
+            "judge_says_error_human_does_not": fp,
+            "human_says_error_judge_does_not": fn_,
+            "net_bias_pp": round((fp - fn_) / n * 100, 1),
+            "cohen_kappa": cohen_kappa(g.label_human, g.label_judge),
+        }
+    for jid, by_c in out.items():
+        rates = {c: v["net_bias_pp"] for c, v in by_c.items() if v["n"] >= 5}
+        if len(rates) >= 2:
+            spread = max(rates.values()) - min(rates.values())
+            by_c["_net_bias_spread_pp"] = round(spread, 1)
+            by_c["_note"] = ("net bias differs across conditions by "
+                             f"{spread:.1f}pp; a single marginal correction "
+                             "assumes this is 0" if spread >= 10 else
+                             "net bias is similar across conditions")
+    return out
+
+
 def majority_label(long_df, item_col, label_col):
     def pick(s):
         c = s.value_counts()
@@ -662,7 +698,8 @@ def main():
     ap.add_argument("--labels-locked", action="store_true")
     ap.add_argument("--simulate", action="store_true")
     ap.add_argument("--true-rd", type=float, default=0.15)
-    ap.add_argument("--negligible-bound", type=float, default=0.10)
+    ap.add_argument("--negligible-bound", type=float, default=0.20,
+                    help="registered 14 Nov: 20pp, design-limited at N=60")
     a = ap.parse_args()
 
     if a.simulate:
@@ -686,7 +723,13 @@ def main():
             "before_B from the same ones.")
 
     if human_long is not None:
-        human_err = scorer_long_to_errors(human_long)
+        # The scorer file names no world by design. After unblinding the key
+        # supplies it, so the Codebook's confounded and strong rules apply to
+        # the judge-validation sample instead of the underpowered rule.
+        world_by_summary = dict(zip(key.summary_id, key.world)) \
+            if "world" in key.columns else None
+        human_err = scorer_long_to_errors(human_long,
+                                          world_by_summary=world_by_summary)
         jl_path = Path(a.export) / "judging" / "judgments.jsonl"
         if jl_path.exists():
             try:
@@ -708,6 +751,8 @@ def main():
                 out["stage8"]["intra_rater_retest"] = intra_rater_retest(human_long)
                 out["stage8"]["human_label_rule"] = (
                     "mapped per scorer, then majority of three; 'unclear' where no majority")
+                out["stage8"]["judge_error_by_condition"] = judge_error_by_condition(
+                    judge_long, majority_label(human_err, "summary_id", "label"), key)
                 out["_stage8_done"] = True
             except SystemExit as e:
                 out["judge_source"] = {"file": "judging/judgments.jsonl",
