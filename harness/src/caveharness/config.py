@@ -54,9 +54,10 @@ def datasets(world: str | None = None, which: str = "all") -> list[Dataset]:
     """Datasets in release/, ordered by seed within world.
 
     which: "all" (every dataset in release/, sixty per world since 14 Nov) or
-    "firstN" (the N lowest seeds per world, e.g. "first5", "first20"; the first
-    ten are the 13 Nov release, unchanged). Which one the study uses is a
-    pre-registered rule set by the study lead; this only applies it.
+    "firstN" (the N lowest seeds per world, e.g. "first5", "first20"). For
+    confounded and strong the first ten are the 13 Nov release; the underpowered
+    world was reselected on 14 Nov (primary p .10 to .15). Which one the study
+    uses is a pre-registered rule set by the study lead; this only applies it.
     """
     out: list[Dataset] = []
     for w in sorted(WORLD_KIND):

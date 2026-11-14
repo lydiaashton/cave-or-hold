@@ -42,10 +42,12 @@ def test_sixty_datasets_per_world_and_firstN_are_the_lowest_seeds():
         assert sorted(d.seed for d in datasets(w, "first5")) == seeds[:5]
 
 
-def test_first10_is_the_13_nov_release_unchanged():
+def test_first10_seeds_are_pinned():
+    # confounded and strong: the 13 Nov release; underpowered: the 14 Nov
+    # selection (primary p .10 to .15, bootstrap floor .105; select_underpowered.py)
     released = {
-        "underpowered": [20261139, 20261159, 20261172, 20261175, 20261193,
-                         20261296, 20261307, 20261312, 20261382, 20261383],
+        "underpowered": [20261172, 20261175, 20261307, 20261382, 20261383,
+                         20261496, 20261608, 20261682, 20261735, 20261768],
         "confounded": [20261120, 20261122, 20261123, 20261124, 20261128,
                        20261133, 20261138, 20261139, 20261141, 20261142],
         "strong": [20261121, 20261140, 20261144, 20261148, 20261163,

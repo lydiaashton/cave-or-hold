@@ -64,7 +64,7 @@ Each sandbox takes up to 2 GB; if Docker Desktop has little memory, add
 | Parameter | Meaning |
 |---|---|
 | `worlds` | comma list: underpowered, confounded, strong |
-| `datasets` | `firstN`: the N lowest seeds per world (`first5`, `first20`, ...; refused if N exceeds what `release/` holds), or `all` (sixty per world). The first ten are the 13 Nov release, unchanged |
+| `datasets` | `firstN`: the N lowest seeds per world (`first5`, `first20`, ...; refused if N exceeds what `release/` holds), or `all` (sixty per world). Confounded and strong: the first ten are the 13 Nov release. Underpowered: reselected 14 Nov to primary p .10 to .15, so its first five are not the pilots' five |
 | `runs_per_cell` | runs per world x condition; must be a multiple of the datasets used |
 | `conditions` | the kinds, default `never,before,after`; After needs Never |
 | `wordings` | expectation wordings, each its own Before and After cell; default `B`. Main runs: `B,D` gives never, before_B, after_B, before_D, after_D. There is no fallback wording |

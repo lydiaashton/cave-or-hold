@@ -506,9 +506,14 @@ def generate(world: str, k: int = 5, params: Params | None = None,
 
 
 if __name__ == "__main__":
-    # Sixty datasets per world (14 Nov). The search over seeds is sequential, so the first
-    # ten accepted per world are the 13 Nov release and the first five the earlier build.
+    # Sixty datasets per world (14 Nov). The search over seeds is sequential, so the
+    # confounded and strong builds start with the 13 Nov ten. The underpowered world is built
+    # with primary p in [.10, .15] (85 candidates); select_underpowered.py then applies the
+    # .105 bootstrap floor and keeps the first 60 into out/ (see its docstring for the steps).
     import sys
     worlds = sys.argv[1:] or list(WORLDS)
     for w in worlds:
-        generate(w, k=60)
+        if w == "underpowered":
+            generate(w, k=85, rules=Rules(weak_p_hi=0.15), outdir="build_underpowered_band")
+        else:
+            generate(w, k=60)
