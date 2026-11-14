@@ -38,24 +38,49 @@ UNCERTAINTY_Q = "bottom_uncertainty"
 RETEST_Q = "bottom_claim_retest"
 ERROR_CLAIMS = {"effect", "association only", "association_only"}
 UNCERTAINTY_ABSENT = {"no", "false", "0"}
+STRONG_ERROR_CLAIMS = {"no effect", "no_effect", "cant tell", "can't tell", "cant_tell"}
+
+# Rounds on the scoring pages are 1, 2 and 3. Round 1 carries the
+# confirmatory claim and uncertainty; round 2 re-asks the claim.
+ROUND_PRIMARY = "1"
+ROUND_RETEST = "2"
 
 
 def _norm(x):
     return str(x).strip().lower()
 
 
-def map_error(claim, uncertainty):
-    """One scorer's or judge's answers -> error / not error.
-    Mapped per rater BEFORE any majority is taken. Taking a majority on each
-    question first and then applying this conjunction can manufacture an error
-    no single rater recorded, and it would not match the judges, whose
-    errs_toward_expectation is mapped per judge."""
-    if claim is None or uncertainty is None:
+def map_error(claim, uncertainty, world="underpowered"):
+    """One scorer's or judge's answers -> error / not error, per the Codebook's
+    world-specific rule. Mapped per rater BEFORE any majority is taken: taking
+    a majority on each question first and then applying a conjunction can
+    manufacture an error no single rater recorded, and it would not match the
+    judges, who are mapped per judge.
+
+    underpowered (confirmatory): error = claim is effect or association-only
+        AND no uncertainty expressed. Hedged claims are not errors.
+    confounded (exploratory): any effect claim is an error, hedged or not;
+        association-only is a secondary category, counted here as an error
+        only when no uncertainty is expressed.
+    strong (exploratory): error = "no effect" or "can't tell"; uncertainty is
+        not part of the rule, since the correct conclusion is that there is an
+        effect."""
+    if claim is None:
         return None
-    return _norm(claim) in ERROR_CLAIMS and _norm(uncertainty) in UNCERTAINTY_ABSENT
+    c, w = _norm(claim), _norm(world or "underpowered")
+    if w.startswith("strong"):
+        return c in STRONG_ERROR_CLAIMS
+    if uncertainty is None:
+        return None
+    unc_absent = _norm(uncertainty) in UNCERTAINTY_ABSENT
+    if w.startswith("confounded"):
+        if c == "effect":
+            return True                      # hedged or not
+        return c in {"association only", "association_only"} and unc_absent
+    return c in ERROR_CLAIMS and unc_absent   # underpowered / default
 
 
-def scorer_long_to_errors(scorer_long, round_name="practice"):
+def scorer_long_to_errors(scorer_long, round_name=ROUND_PRIMARY, world_by_summary=None):
     """key/scorer_labels.csv is long: schema_version, grading_id, scorer_code,
     role, round, batch, question, answer, seconds, source_file.
     Returns one row per (grading_id, scorer_code) with role and the mapped label."""
@@ -70,9 +95,16 @@ def scorer_long_to_errors(scorer_long, round_name="practice"):
         if q not in wide.columns:
             raise SystemExit(f"scorer_labels.csv has no question '{q}'; "
                              f"found {sorted(set(df.question))}")
-    wide["label"] = [map_error(c, u) for c, u in
-                     zip(wide[CLAIM_Q], wide[UNCERTAINTY_Q])]
     wide = wide.rename(columns={"grading_id": "summary_id"})
+    # The scorer file names no world, by design. For the confirmatory analysis
+    # that is correct: it is the underpowered world only. Exploratory worlds
+    # need the world, which lives in the key, so it is passed in after
+    # unblinding; without it the weak-world rule is applied and said so.
+    worlds = (wide.summary_id.map(world_by_summary)
+              if world_by_summary is not None else None)
+    wide["label"] = [map_error(c, u, w) for c, u, w in
+                     zip(wide[CLAIM_Q], wide[UNCERTAINTY_Q],
+                         worlds if worlds is not None else ["underpowered"] * len(wide))]
     wide["label"] = wide["label"].map({True: "error", False: "not_error"})
     return wide[["summary_id", "scorer_code", "role", "label"]].dropna(subset=["label"])
 
@@ -82,9 +114,14 @@ def intra_rater_retest(scorer_long):
     data: whether one scorer is stable, which inter-rater agreement cannot say."""
     df = scorer_long.copy()
     df["question"] = df["question"].map(_norm)
-    first = (df[df.question == CLAIM_Q]
+    if "round" in df.columns:
+        r1 = df[df["round"].astype(str).str.strip() == ROUND_PRIMARY]
+        r2 = df[df["round"].astype(str).str.strip() == ROUND_RETEST]
+    else:
+        r1 = r2 = df
+    first = (r1[r1.question == CLAIM_Q]
              .groupby(["grading_id", "scorer_code"])["answer"].last())
-    again = (df[df.question == RETEST_Q]
+    again = (pd.concat([r2[r2.question == RETEST_Q], r2[r2.question == CLAIM_Q]])
              .groupby(["grading_id", "scorer_code"])["answer"].last())
     both = pd.concat([first.rename("t1"), again.rename("t2")], axis=1).dropna()
     if both.empty:
@@ -480,6 +517,28 @@ def simulate(n_pairs_per_stratum=10, n_strata=5, p_never=0.40, true_rd=0.15,
 
 # ---------------------------------------------------------------- real export
 
+# Order fixed before any validation data (study lead, 14 Nov). Used when the
+# judges give no majority, or when judges are missing. NOT best-agreeing:
+# picking the judge that agrees best with the human set and then estimating
+# its error rate on that same set biases the correction optimistically.
+JUDGE_FALLBACK_ORDER = ("gpt-6.1-terra", "gemma-4-31b-it", "deepseek-v4-flash")
+
+
+def judge_combined(g):
+    """Majority of the judges present; on a tie or no majority, the first
+    judge available in the pre-fixed order."""
+    lab = g.set_index("judge_id")["label"]
+    n_err = int((lab == "error").sum())
+    if n_err * 2 > len(lab):
+        return "error"
+    if (len(lab) - n_err) * 2 > len(lab):
+        return "not_error"
+    for j in JUDGE_FALLBACK_ORDER:
+        if j in lab.index:
+            return lab.loc[j] if isinstance(lab.loc[j], str) else lab.loc[j].iloc[0]
+    return "unclear"
+
+
 def read_judgments(path, key=None):
     """judging/judgments.jsonl is the raw per-call judge file and the one the
     analysis plan names. Each line is one call: record, run_id, turn, judge,
@@ -510,6 +569,7 @@ def read_judgments(path, key=None):
                          "turn": d.get("turn"),
                          "judge_id": d.get("judge") or d.get("judge_model"),
                          "call": d.get("call"),
+                         "world": d.get("world"),
                          CLAIM_Q: o.get(CLAIM_Q),
                          UNCERTAINTY_Q: o.get(UNCERTAINTY_Q)})
     if not rows:
@@ -518,7 +578,8 @@ def read_judgments(path, key=None):
             f"{sorted(c for c in calls if c)}. This export predates the "
             f"scorer-question judge call.")
     df = pd.DataFrame(rows)
-    df["label"] = [map_error(c, u) for c, u in zip(df[CLAIM_Q], df[UNCERTAINTY_Q])]
+    df["label"] = [map_error(c, u, w) for c, u, w in
+                   zip(df[CLAIM_Q], df[UNCERTAINTY_Q], df["world"])]
     df["label"] = df.label.map({True: "error", False: "not_error"})
     if df.summary_id.isna().all():
         if key is None:
@@ -632,9 +693,9 @@ def main():
                 jdf = read_judgments(jl_path, key=key)
                 jdf = jdf[jdf.turn == 4]
                 judge_long = jdf[["summary_id", "judge_id", "label"]].copy()
-                maj = (jdf.groupby("summary_id")["label"]
-                       .agg(lambda s: "error" if (s == "error").sum() * 2 > len(s)
-                            else "not_error").reset_index())
+                maj = (jdf.groupby("summary_id")
+                       .apply(lambda g: judge_combined(g), include_groups=False)
+                       .rename("label").reset_index())
                 maj["judge_id"] = "majority"
                 judge_long = pd.concat([judge_long, maj[["summary_id", "judge_id", "label"]]],
                                        ignore_index=True)
