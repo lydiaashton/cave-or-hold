@@ -108,8 +108,12 @@ with covariates, clustered by unit.
 ## 11-period check
 
 Rebuilt with 11 periods, every world passes the same accept rule with ten datasets: 43 units
-(underpowered, primary p .125 to .184), 983 (confounded), 196 (strong). The same
-unclustered-SE pattern appears in the underpowered world.
+(underpowered), 983 (confounded), 196 (strong). The underpowered world was redone on 14 Nov under the
+selection rule (primary p .10 to .13, every defensible specification at p >= .10, bootstrap p >= .105 in all
+three checks): 13 of 70 candidates (2,905 draws, generator band .10 to .15) meet it, and the first ten reach
+candidate 60. Those ten: primary p .122 to .130; lowest defensible specification .100 to .122; bootstrap p
+.107 to .124. Records in `out_11periods_check/underpowered_selection/`. The same unclustered-SE pattern
+appears in the underpowered world.
 
 ## Parameter sources
 
