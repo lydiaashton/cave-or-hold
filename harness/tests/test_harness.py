@@ -345,7 +345,7 @@ def test_dockerfile_copies_only_the_requirements():
 def test_every_sample_gets_only_its_own_branches_csv():
     t = cave_or_hold(worlds="underpowered,confounded,strong", datasets="first10", runs_per_cell=10)
     assert t.sandbox.type == "docker"
-    assert len(t.dataset) == 3 * 10 * 2          # a pair and a Before per dataset x replicate
+    assert len(t.dataset) == 3 * 10 * 3          # per dataset x replicate: a pair (Never + two Afters), Before-B, Before-D
     for s in t.dataset:
         assert list(s.files) == ["branches.csv"]
         src = Path(s.files["branches.csv"])
@@ -435,9 +435,10 @@ def test_the_wording_is_part_of_the_condition_and_nothing_falls_back_to_a():
     assert P.user_turn(1, "after_D", "underpowered") == P.user_turn(1, "never", "underpowered")
     with pytest.raises(ValueError, match="names no expectation wording"):
         P.user_turn(1, "before", "underpowered")              # no silent default
-    t = cave_or_hold(worlds="underpowered", datasets="first5", runs_per_cell=5)
+    t = cave_or_hold(datasets="first5", runs_per_cell=5)
     conds = {c for s in t.dataset for c in s.metadata["conditions"]}
-    assert conds == {"never", "before_B", "after_B"}           # the default is B, never A
+    assert conds == {"never", "before_B", "after_B", "before_D", "after_D"}   # default B,D, never A
+    assert {s.metadata["world"] for s in t.dataset} == {"underpowered", "confounded", "strong"}
 
 
 def test_board_sentence_is_on_identical_everywhere_and_can_be_switched_off():
