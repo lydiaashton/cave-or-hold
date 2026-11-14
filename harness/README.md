@@ -64,7 +64,7 @@ Each sandbox takes up to 2 GB; if Docker Desktop has little memory, add
 | Parameter | Meaning |
 |---|---|
 | `worlds` | comma list: underpowered, confounded, strong; default all three |
-| `datasets` | `firstN`: the N lowest seeds per world (`first5`, `first20`, ...; refused if N exceeds what `release/` holds), or `all` (sixty per world). Confounded and strong: the first ten are the 13 Nov release. Underpowered: reselected 14 Nov (primary p .10 to .13; `generator/select_underpowered.py`), so its first five are not the pilots' five `pilot` / `pilotN` read `release_pilot/` instead: ten pilot datasets per world that never appear in `release/` |
+| `datasets` | `firstN`: the N lowest seeds per world (`first5`, `first20`, ...; refused if N exceeds what `release/` holds), or `all` (sixty per world). No dataset in `release/` was used in a pilot: the ones pilots 1 and 2 ran on were taken out on 14 Nov (`generator/piloted_seeds.json`) and each world topped back up to sixty. Underpowered: selected 14 Nov (primary p .10 to .13; `generator/select_underpowered.py`). `pilot` / `pilotN` read `release_pilot/` instead: ten pilot datasets per world that never appear in `release/` |
 | `runs_per_cell` | runs per world x condition; must be a multiple of the datasets used |
 | `conditions` | the kinds, default `never,before,after`; After needs Never |
 | `wordings` | expectation wordings, each its own Before and After cell; default `B,D` (the main design): never, before_B, after_B, before_D, after_D. There is no fallback wording |

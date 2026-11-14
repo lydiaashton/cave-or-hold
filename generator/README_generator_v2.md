@@ -11,36 +11,47 @@ Built 12 Nov 2026, revised the same evening to match the spec settled in the
 - `wild_bootstrap_base_r.R`: the same check in base R plus sandwich and lmtest, for machines without fwildclusterboot.
 - `relabel_for_release.py`: writes `../release/` (scenario column names) from `out/`.
 - `select_underpowered.py`: applies the underpowered selection rule (below).
-- `build_pilot_set.py`, `out_pilot/`: ten pilot datasets per world, the next ten in seed order after the main 60
-  (see `release_pilot/README_release_pilot.md`).
+- `build_pilot_set.py`, `out_pilot/`: ten pilot datasets per world for pilot 3 (see `release_pilot/README_release_pilot.md`).
+- `piloted_seeds.json`, `drop_piloted.py`: the datasets used in pilots 1 and 2, and the script that keeps them out of
+  the confounded main set. `select_underpowered.py` does the same for the underpowered world.
 - `out/`: sixty datasets per world, a manifest per world, `ANSWER_KEY.md`. **These are the datasets to use.**
 - `out_11periods_check/`: the same build at 11 periods (6 pre, 5 post), ten per world. Ground-truth check only.
 
 **Sixty per world, 14 Nov.** The generator searches seeds in order and keeps the first datasets that pass.
 
-- **Confounded and strong:** the first 60 accepted. The first ten per world are byte-identical to the 13 Nov
-  release (checked: all CSVs byte for byte, and the first ten manifest entries unchanged).
+- **No main dataset was used in a pilot (study lead, 14 Nov).** The codebook was shaped on summaries from pilots 1
+  and 2, so the datasets those pilots used (`piloted_seeds.json`: five underpowered, five confounded) are left out
+  of the main set, as is the pilot-3 set (`out_pilot/`). Each world is topped back up to sixty from the same seed
+  sequence under the same rules.
+- **Strong:** the first 60 accepted. The first ten are byte-identical to the 13 Nov release (checked: all CSVs byte
+  for byte, and the first ten manifest entries unchanged). No pilot used the strong world before pilot 3.
+- **Confounded:** accepted datasets 6 to 60 and 71 to 75 in seed order. Datasets 1 to 5 (seeds 20261120, 20261122,
+  20261123, 20261124, 20261128) were used in pilots 1 and 2; 61 to 70 are the pilot-3 set. `drop_piloted.py` applies
+  this after checking that every dataset already built comes out of a fresh build byte-identical.
 - **Underpowered:** reselected by the study lead's rule (14 Nov): primary p between .10 and .13; every
   defensible specification at p >= .10 (two-way FE clustered by unit, with and without covariates, and the
   collapsed 2x2 with classical, HC2 and HC3 SEs); and the wild cluster bootstrap p at or above .105 in all three
   implementations (the generator's accept rule, `wild_bootstrap_base_r.R`, `wild_bootstrap_check.py`). The first
-  60 that pass, in seed order. Candidates come from the generator run with primary p in [.10, .15]; all 320 are
-  kept in `underpowered_candidates/` with both check outputs and `selection.csv` (every candidate, its p-values,
-  each condition, kept or not). `select_underpowered.py` applies the rule. 71 candidates meet it; the 60th kept
-  is candidate 249. Every candidate also built earlier came out byte-identical. Two of the 13 Nov ten remain
-  (20261172, 20261175), and they are two of the pilots' five underpowered datasets. The earlier builds are in
-  this branch's history (commits 4ecb89a and fc63bba).
+  60 that pass, in seed order, leaving out datasets used in a pilot. Candidates come from the generator run with
+  primary p in [.10, .15]; all 345 are kept in `underpowered_candidates/` with both check outputs and
+  `selection.csv` (every candidate, its p-values, each condition, whether a pilot used it, kept or not).
+  `select_underpowered.py` applies the rule. 78 candidates meet it: 60 kept, the ten of the pilot-3 set, two used
+  in pilots 1 and 2 (20261172, 20261175; the pilots' other three underpowered datasets do not meet the rule), and
+  six spare. The 60th kept is candidate 321. The search was extended from 320 to 345 candidates for this; the first
+  320 came out byte-identical, and the two bootstrap checks were run on the 25 new ones and give the recorded value
+  when rerun on an earlier candidate alone. The earlier builds are in the repository history (commits 4ecb89a,
+  fc63bba and 80c45db).
 
 | World | Seeds tried | Accepted by the generator | Kept |
 | --- | --- | --- | --- |
-| Underpowered (generator band .10 to .15) | 14,364 | 320 | 60 (71 meet the rule) |
-| Confounded | 211 | 60 | 60 |
+| Underpowered (generator band .10 to .15) | 15,642 | 345 | 60 (78 meet the rule) |
+| Confounded | 270 | 75 | 60 |
 | Strong | 520 | 60 | 60 |
 
 Built with Python 3.13.18, NumPy 2.5.3 (x86_64); base-R check with R 4.3.3. The random streams can change across
 NumPy versions, so a rebuild elsewhere should first confirm the earlier CSVs come out byte-identical.
 
-Underpowered, the 60 kept: primary p .1133 to .1292 (median .1237); lowest defensible specification .1003 to
+Underpowered, the 60 kept: primary p .1133 to .1292 (median .1236); lowest defensible specification .1003 to
 .1292; wild cluster bootstrap p (B = 9,999, null imposed) .1058 to .1311 (generator), .1056 to .1273 (base R),
 .1054 to .1271 (`wild_bootstrap_check.py`). Mean primary estimate 0.213 SD against the true 0.20: keeping
 datasets near the threshold selects slightly larger estimates. Every one of the 60 has at least one unclustered

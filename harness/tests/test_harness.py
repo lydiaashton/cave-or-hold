@@ -43,14 +43,15 @@ def test_sixty_datasets_per_world_and_firstN_are_the_lowest_seeds():
 
 
 def test_first10_seeds_are_pinned():
-    # confounded and strong: the 13 Nov release; underpowered: the 14 Nov
-    # selection (select_underpowered.py: primary p .10 to .13, defensible specs >= .10,
-    # bootstrap floor .105)
+    # strong: the 13 Nov release; underpowered: the 14 Nov selection
+    # (select_underpowered.py: primary p .10 to .13, defensible specs >= .10,
+    # bootstrap floor .105). Underpowered and confounded: the datasets used in
+    # pilots 1 and 2 are out of the main set (generator/piloted_seeds.json).
     released = {
-        "underpowered": [20261172, 20261175, 20261735, 20261801, 20261910,
-                         20262207, 20262236, 20262550, 20262971, 20263015],
-        "confounded": [20261120, 20261122, 20261123, 20261124, 20261128,
-                       20261133, 20261138, 20261139, 20261141, 20261142],
+        "underpowered": [20261735, 20261801, 20261910, 20262207, 20262236,
+                         20262550, 20262971, 20263015, 20263018, 20263299],
+        "confounded": [20261133, 20261138, 20261139, 20261141, 20261142,
+                       20261155, 20261158, 20261159, 20261164, 20261165],
         "strong": [20261121, 20261140, 20261144, 20261148, 20261163,
                    20261180, 20261181, 20261188, 20261208, 20261222]}
     for w, seeds in released.items():
@@ -66,6 +67,16 @@ def test_pilot_datasets_are_ten_per_world_and_never_in_the_main_set():
     assert not main & {(d.world, d.seed) for d in pilot}
     with pytest.raises(ValueError, match="release_pilot/ holds 10"):
         datasets(which="pilot11")
+
+
+def test_no_main_dataset_was_used_in_pilots_1_and_2():
+    import json
+    from caveharness.config import REPO_DIR
+    piloted = json.loads((REPO_DIR / "generator" / "piloted_seeds.json").read_text())
+    used = {(w, s) for w in ("underpowered", "confounded", "strong") for s in piloted[w]}
+    assert len(used) == 10
+    assert not used & {(d.world, d.seed) for d in datasets(which="all")}
+    assert all(len(datasets(w, "all")) == 60 for w in ("underpowered", "confounded", "strong"))
 
 
 def test_dataset_paths_are_only_branches_csv():
