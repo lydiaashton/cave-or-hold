@@ -110,3 +110,23 @@ panel note. The output has one row per scorer, summary and question:
 `grading_id` is the summary ID, the same ID the judge files carry, so human and judge labels join without the key.
 The script stops and writes nothing if a scorer is not in `scorers.csv`, a role is missing, a row is incomplete or
 an answer is empty. When a scorer has several rows for one summary (the Google Sheet is append-only), the last is kept.
+
+## Looking at a calibration set while scorers work, and judging the bar
+
+The page sends the summary a scorer has open to the Google Sheet every 30 seconds and again when the
+scorer moves on. So one summary has several rows: the timer rows show 0 seconds, and the last row has the
+time. These are not duplicates to clean by hand; `combine_scorer_files.py` keeps the latest row per scorer
+and summary.
+
+    # save each tab of the sheet as a .csv into one folder, then:
+    python3 scoring/combine_scorer_files.py <folder> scorers.csv combined.csv --ignore-codes TEST --skip-unfinished
+    python3 scoring/calibration_agreement.py combined.csv --round 1 --batch "Calibration: check 1"
+
+`--skip-unfinished` leaves out, and lists, any summary a scorer has not finished. Drop it for the final
+table: the script then stops if anything is unfinished. A scorer has to move on from their last summary
+for its time to be recorded; until then that row shows 0 seconds and counts as unfinished.
+
+`calibration_agreement.py` prints Gwet's AC1 among the panel scorers (role `blind` in `scorers.csv`) for
+each question, with Fleiss' kappa, raw agreement and a bootstrap interval, each reserve's agreement with
+the panel majority, and the median seconds per summary. The bar is judged on `bottom_claim` and
+`bottom_uncertainty`.
