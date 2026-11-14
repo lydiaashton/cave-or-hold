@@ -17,6 +17,12 @@ scorer works (see README). Without it the page saves in the browser and offers a
 --tab NAME: the Google Sheet tab the answers go to (default round1, round2 or round3 by round).
 Use it to keep calibration apart, e.g. --tab cal_practice, --tab cal_check1.
 
+--order <order.csv>: the main-run pages. The export's scoring/round<r>/order.csv (position,
+block, summary_id). Summaries appear block by block in that order, the same for every scorer,
+shuffled only within a block. The page does not show blocks to scorers. Every file in
+the folder must be in the order and the reverse. Without it (calibration) the whole page is
+shuffled per scorer.
+
 --no-download: no download buttons (final scoring; calibration pages keep them as a backup).
 Needs --endpoint, since the sheet is then the only way answers come back.
 
@@ -25,7 +31,7 @@ Every page blocks copying the summary and codebook text and pasting into the not
 Suggested file names: Scoring_Round1_BottomLine.html, Scoring_Round2_WholeSummary.html,
 Scoring_Round3_BottomLineAndVerdict.html.
 """
-import sys, os, re, json, glob
+import sys, os, re, json, glob, csv
 argv = list(sys.argv[1:])
 rnd = "1"
 if "--round" in argv:
@@ -48,6 +54,9 @@ if "--tab" in args:
     i = args.index("--tab"); tab = args[i + 1]; del args[i:i + 2]
     if not re.fullmatch(r"[A-Za-z0-9_]{1,30}", tab):
         sys.exit("--tab must be 1-30 letters, digits or underscores, e.g. cal_practice")
+order_file = ""
+if "--order" in args:
+    i = args.index("--order"); order_file = args[i + 1]; del args[i:i + 2]
 nodownload = "--no-download" in args
 if nodownload:
     args.remove("--no-download")
@@ -67,6 +76,21 @@ for f in sorted(glob.glob(os.path.join(folder, "*.txt"))):
     items.append({"id": os.path.basename(f)[:-4], "text": t})
 if not items:
     sys.exit(f"No .txt files found in {folder}")
+if order_file:
+    with open(order_file, encoding="utf-8-sig", newline="") as f:
+        order = list(csv.DictReader(f))
+    by_id = {it["id"]: it for it in items}
+    listed = [r["summary_id"] for r in order]
+    if len(set(listed)) != len(listed):
+        sys.exit(f"{order_file}: a summary is listed twice")
+    if set(listed) != set(by_id):
+        sys.exit(f"{order_file} and {folder} do not hold the same summaries: "
+                 f"{len(set(listed) - set(by_id))} listed but missing, {len(set(by_id) - set(listed))} not listed")
+    order.sort(key=lambda r: int(r["position"]))
+    items = [dict(by_id[r["summary_id"]], block=int(r["block"])) for r in order]
+    blocks = [it["block"] for it in items]
+    if blocks != sorted(blocks) or sorted(set(blocks)) != list(range(1, max(blocks) + 1)):
+        sys.exit(f"{order_file}: blocks must run 1, 2, 3 ... in position order")
 data = json.dumps({"batch": batch, "whole": whole, "batch2": batch2, "endpoint": endpoint, "nodownload": nodownload, "tab": tab, "items": items}, ensure_ascii=False).replace("</", "<\\/")
 tpl = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "template.html"), encoding="utf-8").read()
 assert "/*DATA*/" in tpl

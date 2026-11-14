@@ -21,6 +21,9 @@ summaries folder.
     scoring/
       batch1/summaries/<id>.txt   turn-4 summaries for human scorers
       batch2/summaries/<id>.txt   turn-6 and turn-8 summaries, released after batch 1
+      round1/ round2/ round3/     with --scoring-per-world (main runs) instead of
+                                  batch1/batch2: summaries/ and order.csv, in blocks
+                                  of whole datasets (see write_scoring_rounds)
                                   Only the primary model's never, before_B and
                                   after_B cells (--primary-model, --scoring-wording,
                                   --scoring-per-cell). Other wordings go to judges only
@@ -432,6 +435,101 @@ def write_scoring_sets(runs: dict, key: list[dict], root: Path, secret: str,
     return sorted(rows, key=lambda r: (r["scoring_batch"], r["summary_id"]))
 
 
+def _rank(secret: str, tag: str, m: tuple) -> str:
+    return hmac.new(secret.encode(), f"{tag}|{m[0]}|{m[1]}|{m[2]}".encode(),
+                    hashlib.sha256).hexdigest()
+
+
+def write_scoring_rounds(runs: dict, key: list[dict], root: Path, secret: str,
+                         primary_model: str, wording: str, per_world: dict[str, int],
+                         n_round2: int, n_round3: int,
+                         primary_world: str = "underpowered") -> list[dict]:
+    """The three scoring pages, in blocks of whole datasets (Stage A section 7;
+    study lead, 14 Nov). A block is one dataset's Never, before_<wording> and
+    after_<wording> runs. Blocks come in an order fixed by the batch secret,
+    the same for every scorer; the page shuffles only within a block. Scoring
+    stops by time, so the analysis keeps the blocks every panel scorer finished,
+    and any prefix of the order is a random draw with all cells balanced.
+
+      round1  turn 4. First the primary world's blocks (per_world[primary_world]
+              datasets, in the same order as the pair-aware draw), then the
+              judge-validation blocks of the other worlds, mixed in one seeded
+              order. Primary first protects N if time runs out (study lead).
+      round2  turn 4 again, the whole-summary page: n_round2 of the round-1
+              primary-world datasets, drawn with their own seeded order.
+      round3  turns 6 and 8: n_round3 of the round-1 primary-world datasets,
+              drawn with their own seeded order. A block holds 6 summaries, so
+              turn 6 and turn 8 stay balanced at any stopping point.
+
+    A dataset is eligible for a round only if every summary its block needs is
+    gradeable. Writes scoring/round<r>/summaries/<id>.txt and
+    scoring/round<r>/order.csv (position, block, summary_id: no condition, so
+    the order file may go to the page builder and to the analysis before
+    unblinding). Returns the rows for key/scoring_sets.csv."""
+    cells = ("never", f"before_{wording}", f"after_{wording}")
+    ids = {(k["run_id"], k["turn"]): k["summary_id"] for k in key}
+    matches: dict[tuple, dict[str, str]] = defaultdict(dict)
+    for rid, run in runs.items():
+        h = run["header"]
+        if h["model"] == primary_model and h["condition"] in cells:
+            m = (h["world"], h["dataset_seed"], h["replicate"])
+            if h["condition"] in matches[m]:
+                raise ValueError(f"two {h['condition']} runs for {m}: {matches[m][h['condition']]} and {rid}")
+            matches[m][h["condition"]] = rid
+
+    def gradeable_block(m: tuple, turns: tuple) -> bool:
+        return all(c in matches[m] and (matches[m][c], t) in ids for c in cells for t in turns)
+
+    def take(pool: list, tag: str, n: int, turns: tuple, label: str) -> list:
+        ranked = sorted(pool, key=lambda m: _rank(secret, tag, m))
+        got = [m for m in ranked if gradeable_block(m, turns)][:n]
+        if len(got) < n:
+            print(f"scoring {label}: only {len(got)} datasets eligible (asked for {n})")
+        return got
+
+    if primary_world not in per_world:
+        raise ValueError(f"per_world must include the primary world {primary_world!r}")
+    worlds = {m[0] for m in matches}
+    for w in per_world:
+        if w not in worlds:
+            raise ValueError(f"no {w} runs of {primary_model} in this batch")
+    primary = take([m for m in matches if m[0] == primary_world], "draw",
+                   per_world[primary_world], (4,), f"round 1, {primary_world}")
+    validation = []
+    for w in sorted(per_world):
+        if w != primary_world:
+            validation += take([m for m in matches if m[0] == w], "draw", per_world[w], (4,),
+                               f"round 1, {w}")
+    validation.sort(key=lambda m: _rank(secret, "round1-validation", m))
+    plan = {1: (primary + validation, (4,)),
+            2: (take(primary, "round2", n_round2, (4,), "round 2"), (4,)),
+            3: (take(primary, "round3", n_round3, (6, 8), "round 3"), (6, 8))}
+
+    rows = []
+    for rnd, (blocks, turns) in plan.items():
+        out = root / "scoring" / f"round{rnd}"
+        (out / "summaries").mkdir(parents=True, exist_ok=True)
+        order, pos = [], 0
+        for b, m in enumerate(blocks, start=1):
+            members = []
+            for c in cells:
+                rid = matches[m][c]
+                for t in turns:
+                    members.append((ids[(rid, t)], rid, t))
+            for sid, rid, t in sorted(members):      # by ID: carries no condition
+                pos += 1
+                shutil.copyfile(root / f"T{t}" / "summaries" / f"{sid}.txt",
+                                out / "summaries" / f"{sid}.txt")
+                order.append({"position": pos, "block": b, "summary_id": sid})
+                h = runs[rid]["header"]
+                rows.append({"summary_id": sid, "scoring_batch": rnd, "block": b,
+                             "position": pos, "turn": t, "run_id": rid,
+                             "condition": h["condition"], "world": h["world"],
+                             "dataset_seed": h["dataset_seed"], "replicate": h["replicate"]})
+        write_csv(out / "order.csv", order)
+    return rows
+
+
 # --------------------------------------------------------------------------
 # Per-run statistics and judge inputs
 # --------------------------------------------------------------------------
@@ -552,7 +650,17 @@ def main() -> None:
                     help="the wording whose Before/After cells humans score (others: judges only)")
     ap.add_argument("--scoring-per-cell", type=int, default=0,
                     help="datasets per world for human scoring; each brings its Never, before and after runs, so pairs stay matched (0 = all)")
+    ap.add_argument("--scoring-per-world", default="",
+                    help="main-run pages in blocks, e.g. underpowered=60,confounded=10,strong=10: "
+                         "writes scoring/round1-3 with order.csv instead of batch1/batch2")
+    ap.add_argument("--round2-datasets", type=int, default=7,
+                    help="with --scoring-per-world: primary-world datasets on the whole-summary page")
+    ap.add_argument("--round3-datasets", type=int, default=20,
+                    help="with --scoring-per-world: primary-world datasets on the turns 6 and 8 page")
+    ap.add_argument("--primary-world", default="underpowered")
     a = ap.parse_args()
+    if a.scoring_per_world and a.scoring_per_cell:
+        raise SystemExit("use --scoring-per-world or --scoring-per-cell, not both")
 
     runs = load_runs(a.batch)
     if not runs:
@@ -570,8 +678,18 @@ def main() -> None:
 
     key = write_turn_folders(runs, root, secret)
     write_csv(root / "key" / "KEY.csv", key)
-    scoring = write_scoring_sets(runs, key, root, secret, primary, a.scoring_wording,
-                                 a.scoring_per_cell)
+    if a.scoring_per_world:
+        try:
+            per_world = {w.strip(): int(n) for w, n in
+                         (x.split("=") for x in a.scoring_per_world.split(","))}
+        except ValueError:
+            raise SystemExit("--scoring-per-world: world=N pairs separated by commas")
+        scoring = write_scoring_rounds(runs, key, root, secret, primary, a.scoring_wording,
+                                       per_world, a.round2_datasets, a.round3_datasets,
+                                       a.primary_world)
+    else:
+        scoring = write_scoring_sets(runs, key, root, secret, primary, a.scoring_wording,
+                                     a.scoring_per_cell)
     write_csv(root / "key" / "scoring_sets.csv", scoring)
     stats = run_stats(runs, fingerprints(Path(a.logs), set(runs)), load_prices())
     write_csv(root / "key" / "run_stats.csv", stats)
@@ -594,8 +712,12 @@ def main() -> None:
         "human_scoring": {"cells": ["never", f"before_{a.scoring_wording}",
                                     f"after_{a.scoring_wording}"],
                           "per_cell": a.scoring_per_cell or "all",
+                          "per_world": a.scoring_per_world or None,
+                          "round2_datasets": a.round2_datasets if a.scoring_per_world else None,
+                          "round3_datasets": a.round3_datasets if a.scoring_per_world else None,
                           "batch1_summaries": sum(r["scoring_batch"] == 1 for r in scoring),
-                          "batch2_summaries": sum(r["scoring_batch"] == 2 for r in scoring)},
+                          "batch2_summaries": sum(r["scoring_batch"] == 2 for r in scoring),
+                          "batch3_summaries": sum(r["scoring_batch"] == 3 for r in scoring)},
         "runs": len(runs), "summaries_per_turn": per_turn_ids,
         # What the runs were sent, so the wording can be checked without the run logs.
         "board_sentence_included": sorted({bool(r["header"].get("board_sentence_included"))
