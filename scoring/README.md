@@ -63,6 +63,15 @@ Set up once (study lead, about five minutes):
 6. Test before sending to scorers: open the page, use scorer code TEST, answer two summaries, and
    check that rows appear in the sheet's "round1" tab. Delete the TEST rows afterwards.
 
+For final scoring (not calibration) add `--no-download`: the page then has no download buttons and
+the sheet is the only way answers come back, so it needs `--endpoint`. If sending fails, the page
+keeps retrying every 30 seconds and tells the scorer to contact the study team.
+
+Every page blocks copying the summary and codebook text (select, copy, right-click, print) and
+blocks pasting into the notes box, to discourage running summaries through an AI tool. This deters
+casual copying only: a scorer can still retype, take a screenshot, or open the .html file in a text
+editor, where the summaries are readable.
+
 What lands in the sheet: one tab per round ("round1", "round2", "round3"), the same columns as the CSV plus
 `received_at` and `client_time`. It is append-only: a changed answer adds a new row. In the analysis
 keep the last row per (scorer_code, batch, grading_id).

@@ -1,6 +1,6 @@
 """Build one scoring page from a folder of summary .txt files.
 
-Usage:  python3 build_scoring_page.py <folder of .txt> "<batch label>" <output.html> --round 1|2|3 [--endpoint <URL>]
+Usage:  python3 build_scoring_page.py <folder of .txt> "<batch label>" <output.html> --round 1|2|3 [--endpoint <URL>] [--no-download]
 
 Three rounds, three pages. Scorers do them in this order and never see which turn a summary came from.
 
@@ -13,6 +13,11 @@ Three rounds, three pages. Scorers do them in this order and never see which tur
 
 --endpoint <Apps Script web app URL>: answers are also sent to the study Google Sheet as the
 scorer works (see README). Without it the page saves in the browser and offers a download.
+
+--no-download: no download buttons (final scoring; calibration pages keep them as a backup).
+Needs --endpoint, since the sheet is then the only way answers come back.
+
+Every page blocks copying the summary and codebook text and pasting into the notes box.
 
 Suggested file names: Scoring_Round1_BottomLine.html, Scoring_Round2_WholeSummary.html,
 Scoring_Round3_BottomLineAndVerdict.html.
@@ -35,6 +40,11 @@ if "--endpoint" in args:
     i = args.index("--endpoint"); endpoint = args[i + 1]; del args[i:i + 2]
     if not endpoint.startswith("https://script.google.com/macros/s/") or not endpoint.endswith("/exec"):
         sys.exit("--endpoint must be the Apps Script web app URL: https://script.google.com/macros/s/.../exec")
+nodownload = "--no-download" in args
+if nodownload:
+    args.remove("--no-download")
+    if not endpoint:
+        sys.exit("--no-download needs --endpoint: without the sheet, the download is the only way answers come back.")
 folder, batch, out = args[0], args[1], args[2]
 MARK = "----- Summary -----"
 items, stripped = [], 0
@@ -49,10 +59,10 @@ for f in sorted(glob.glob(os.path.join(folder, "*.txt"))):
     items.append({"id": os.path.basename(f)[:-4], "text": t})
 if not items:
     sys.exit(f"No .txt files found in {folder}")
-data = json.dumps({"batch": batch, "whole": whole, "batch2": batch2, "endpoint": endpoint, "items": items}, ensure_ascii=False).replace("</", "<\\/")
+data = json.dumps({"batch": batch, "whole": whole, "batch2": batch2, "endpoint": endpoint, "nodownload": nodownload, "items": items}, ensure_ascii=False).replace("</", "<\\/")
 tpl = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "template.html"), encoding="utf-8").read()
 assert "/*DATA*/" in tpl
 open(out, "w", encoding="utf-8").write(tpl.replace("/*DATA*/", data))
 others = sorted(x for x in os.listdir(folder) if not x.endswith(".txt"))
 print(f"{len(items)} summaries, round {rnd} ({"whole summary, 4 questions" if whole else ("bottom line and verdict, 5 questions" if batch2 else "bottom line, 4 questions")}) -> {out} ({os.path.getsize(out)//1024} KB); "
-      f"analysis header removed from {stripped}; other files ignored: {others}; online capture: {'on' if endpoint else 'off'}")
+      f"analysis header removed from {stripped}; other files ignored: {others}; online capture: {'on' if endpoint else 'off'}; download button: {'off' if nodownload else 'on'}")
