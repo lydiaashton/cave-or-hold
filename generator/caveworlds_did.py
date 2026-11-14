@@ -506,7 +506,7 @@ def generate(world: str, k: int = 5, params: Params | None = None,
 
 
 if __name__ == "__main__":
-    # Sixty datasets per world (14 Nov). The search over seeds is sequential, so the
+    # One hundred datasets per world (14 Nov, 11:30 CT; sixty before). The search over seeds is sequential, so the
     # confounded and strong builds start with the 13 Nov ten. The underpowered world is built
     # with primary p in [.10, .15] (345 candidates, all kept); select_underpowered.py applies
     # the rule (p .10 to .13, defensible specs >= .10, bootstrap >= .105) and keeps the first 60
@@ -516,7 +516,7 @@ if __name__ == "__main__":
     worlds = sys.argv[1:] or list(WORLDS)
     for w in worlds:
         if w == "underpowered":
-            generate(w, k=345, rules=Rules(weak_p_hi=0.15), outdir="underpowered_candidates",
-                     max_tries=40000)
+            generate(w, k=540, rules=Rules(weak_p_hi=0.15), outdir="underpowered_candidates",
+                     max_tries=90000)
         else:
-            generate(w, k=60)
+            generate(w, k=110 if w == "strong" else 115)  # then drop_piloted.py

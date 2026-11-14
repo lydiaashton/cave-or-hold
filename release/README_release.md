@@ -3,7 +3,7 @@
 One folder per dataset, named `<world>_seed<seed>`. Each holds one file, `branches.csv`.
 
 Sixty datasets per world since 14 Nov (180 folders). **None of them was used in a pilot**: the datasets pilots 1 and
-2 ran on (`generator/piloted_seeds.json`) were taken out on 14 Nov and each world topped back up to sixty, and pilot 3
+2 ran on (`generator/piloted_seeds.json`) were taken out on 14 Nov and each world topped back up to sixty (one hundred per world since 14 Nov, 11:30 CT; see generator/README_generator_v2.md), and pilot 3
 uses `release_pilot/`. Strong: the ten lowest seeds are the 13 Nov release, unchanged. Confounded: the generator's
 accepted datasets 6 to 60 and 71 to 75. Underpowered: selected 14 Nov (`generator/select_underpowered.py`): primary p
 .10 to .13, every defensible specification at p >= .10, every bootstrap check at or above .105. Which ones a batch uses is the harness's `datasets` setting (`firstN` = the N lowest seeds
