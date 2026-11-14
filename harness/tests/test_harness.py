@@ -403,10 +403,11 @@ def test_the_wording_is_part_of_the_condition_and_nothing_falls_back_to_a():
     assert conds == {"never", "before_B", "after_B"}           # the default is B, never A
 
 
-def test_board_sentence_is_off_until_switched_on_and_then_identical_everywhere():
+def test_board_sentence_is_on_identical_everywhere_and_can_be_switched_off():
     import dataclasses
-    assert not P.raw["include_board_sentence"]
-    assert "board will use" not in P.user_turn(1, "never", "strong")
+    assert P.raw["include_board_sentence"]                     # study lead, 13 Nov: in every cell
+    off = dataclasses.replace(P, raw={**P.raw, "include_board_sentence": False})
+    assert "board will use" not in off.user_turn(1, "never", "strong")
     on = dataclasses.replace(P, raw={**P.raw, "include_board_sentence": True})
     firsts = {on.user_turn(1, c, w).split(chr(10) * 2)[1]
               for c in ("never", "before_B", "after_B", "before_D", "after_D")

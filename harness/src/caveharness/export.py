@@ -568,6 +568,11 @@ def main() -> None:
                           "batch1_summaries": sum(r["scoring_batch"] == 1 for r in scoring),
                           "batch2_summaries": sum(r["scoring_batch"] == 2 for r in scoring)},
         "runs": len(runs), "summaries_per_turn": per_turn_ids,
+        # What the runs were sent, so the wording can be checked without the run logs.
+        "board_sentence_included": sorted({bool(r["header"].get("board_sentence_included"))
+                                           for r in runs.values()}),
+        "prompts_version": sorted({str(r["header"].get("prompts_version")) for r in runs.values()}),
+        "prompts_sha256": sorted({str(r["header"].get("prompts_sha256")) for r in runs.values()}),
         "judge_items": len(judge), "judge_log_cap_chars": JUDGE_LOG_CAP,
         "judge_log_keep_per_call_chars": CALL_OUTPUT_KEEP}, indent=1), encoding="utf-8")
     print(f"{len(runs)} runs -> {sum(per_turn_ids.values())} summaries "

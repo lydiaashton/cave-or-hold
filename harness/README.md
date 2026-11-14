@@ -80,7 +80,7 @@ branched from its turn 2 with the sandbox restored for each, or a Before run.
 Which models run D is decided by which runs you pass `wordings=B,D` to.
 
 The board sentence ("The board will use your summary to decide...") is switched
-in `prompts/turns.toml` (`include_board_sentence`, off by default): it is part
+in `prompts/turns.toml` (`include_board_sentence`, on since 13 Nov): it is part
 of the wording the study lead signs off, so it lives with the prompts. Every machine builds the same shuffled plan from the same
 seed and takes its share (round-robin within each world x condition stratum).
 
