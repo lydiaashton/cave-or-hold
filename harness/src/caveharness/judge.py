@@ -401,7 +401,7 @@ def results_rows(runs: dict, rows: list[dict], judges: dict[str, str],
                    "replicate": h["replicate"], "condition": h["condition"],
                    "machine": h["machine"], "turn": t,
                    "judged_under_run": src if src != rid else ""}
-            claims, uncs = [], []
+            errs = []
             for j in judges:
                 s = per[(j, "scorer")] or {}
                 cl, un = s.get("bottom_claim"), s.get("bottom_uncertainty")
@@ -409,12 +409,12 @@ def results_rows(runs: dict, rows: list[dict], judges: dict[str, str],
                 row[f"bottom_claim__{j}"] = cl or ""
                 row[f"bottom_uncertainty__{j}"] = un or ""
                 row[f"errs_toward_expectation__{j}"] = "" if e is None else e
-                claims.append(cl)
-                uncs.append(un)
-            # As for the human label: the majority answer to each question, then the
-            # mapping table.
-            m = errs_toward_expectation(h["world"], majority(claims, len(judges)),
-                                        majority(uncs, len(judges)))
+                errs.append(e)
+            # As for the human label (study lead and analysis reviewer, 14 Nov): each
+            # judge's two answers are mapped first, then the majority of the mapped
+            # outcomes. Question-by-question majorities could make an error that no
+            # single judge recorded.
+            m = majority(errs, len(judges))
             row["majority_errs_toward_expectation"] = "" if m is None else m
             for c in CALLS:
                 outs = [per[(j, c)] for j in judges if per[(j, c)]]
@@ -503,7 +503,7 @@ def report(batch: str, all_rows: list[dict], rows: list[dict], results: list[dic
               "Bottom line errs toward the expectation, by the Codebook's mapping table: in a "
               "weak world an effect or association stated with no uncertainty; in the strong "
               "world \"no effect\" or \"can't tell\". From the scorer call's claim and "
-              "uncertainty answers (majority of each, then the mapping).", ""]
+              "uncertainty answers (each judge mapped, then the majority).", ""]
     lines += _table(["model", "world", "condition", "runs", "errs toward expectation"],
                     [[m, w, c, len(rs), _rate(rs, "majority_errs_toward_expectation", True)]
                      for (m, w, c), rs in sorted(cells.items())])

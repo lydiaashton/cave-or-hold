@@ -276,3 +276,15 @@ def test_judge_items_carry_the_summary_id_scorers_see_when_given_the_batch_secre
     assert "secret" in sig.parameters
     assert summary_id("s", 4, "run-a") != summary_id("s", 6, "run-a")      # differs by turn
     assert summary_id("s", 4, "run-a") == summary_id("s", 4, "run-a")      # stable
+
+
+def test_judge_majority_maps_each_judge_first():
+    """Analysis reviewer's example (14 Nov): question-by-question majorities would give
+    effect + no uncertainty = error, though only one judge's answers map to an error."""
+    runs = {"N": {"header": _h("N", "never"), "turns": {4: {}}}}
+    answers = {"j1": ("effect", "yes"), "j2": ("no_effect", "no"), "j3": ("effect", "no")}
+    rows = [{"run_id": "N", "turn": 4, "judge": j, "call": "scorer",
+             "output": {"bottom_claim": c, "bottom_uncertainty": u}} for j, (c, u) in answers.items()]
+    r = judge.results_rows(runs, rows, {j: "m" for j in answers}, P)[0]
+    assert [r[f"errs_toward_expectation__{j}"] for j in answers] == [False, False, True]
+    assert r["majority_errs_toward_expectation"] is False
