@@ -31,7 +31,7 @@ ADAPTION_BASE_URL = "https://api.prod.adaptionlabs.ai/api/v1"
 # string. No judge shares a developer with a tested model.
 JUDGES = {
     "gemma-4-31b-it": "openai-api/adaption/gemma-4-31b-it",
-    "gpt-6-astra": "openai/gpt-6-astra",
+    "gpt-6.1-terra": "openai/gpt-6.1-terra",
     "deepseek-v4-flash": "openai-api/adaption/deepseek-v4-flash",
 }
 
