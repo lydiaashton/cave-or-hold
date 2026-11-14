@@ -337,7 +337,8 @@ async def run_calls(todo: list[tuple[dict, str, str, str]], prompts: JudgePrompt
             res = await _ask(models[model_name], prompts.system, user)
         output, problems = ({}, []) if res["error"] else \
             validate(parse_reply(res["text"] or ""), prompts.fields(call))
-        row = {"record": "judgment", "run_id": item["run_id"], "turn": item["turn"],
+        row = {"record": "judgment", "summary_id": item.get("summary_id"),
+               "run_id": item["run_id"], "turn": item["turn"],
                "judge": judge, "judge_model": model_name, "call": call,
                "world": item["world"], "dataset_seed": item["dataset_seed"],
                "ok": not res["error"] and not problems, "output": output,
@@ -548,7 +549,12 @@ def main() -> None:
     judging = EXPORTS_DIR / a.batch / "judging"
     out = judging / "judgments.jsonl"
     # An After run's turn 2 is its Never run's turn 2: judged once, under the Never run.
-    items = [i for i in judge_items(runs) if not i["same_text_as_run"]]
+    # The summary ID lets judge labels be joined to human labels before unblinding.
+    secret_file = EXPORTS_DIR / a.batch / "key" / "id_secret.txt"
+    secret = secret_file.read_text(encoding="utf-8").strip() if secret_file.is_file() else None
+    if secret is None:
+        print(f"note: {secret_file} not found (run the export first); judgments will carry no summary_id")
+    items = [i for i in judge_items(runs, secret) if not i["same_text_as_run"]]
     texts = messages(items, prompts)
     text_sha = {k: _sha(v) for k, v in texts.items()}
     done = successful(read_rows(out), prompts.sha256, text_sha)

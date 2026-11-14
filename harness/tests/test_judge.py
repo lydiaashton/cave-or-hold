@@ -257,3 +257,12 @@ def test_scorer_call_asks_the_human_scorers_questions_and_nothing_about_the_trut
     assert not set(f) & set(P.fields("form_b")), "an item is asked in both calls"
     msg = P.user_message("scorer", ITEM)
     assert "REFERENCE-TEXT" not in msg and "simulated" not in msg.lower()
+
+
+def test_judge_items_carry_the_summary_id_scorers_see_when_given_the_batch_secret():
+    from caveharness.export import judge_items, summary_id
+    import inspect
+    sig = inspect.signature(judge_items)
+    assert "secret" in sig.parameters
+    assert summary_id("s", 4, "run-a") != summary_id("s", 6, "run-a")      # differs by turn
+    assert summary_id("s", 4, "run-a") == summary_id("s", 4, "run-a")      # stable

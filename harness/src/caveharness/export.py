@@ -453,10 +453,14 @@ def run_stats(runs: dict, fps: dict, prices: dict) -> list[dict]:
     return stats
 
 
-def judge_items(runs: dict) -> list[dict]:
+def judge_items(runs: dict, secret: str | None = None) -> list[dict]:
     """Per run x gradeable model turn: what a judge may see. No user messages,
     no condition, no thinking. An After run's turn 2 is its Never run's turn 2
-    (same_text_as_run names it)."""
+    (same_text_as_run names it).
+
+    With the batch secret, each item also carries its summary ID: the ID the
+    human scorers' files use, which names no condition. Judge labels can then
+    be joined to human labels before unblinding, without KEY.csv."""
     items = []
     for rid, run in sorted(runs.items()):
         h = run["header"]
@@ -464,7 +468,9 @@ def judge_items(runs: dict) -> list[dict]:
             if not gradeable(run, t):
                 continue
             log, truncated = form_a_log(run, t)
-            items.append({"run_id": rid, "turn": t, "model": h["model"],
+            owner = run["turns"][t].get("shared_with") or rid
+            items.append({"summary_id": summary_id(secret, t, owner) if secret else None,
+                          "run_id": rid, "turn": t, "model": h["model"],
                           "world": h["world"], "dataset_seed": h["dataset_seed"],
                           "summary": clean(run["turns"][t]["text"]),
                           "analysis_log": log, "analysis_log_truncated": truncated,
@@ -551,7 +557,7 @@ def main() -> None:
                 "dataset_seed": run["header"]["dataset_seed"], **row}
                for rid, run in sorted(runs.items()) for row in per_turn(run)])
     (root / "key" / "pilot_report.md").write_text(pilot_report(stats), encoding="utf-8")
-    judge = judge_items(runs)
+    judge = judge_items(runs, secret)
     (root / "judges").mkdir()
     with (root / "judges" / "judge_items.jsonl").open("w", encoding="utf-8") as f:
         for row in judge:
