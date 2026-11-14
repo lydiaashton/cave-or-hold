@@ -6,15 +6,20 @@
 
 ## Attachments
 
-The registration cites five tabs of the Master doc. They are filed on OSF with this text, at these revisions:
+The registration is filed in this repository only.
 
-| Tab | Master doc revision |
-| --- | --- |
-| Design: expectation timing | 986 |
-| Prompt (prompt v4; the harness file is `harness/prompts/turns.toml`) | 54 |
-| Codebook | 27 |
-| Scoring | 4 |
-| Analysis plan | 371 |
+It cites two tabs of the Master doc as attached: the Prompt and the Codebook. Both are filed here as PDF
+exports, added 2026-11-14 15:04 UTC. Each is the same Master doc revision as when the registration was
+committed, so the text is what the registration referred to.
+
+| File | Tab | Master doc revision | SHA-256 |
+| --- | --- | --- | --- |
+| `StageA_Attachment_Prompt_v4_rev54.pdf` | Prompt (prompt v4; the harness file is `harness/prompts/turns.toml`) | 54 | `ded15364604a21182cbe87bcf8948d34682e0b647d405ef19e73ed99d1e2869c` |
+| `StageA_Attachment_Codebook_rev27.pdf` | Codebook | 27 | `c76dd0cda3c3da2a0eec006bdaa94994b35fa6e0ad1f24dc9297fe1d1a754856` |
+
+The other tabs of the Master doc are not part of Stage A. For the record, their revisions when the
+registration was committed: Design: expectation timing 986; Scoring 4; Analysis plan 371. The full analysis
+plan is filed in Stage B.
 
 ## Calibration materials as used
 
