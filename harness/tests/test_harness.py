@@ -57,6 +57,17 @@ def test_first10_seeds_are_pinned():
         assert [d.seed for d in datasets(w, "first10")] == seeds
 
 
+def test_pilot_datasets_are_ten_per_world_and_never_in_the_main_set():
+    pilot = datasets(which="pilot")
+    assert len(pilot) == 30 and len(datasets(which="pilot7")) == 21
+    assert all(d.path.parent.parent.name == "release_pilot" for d in pilot)
+    assert all(d.path.name == "branches.csv" for d in pilot)
+    main = {(d.world, d.seed) for d in datasets(which="all")}
+    assert not main & {(d.world, d.seed) for d in pilot}
+    with pytest.raises(ValueError, match="release_pilot/ holds 10"):
+        datasets(which="pilot11")
+
+
 def test_dataset_paths_are_only_branches_csv():
     assert all(d.path.name == "branches.csv" for d in datasets())
 

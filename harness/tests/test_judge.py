@@ -84,6 +84,8 @@ def test_reference_is_looked_up_by_world_and_seed():
     assert "SEs clustered by branch" in up and "week 15" in up
     with pytest.raises(KeyError):
         judge.reference("strong", 1)
+    # a pilot dataset is found in release_pilot/answer_key
+    assert "Correct conclusion: inconclusive." in judge.reference("underpowered", 20272763)
 
 
 # ---- derived outcomes -----------------------------------------------------------
