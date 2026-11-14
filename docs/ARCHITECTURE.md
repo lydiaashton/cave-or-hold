@@ -33,7 +33,7 @@ flowchart TD
 
     subgraph APIS["Model providers, called from the host only"]
         ADAPTION["Adaption<br/>qwen3.5-397b, glm-5.2"]
-        ANTHROPIC["Anthropic<br/>claude-opus-5, claude-fable-5"]
+        ANTHROPIC["Anthropic<br/>claude-opus-5, claude-sonnet-5"]
     end
 
     subgraph POST["After merging every machine's runs/ and logs/"]
@@ -43,7 +43,7 @@ flowchart TD
     end
 
     subgraph JAPIS["Judge providers"]
-        GEMINI["Google<br/>gemini-4-argon"]
+        GEMMA["Adaption<br/>gemma-4-31b-it"]
         GPT["OpenAI<br/>gpt-6-astra"]
         DEEPSEEK["Adaption<br/>deepseek-v4-flash"]
     end
@@ -66,7 +66,7 @@ flowchart TD
     KEY --> JUDGE
     JPROMPTS --> JUDGE
     PRICES --> JUDGE
-    JUDGE <--> GEMINI
+    JUDGE <--> GEMMA
     JUDGE <--> GPT
     JUDGE <--> DEEPSEEK
 
@@ -208,7 +208,7 @@ flowchart TD
     FORMA["form A<br/>sees: analysis log only"]
     FORMB["form B<br/>sees: summary only"]
 
-    J1["gemini-4-argon"]
+    J1["gemma-4-31b-it"]
     J2["gpt-6-astra"]
     J3["deepseek-v4-flash"]
 

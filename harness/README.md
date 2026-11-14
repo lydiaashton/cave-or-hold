@@ -20,8 +20,8 @@ drawn in [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
    is identical; the image also limits math libraries to one thread, see the Dockerfile.
 4. Put the keys in `harness/.env` or in the repository root's `.env` (both
    gitignored; `harness/.env` wins): `ADAPTION_API_KEY=...` for the Adaption
-   models and the DeepSeek judge, `GOOGLE_API_KEY` and `OPENAI_API_KEY` for the
-   other two judges, `ANTHROPIC_API_KEY` for the Claude models.
+   models and the Gemma and DeepSeek judges, `OPENAI_API_KEY` for the GPT judge,
+   `ANTHROPIC_API_KEY` for the Claude models.
    On Windows PowerShell use `-Encoding ascii`; the default adds a byte-order
    mark that breaks the variable name.
 5. On Windows, keep the repository near the top of a drive (e.g. `C:\work\cave-or-hold`):

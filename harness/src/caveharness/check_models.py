@@ -20,10 +20,9 @@ from dotenv import load_dotenv
 from caveharness.config import ENV_FILES, RUNS_DIR
 
 STUDY = {
-    "adaption": ["qwen3.5-397b", "glm-5.2", "deepseek-v4-flash"],
-    "anthropic": ["claude-opus-5", "claude-fable-5"],
+    "adaption": ["qwen3.5-397b", "glm-5.2", "deepseek-v4-flash", "gemma-4-31b-it"],
+    "anthropic": ["claude-opus-5", "claude-sonnet-5"],
     "openai": ["gpt-6-astra"],
-    "google": ["gemini-4-argon"],
 }
 
 
@@ -63,7 +62,6 @@ PROVIDERS = {
     "adaption": ("ADAPTION_API_KEY", _adaption),
     "anthropic": ("ANTHROPIC_API_KEY", _anthropic),
     "openai": ("OPENAI_API_KEY", _openai),
-    "google": ("GOOGLE_API_KEY", _google),
 }
 
 

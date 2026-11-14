@@ -8,6 +8,10 @@ agents reported the same string from a page they opened.*
 *Roles updated 13 Nov to the lineup in the design doc, which decides. The two Claude models
 in the lineup were not part of the three-agent check.*
 
+*Lineup changed 14 Nov (study lead): Claude Sonnet 5 (`claude-sonnet-5`) replaces Claude Fable 5,
+and Gemma 4 31B on Adaption (`gemma-4-31b-it`) replaces Gemini 4 Argon as a judge. Neither
+replacement was part of the three-agent check; the rows below are the 13 Nov record.*
+
 ## Models we call through Adaption
 
 Adaption's documentation page maps each of its IDs to an upstream open-weights repository
