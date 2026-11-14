@@ -129,9 +129,10 @@ they receive only the scoring page built from a `summaries/` folder.
       judging/    written by the judge runner (below); the export never deletes it
 
 Options: `--primary-model` (whose summaries humans score; default the batch's
-only model), `--scoring-wording` (default `B`), `--scoring-per-cell N` (an equal
-number of runs per world x cell, drawn the same way on every re-export; default
-all). The scoring page is built from `scoring/batch1/summaries`; batch 2 is
+only model), `--scoring-wording` (default `B`), `--scoring-per-cell N` (N datasets per
+world, and for each of them the Never, before and after runs, so every pair is kept on
+human labels; only datasets with a gradeable turn 4 in all three cells are eligible;
+drawn the same way on every re-export; default all). The scoring page is built from `scoring/batch1/summaries`; batch 2 is
 released only after every scorer finishes batch 1. `key/scoring_sets.csv` lists
 what went where. `quotes_expectation_sentence` in the key is a narrow text check
 (the expectation sentence repeated word for word), not a disclosure measure.
