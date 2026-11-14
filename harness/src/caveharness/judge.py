@@ -38,6 +38,7 @@ import datetime as dt
 import hashlib
 import json
 import re
+import sys
 import tomllib
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -525,6 +526,11 @@ def main() -> None:
     ap.add_argument("--dry-run", action="store_true", help="show the work and one prompt per call")
     ap.add_argument("--report-only", action="store_true", help="no calls; rewrite the results")
     a = ap.parse_args()
+    # A Windows console defaults to cp1252, which cannot print characters
+    # models write (e.g. "≈"); --dry-run then crashed printing a prompt.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
 
     for env_file in ENV_FILES:
         load_dotenv(env_file)
