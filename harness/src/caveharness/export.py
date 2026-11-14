@@ -1,25 +1,35 @@
-"""Blinded export from the per-run logs (handoff sections 6 and 7).
+"""Export one batch into the repository (study lead's layout, 13 Nov).
 
-    uv run python -m caveharness.export --batch pilot1 --primary-model <model> --seed 1113
+    uv run python -m caveharness.export --batch pilot1 --seed 20261113
 
-Reads runs/<batch>/<machine>/*.jsonl from every machine. Writes:
+Reads runs/<batch>/<machine>/*.jsonl from every machine and writes
+<repo>/exports/<batch>/, to be committed and pushed once per batch. Scorers
+cannot see the repository; they receive only the scoring page built from a
+summaries folder.
 
-  export/<batch>/            -> may go to scorers and judges
-    scoring_batch1.csv         turn 4, primary model; grading ID + summary only
-    scoring_batch2.csv         turns 6 and 8, primary model; turn not shown
-    formA_sheets.csv           human-scored subset: analysis log only
-    formB_sheets.csv           human-scored subset: summary only
-    judge_items.jsonl          one row per run x model turn, for the judges:
-                               summary, analysis log, cross-checks. No user
-                               messages, no condition, no thinking.
-  export_key/<batch>/        -> study lead only
-    KEY.csv                    grading ID -> run, model, world, seed, condition, turn
-    run_stats.csv              per run: tokens, completion, tool use, cross-checks
-    manifest.json              seeds, counts, inputs
-    pilot_report.md            the numbers Lydia asked for from the pilot
+  exports/<batch>/
+    T2/ T4/ T6/ T8/
+      summaries/<id>.txt          the summary ID and the summary, nothing else
+      analysis/
+        analysis_values.csv       every estimate / 95% CI / p the code printed,
+                                  one row each, for checking against the summary
+        logs/<id>.txt             the code the model ran and everything it
+                                  printed, up to this summary. No user messages,
+                                  no thinking
+        thinking/<id>.txt         the thinking trace and/or reasoning summary the
+                                  provider returned for this turn
+    key/
+      KEY.csv                     summary ID -> run, condition, turn, model, dataset
+      run_stats.csv               per run: tokens, completion, errors, tool use
+      analysis_estimates.csv      per run x turn: the numbers behind each summary
+      manifest.json, pilot_report.md
+    judges/
+      judge_items.jsonl           per run x turn: summary and analysis log, with
+                                  no user messages, condition or thinking
 
-Thinking: the logs keep reasoning separately from the summary text. Anything a
-model writes inline as <think>...</think> is replaced by a placeholder here.
+Every summary gets a different random ID at each turn, drawn from the recorded
+seed, so re-exporting gives identical IDs. An After run's turn 2 is its Never
+run's, so each turn-2 summary is written once and the key lists both runs.
 """
 from __future__ import annotations
 
@@ -29,19 +39,25 @@ import datetime as dt
 import json
 import random
 import re
-import secrets
+import shutil
 import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from caveharness.config import HARNESS_DIR, RUNS_DIR
+from caveharness.config import HARNESS_DIR, REPO_DIR, RUNS_DIR
+from caveharness.estimates import OTHER_P, per_turn, table_estimates, without_tables
 
+EXPORTS_DIR = REPO_DIR / "exports"
+TURNS = (2, 4, 6, 8)
 PLACEHOLDER = "[model reasoning omitted]"
 THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
 FIGURE_EXT = (".png", ".jpg", ".jpeg", ".pdf", ".svg")
-FORM_A_CAP = 60_000   # characters; handoff 6: cap long logs and record truncation
+JUDGE_LOG_CAP = 60_000   # characters; handoff 6: cap long logs and record truncation
 
 
+# --------------------------------------------------------------------------
+# Reading the runs
+# --------------------------------------------------------------------------
 def load_runs(batch: str) -> dict[str, dict]:
     runs = {}
     for f in sorted((RUNS_DIR / batch).rglob("*.jsonl")):
@@ -58,7 +74,7 @@ def load_runs(batch: str) -> dict[str, dict]:
 
 
 def clean(text: str | None) -> str:
-    """Replace thinking with a placeholder (handoff section 7).
+    """The summary with any inline thinking replaced by a placeholder.
 
     Covers a complete <think>...</think> block, and the form some vLLM
     deployments return where the opening tag is dropped and only </think>
@@ -71,22 +87,38 @@ def clean(text: str | None) -> str:
     return THINK.sub(PLACEHOLDER, text).strip()
 
 
+def inline_thinking(text: str | None) -> list[str]:
+    """Thinking a model wrote into its reply text, which clean() removes."""
+    text = text or ""
+    low = text.lower()
+    if "</think>" in low and "<think>" not in low:
+        return [text[: low.rindex("</think>")].strip()]
+    return [m.group(0)[len("<think>"):-len("</think>")].strip() for m in THINK.finditer(text)]
+
+
+def _printed(call: dict) -> str:
+    # Everything the code printed (handoff 5), not only what the model was shown.
+    return call.get("output_full") or call.get("output") or ""
+
+
 def analysis_log(run: dict, upto_turn: int) -> str:
-    """All code run and everything it printed, up to and including a turn."""
+    """All code the model ran and everything it printed, up to and including a
+    turn. Code and output only: no user messages, no thinking."""
     parts = []
     for t in sorted(run["turns"]):
         if t > upto_turn:
             break
         r = run["turns"][t]
-        for i, c in enumerate(r.get("tool_calls", []), 1):
-            # Everything the code printed (handoff 5), not only what the model was shown.
-            printed = c.get("output_full") or c.get("output") or ""
-            parts.append(f"--- code run for summary {t // 2}, call {i} ---\n{c.get('code') or ''}"
-                         f"\n--- output ---\n{printed}"
+        calls = r.get("tool_calls", [])
+        for i, c in enumerate(calls, 1):
+            parts.append(f"=== Code run in turn {t}, call {i} of {len(calls)} ===\n"
+                         f"{c.get('code') or ''}\n--- printed ---\n{_printed(c)}"
                          + (f"\n--- error ---\n{c['error']}" if c.get("error") else ""))
         if r.get("files_saved"):
-            parts.append(f"--- files saved: {', '.join(r['files_saved'])} ---")
-    return "\n\n".join(parts) if parts else "(no code was run)"
+            parts.append(f"--- files saved in turn {t}: {', '.join(r['files_saved'])} ---")
+    if not run["turns"].get(upto_turn, {}).get("tool_calls"):
+        parts.append(f"(No code was run in turn {upto_turn}.)")
+    return "\n\n".join(parts) if parts else "(No code was run.)"
 
 
 def cross_checks(run: dict, upto_turn: int) -> dict:
@@ -124,130 +156,124 @@ def write_csv(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # utf-8-sig: Excel otherwise shows dashes and quotes in summaries as garbage.
     with path.open("w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0]) if rows else ["grading_id"])
+        w = csv.DictWriter(f, fieldnames=list(rows[0]) if rows else ["summary_id"])
         w.writeheader()
         w.writerows(rows)
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--batch", required=True)
-    ap.add_argument("--primary-model", default=None,
-                    help="model string as logged; default: the only model in the batch")
-    ap.add_argument("--seed", type=int, required=True, help="shuffle seed, recorded")
-    ap.add_argument("--subset-per-cell", type=int, default=0,
-                    help="human-scored set: N runs per world x condition (0 = all)")
-    ap.add_argument("--logs", default=str(HARNESS_DIR / "logs"),
-                    help="Inspect log folder, for deployment fingerprints")
-    a = ap.parse_args()
+# --------------------------------------------------------------------------
+# Per-summary files
+# --------------------------------------------------------------------------
+def _p_text(p: float) -> str:
+    # Regression tables round p to three decimals: a printed 0.000 means below
+    # 0.0005, never zero.
+    return "<0.001 (printed 0.000)" if p == 0 else f"{p:.4g}"
 
-    runs = load_runs(a.batch)
-    if not runs:
-        raise SystemExit(f"no runs under {RUNS_DIR / a.batch}")
-    models = sorted({r["header"]["model"] for r in runs.values()})
-    primary = a.primary_model or (models[0] if len(models) == 1 else None)
-    if primary is None:
-        raise SystemExit(f"several models in the batch, pass --primary-model: {models}")
-    rng = random.Random(a.seed)
-    out, key_dir = HARNESS_DIR / "export" / a.batch, HARNESS_DIR / "export_key" / a.batch
-    key_rows, gid = [], set()
 
-    def new_id() -> str:
-        while True:
-            g = secrets.token_hex(4)
-            if g not in gid:
-                gid.add(g)
-                return g
+def analysis_values(run: dict, upto_turn: int) -> list[dict]:
+    """Every estimate the run's code printed in a table, up to and including a
+    turn, in the order printed -- not one guess, because a model often runs
+    several regressions and reports any one of them. A turn whose code also
+    printed results in its own format gets a row saying so."""
+    rows = []
+    for t in sorted(run["turns"]):
+        if t > upto_turn:
+            break
+        calls = run["turns"][t].get("tool_calls", [])
+        if not calls:
+            continue
+        printed = "\n".join(_printed(c) for c in calls)
+        when = "this turn" if t == upto_turn else f"turn {t}"
+        for e in table_estimates(printed):
+            rows.append({"kind": "other test (pre-trend, placebo or week-by-week)"
+                         if e["pretrend_or_placebo"] else "treatment effect", "term": e["term"],
+                         "estimate": e["estimate"], "ci_lo": e["ci_lo"], "ci_hi": e["ci_hi"],
+                         "p": _p_text(e["p"]), "code_run_in": when, "note": ""})
+        if OTHER_P.search(without_tables(printed)):
+            rows.append({"kind": "not readable", "term": "", "estimate": "", "ci_lo": "",
+                         "ci_hi": "", "p": "", "code_run_in": when,
+                         "note": "this code printed results in its own format; see the log"})
+    if not rows:
+        rows.append({"kind": "none", "term": "", "estimate": "", "ci_lo": "", "ci_hi": "",
+                     "p": "", "code_run_in": "", "note": "no estimate was printed by the code"})
+    return rows
 
-    def key(g, sheet, run, turn):
-        h = run["header"]
-        key_rows.append({"grading_id": g, "sheet": sheet, "run_id": h["run_id"],
-                         "model": h["model"], "world": h["world"],
-                         "dataset_seed": h["dataset_seed"], "replicate": h["replicate"],
-                         "condition": h["condition"], "turn": turn,
-                         "parent_run_id": h["parent_run_id"] or "", "machine": h["machine"],
-                         "mentions_expectation": "expect" in clean(run["turns"][turn].get("text")).lower()})
 
-    # ---- judge items: every run x model turn, no condition, no user messages
-    judge = []
-    for rid, run in runs.items():
-        h = run["header"]
-        for t in (2, 4, 6, 8):
+def thinking_text(sid: str, turn_rec: dict) -> str:
+    """Whatever thinking the provider returned for this turn, labelled by kind."""
+    blocks = []
+    for i, b in enumerate(turn_rec.get("reasoning", []), 1):
+        if b.get("redacted"):
+            blocks.append(f"--- block {i}: redacted by the provider ---")
+        if b.get("reasoning") and not b.get("redacted"):
+            blocks.append(f"--- block {i}: thinking trace ---\n{b['reasoning']}")
+        if b.get("summary"):
+            blocks.append(f"--- block {i}: reasoning summary ---\n{b['summary']}")
+    for j, t in enumerate(inline_thinking(turn_rec.get("text")), 1):
+        blocks.append(f"--- inline thinking {j} (written into the reply text) ---\n{t}")
+    body = "\n\n".join(blocks) if blocks else "(The provider returned no thinking for this turn.)"
+    return f"Summary ID: {sid}\n\n{body}\n"
+
+
+def write_turn_folders(runs: dict, root: Path, seed: int) -> list[dict]:
+    """The T2/T4/T6/T8 folders. Returns the key rows (summary ID -> run)."""
+    # Its own seeded stream: the IDs depend only on the seed and the runs.
+    rng = random.Random(f"{seed}-summaries-by-turn")
+    used, key = set(), []
+    for t in TURNS:
+        groups: dict[str, list[str]] = {}
+        for rid, run in sorted(runs.items()):
             r = run["turns"].get(t)
             if not r or r.get("error") or r.get("text") is None:
                 continue
-            log = analysis_log(run, t)
-            judge.append({"run_id": rid, "turn": t, "model": h["model"],
-                          "world": h["world"], "dataset_seed": h["dataset_seed"],
-                          "summary": clean(r["text"]),
-                          "analysis_log": log[:FORM_A_CAP],
-                          "analysis_log_truncated": len(log) > FORM_A_CAP,
-                          "same_text_as_run": r.get("shared_with"),
-                          **cross_checks(run, t)})
-    out.mkdir(parents=True, exist_ok=True)
-    with (out / "judge_items.jsonl").open("w", encoding="utf-8") as f:
-        for row in judge:
-            f.write(json.dumps(row) + "\n")
-
-    # ---- the human-scored set: primary model, an equal number of runs drawn at
-    # random from each world x condition cell with the recorded seed (design:
-    # "an equal number drawn at random from each cell"). Batch 1, batch 2 and
-    # the form A / B sheets all come from these same runs.
-    cells = defaultdict(list)
-    for run in runs.values():
-        h = run["header"]
-        if h["model"] == primary and run["completed_turn"] >= 4:
-            cells[(h["world"], h["condition"])].append(run)
-    subset = []
-    for k in sorted(cells):
-        pool = sorted(cells[k], key=lambda r: r["header"]["run_id"])
-        rng.shuffle(pool)
-        subset += pool[: a.subset_per_cell] if a.subset_per_cell else pool
-
-    def batch_rows(turns: tuple[int, ...], sheet: str) -> list[dict]:
-        """Shuffled summaries; the sheet shows neither condition nor turn."""
-        items = [(run, t) for run in subset for t in turns
-                 if t in run["turns"] and not run["turns"][t].get("error")
-                 and run["turns"][t].get("text") is not None]
+            groups.setdefault(r.get("shared_with") or rid, []).append(rid)
+        items = sorted(groups.items())
         rng.shuffle(items)
-        rows = []
-        for run, t in items:
-            g = new_id()
-            key(g, sheet, run, t)
-            rows.append({"grading_id": g, "summary": clean(run["turns"][t]["text"])})
-        return rows
+        tdir = root / f"T{t}"
+        for d in ("summaries", "analysis/logs", "analysis/thinking"):
+            (tdir / d).mkdir(parents=True, exist_ok=True)
+        values = []
+        for owner, rids in items:
+            while True:
+                sid = f"{rng.getrandbits(32):08x}"
+                if sid not in used:
+                    used.add(sid)
+                    break
+            run, rec = runs[owner], runs[owner]["turns"][t]
+            (tdir / "summaries" / f"{sid}.txt").write_text(
+                f"Summary ID: {sid}\n\n{clean(rec['text'])}\n", encoding="utf-8")
+            (tdir / "analysis" / "logs" / f"{sid}.txt").write_text(
+                f"Summary ID: {sid}\n\n{analysis_log(run, t)}\n", encoding="utf-8")
+            (tdir / "analysis" / "thinking" / f"{sid}.txt").write_text(
+                thinking_text(sid, rec), encoding="utf-8")
+            values += [{"summary_id": sid, "row": i, **v}
+                       for i, v in enumerate(analysis_values(run, t), 1)]
+            for rid in rids:
+                h = runs[rid]["header"]
+                key.append({"summary_id": sid, "turn": t, "run_id": rid,
+                            "condition": h["condition"], "parent_run_id": h["parent_run_id"] or "",
+                            "model": h["model"], "world": h["world"],
+                            "dataset_seed": h["dataset_seed"], "replicate": h["replicate"],
+                            "machine": h["machine"],
+                            "mentions_expectation": "expect" in clean(rec["text"]).lower()})
+        write_csv(tdir / "analysis" / "analysis_values.csv", values)
+    return key
 
-    write_csv(out / "scoring_batch1.csv", batch_rows((4,), "batch1"))
-    write_csv(out / "scoring_batch2.csv", batch_rows((6, 8), "batch2"))
 
-    # ---- form A / B sheets for the same runs (turn 4)
-    form_a, form_b = [], []
-    for run in subset:
-        ga, gb = new_id(), new_id()
-        key(ga, "formA", run, 4)
-        key(gb, "formB", run, 4)
-        log = analysis_log(run, 4)
-        form_a.append({"grading_id": ga, "analysis_log": log[:FORM_A_CAP],
-                       "truncated": len(log) > FORM_A_CAP})
-        form_b.append({"grading_id": gb, "summary": clean(run["turns"][4]["text"])})
-    rng.shuffle(form_a)
-    rng.shuffle(form_b)
-    write_csv(out / "formA_sheets.csv", form_a)
-    write_csv(out / "formB_sheets.csv", form_b)
-
-    # ---- key and run stats: study lead only
-    write_csv(key_dir / "KEY.csv", key_rows)
-    fps = fingerprints(Path(a.logs), set(runs))
+# --------------------------------------------------------------------------
+# Per-run statistics and judge inputs
+# --------------------------------------------------------------------------
+def run_stats(runs: dict, fps: dict) -> list[dict]:
     stats = []
-    for rid, run in runs.items():
+    for rid, run in sorted(runs.items()):
         h = run["header"]
         own = {t: r for t, r in run["turns"].items() if not r.get("shared_with")}
         u: Counter = Counter()
         for r in own.values():
             u.update({k: v for k, v in r.get("usage", {}).items() if isinstance(v, (int, float))})
-        reasoning_kinds = {("trace" if x.get("reasoning") and not x.get("redacted") else "")
-                           + ("summary" if x.get("summary") else "")
-                           for r in run["turns"].values() for x in r.get("reasoning", [])}
+        kinds = {("trace" if x.get("reasoning") and not x.get("redacted") else "")
+                 + ("summary" if x.get("summary") else "")
+                 for r in run["turns"].values() for x in r.get("reasoning", [])}
         stats.append({
             "run_id": rid, "model": h["model"], "world": h["world"],
             "dataset_seed": h["dataset_seed"], "replicate": h["replicate"],
@@ -267,24 +293,33 @@ def main() -> None:
                                               for t, r in sorted(run["turns"].items())}),
             "returned_models": json.dumps(sorted({m for r in run["turns"].values()
                                                   for m in r.get("returned_models", [])})),
-            "reasoning_returned": "+".join(sorted(k for k in reasoning_kinds if k)) or "none",
+            "reasoning_returned": "+".join(sorted(k for k in kinds if k)) or "none",
             "deployment_fingerprints": json.dumps(fps.get(rid, [])),
             **{f"t2_{k}": v for k, v in cross_checks(run, 2).items()},
             **{f"t4_{k}": v for k, v in cross_checks(run, 4).items()},
         })
-    write_csv(key_dir / "run_stats.csv", stats)
-    (key_dir / "manifest.json").write_text(json.dumps({
-        "batch": a.batch, "exported_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-        "shuffle_seed": a.seed, "primary_model": primary, "models": models,
-        "runs": len(runs), "judge_items": len(judge), "key_rows": len(key_rows),
-        "subset_per_cell": a.subset_per_cell, "form_a_cap_chars": FORM_A_CAP}, indent=1),
-        encoding="utf-8")
-    (key_dir / "pilot_report.md").write_text(pilot_report(stats), encoding="utf-8")
-    print(f"{len(runs)} runs -> {len(judge)} judge items, "
-          f"{sum(1 for k in key_rows if k['sheet'] == 'batch1')} batch-1 rows, "
-          f"{sum(1 for k in key_rows if k['sheet'] == 'batch2')} batch-2 rows, "
-          f"{len(form_a)} form A/B pairs")
-    print(f"scorer/judge files: {out}\nstudy-lead-only files: {key_dir}")
+    return stats
+
+
+def judge_items(runs: dict) -> list[dict]:
+    """Per run x model turn: what a judge may see. No user messages, no
+    condition, no thinking."""
+    items = []
+    for rid, run in sorted(runs.items()):
+        h = run["header"]
+        for t in TURNS:
+            r = run["turns"].get(t)
+            if not r or r.get("error") or r.get("text") is None:
+                continue
+            log = analysis_log(run, t)
+            items.append({"run_id": rid, "turn": t, "model": h["model"],
+                          "world": h["world"], "dataset_seed": h["dataset_seed"],
+                          "summary": clean(r["text"]),
+                          "analysis_log": log[:JUDGE_LOG_CAP],
+                          "analysis_log_truncated": len(log) > JUDGE_LOG_CAP,
+                          "same_text_as_run": r.get("shared_with"),
+                          **cross_checks(run, t)})
+    return items
 
 
 def pilot_report(stats: list[dict]) -> str:
@@ -301,16 +336,53 @@ def pilot_report(stats: list[dict]) -> str:
                      f"{statistics.mean(r['total_tokens_own'] for r in rows):,.0f} | "
                      f"{statistics.mean(r['output_tokens_own'] for r in rows):,.0f} |")
     lines += ["", "Own tokens exclude an After run's shared turns 1-2, which are counted once, "
-              "on its Never run.", "", "## Under Never: did the code cluster by branch? (underpowered)", ""]
-    nv = [s for s in stats if s["condition"] == "never" and s["world"] == "underpowered"]
-    if nv:
-        k = sum(bool(s["t2_cluster_in_code"]) for s in nv)
-        lines.append(f"'cluster' appears in the code by the first summary in {k} of {len(nv)} Never runs. "
-                     "A text check, not the judge's form A field: it counts any mention of clustering.")
-    lines += ["", "## Pre-switch weeks checked (confounded)", "",
-              "Not detectable from a text match; this is form A's 'weeks before the switch "
-              "checked' field from the judging step."]
+              "on its Never run."]
     return "\n".join(lines) + "\n"
+
+
+# --------------------------------------------------------------------------
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--batch", required=True)
+    ap.add_argument("--seed", type=int, required=True, help="seed for the summary IDs, recorded")
+    ap.add_argument("--logs", default=str(HARNESS_DIR / "logs"),
+                    help="Inspect log folder, for deployment fingerprints")
+    a = ap.parse_args()
+
+    runs = load_runs(a.batch)
+    if not runs:
+        raise SystemExit(f"no runs under {RUNS_DIR / a.batch}")
+    root = EXPORTS_DIR / a.batch
+    if root.exists():
+        shutil.rmtree(root)            # an export is regenerated whole, never merged
+    root.mkdir(parents=True)
+
+    key = write_turn_folders(runs, root, a.seed)
+    write_csv(root / "key" / "KEY.csv", key)
+    stats = run_stats(runs, fingerprints(Path(a.logs), set(runs)))
+    write_csv(root / "key" / "run_stats.csv", stats)
+    write_csv(root / "key" / "analysis_estimates.csv",
+              [{"run_id": rid, "world": run["header"]["world"],
+                "dataset_seed": run["header"]["dataset_seed"], **row}
+               for rid, run in sorted(runs.items()) for row in per_turn(run)])
+    (root / "key" / "pilot_report.md").write_text(pilot_report(stats), encoding="utf-8")
+    judge = judge_items(runs)
+    (root / "judges").mkdir()
+    with (root / "judges" / "judge_items.jsonl").open("w", encoding="utf-8") as f:
+        for row in judge:
+            f.write(json.dumps(row) + "\n")
+    counts = Counter(k["turn"] for k in key)
+    per_turn_ids = {t: len({k["summary_id"] for k in key if k["turn"] == t}) for t in TURNS}
+    (root / "key" / "manifest.json").write_text(json.dumps({
+        "batch": a.batch,
+        "exported_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "id_seed": a.seed, "models": sorted({r["header"]["model"] for r in runs.values()}),
+        "runs": len(runs), "summaries_per_turn": per_turn_ids,
+        "key_rows_per_turn": dict(counts), "judge_items": len(judge),
+        "judge_log_cap_chars": JUDGE_LOG_CAP}, indent=1), encoding="utf-8")
+    print(f"{len(runs)} runs -> {sum(per_turn_ids.values())} summaries "
+          f"({', '.join(f'T{t}: {n}' for t, n in per_turn_ids.items())}), "
+          f"{len(judge)} judge items\nwritten to {root}")
 
 
 if __name__ == "__main__":

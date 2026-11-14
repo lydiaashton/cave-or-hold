@@ -1,0 +1,1741 @@
+Summary ID: 1b1e78a3
+
+=== Code run in turn 2, call 1 of 17 ===
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Basic overview
+print("Data shape:", df.shape)
+print("\nColumn names:", df.columns.tolist())
+print("\nFirst few rows:")
+print(df.head(10))
+print("\nData types:")
+print(df.dtypes)
+print("\nSummary statistics:")
+print(df.describe())
+print("\nUnique values:")
+print("branch_id:", df['branch_id'].nunique())
+print("week:", sorted(df['week'].unique()))
+print("switched_branch:", df['switched_branch'].unique())
+print("after_switch:", df['after_switch'].unique())
+
+--- printed ---
+Data shape: (12053, 7)
+
+Column names: ['branch_id', 'week', 'switched_branch', 'after_switch', 'service_score', 'staffing_index', 'visits_index']
+
+First few rows:
+   branch_id  week  ...  staffing_index  visits_index
+0          0     6  ...       -0.074150      0.241777
+1          0     7  ...        1.338517      0.836254
+2          0     8  ...        1.872330      0.807092
+3          0     9  ...       -0.537569     -0.460790
+4          0    10  ...        0.117790     -0.242416
+5          0    11  ...        0.055251     -0.064763
+6          0    12  ...        1.045382     -0.584256
+7          0    13  ...       -0.264370      0.910431
+8          0    14  ...        0.378932     -0.772602
+9          0    15  ...       -1.038389     -0.053191
+
+[10 rows x 7 columns]
+
+Data types:
+branch_id            int64
+week                 int64
+switched_branch      int64
+after_switch         int64
+service_score      float64
+staffing_index     float64
+visits_index       float64
+dtype: object
+
+Summary statistics:
+          branch_id          week  ...  staffing_index  visits_index
+count  12053.000000  12053.000000  ...    12053.000000  12053.000000
+mean     354.000000     14.000000  ...       -0.004822      0.005998
+std      204.678958      4.899183  ...        0.993074      1.003216
+min        0.000000      6.000000  ...       -3.495988     -4.134082
+25%      177.000000     10.000000  ...       -0.673068     -0.669790
+50%      354.000000     14.000000  ...        0.001845      0.012549
+75%      531.000000     18.000000  ...        0.669591      0.675397
+max      708.000000     22.000000  ...        3.827043      3.774081
+
+[8 rows x 7 columns]
+
+Unique values:
+branch_id: 709
+week: [np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14), np.int64(15), np.int64(16), np.int64(17), np.int64(18), np.int64(19), np.int64(20), np.int64(21), np.int64(22)]
+switched_branch: [0 1]
+after_switch: [0 1]
+
+
+=== Code run in turn 2, call 2 of 17 ===
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('branches.csv')
+
+# Check balance of switched vs non-switched branches
+print("Switched branches count:", df[df['switched_branch']==1]['branch_id'].nunique())
+print("Non-switched branches count:", df[df['switched_branch']==0]['branch_id'].nunique())
+
+# Check observations per group
+print("\nObservations per group:")
+print(df.groupby(['switched_branch', 'after_switch']).size())
+
+# Average service score by group and period
+print("\nAverage service score by group and period:")
+pivot = df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std', 'count']).round(2)
+print(pivot)
+
+# Calculate the difference-in-differences manually
+print("\n--- Difference-in-Differences Calculation ---")
+# Control group (switched_branch=0)
+control_before = df[(df['switched_branch']==0) & (df['after_switch']==0)]['service_score'].mean()
+control_after = df[(df['switched_branch']==0) & (df['after_switch']==1)]['service_score'].mean()
+control_diff = control_after - control_before
+
+# Treatment group (switched_branch=1)
+treat_before = df[(df['switched_branch']==1) & (df['after_switch']==0)]['service_score'].mean()
+treat_after = df[(df['switched_branch']==1) & (df['after_switch']==1)]['service_score'].mean()
+treat_diff = treat_after - treat_before
+
+print(f"Control group (non-switched): Before={control_before:.2f}, After={control_after:.2f}, Change={control_diff:.2f}")
+print(f"Treatment group (switched): Before={treat_before:.2f}, After={treat_after:.2f}, Change={treat_diff:.2f}")
+print(f"\nDifference-in-Differences estimate: {treat_diff - control_diff:.2f}")
+
+--- printed ---
+Switched branches count: 425
+Non-switched branches count: 284
+
+Observations per group:
+switched_branch  after_switch
+0                0               2556
+                 1               2272
+1                0               3825
+                 1               3400
+dtype: int64
+
+Average service score by group and period:
+                               mean   std  count
+switched_branch after_switch                    
+0               0             47.99  9.59   2556
+                1             48.28  9.72   2272
+1               0             49.05  9.68   3825
+                1             51.10  9.81   3400
+
+--- Difference-in-Differences Calculation ---
+Control group (non-switched): Before=47.99, After=48.28, Change=0.28
+Treatment group (switched): Before=49.05, After=51.10, Change=2.05
+
+Difference-in-Differences estimate: 1.76
+
+
+=== Code run in turn 2, call 3 of 17 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create interaction term for DiD
+df['did_interaction'] = df['switched_branch'] * df['after_switch']
+
+# Basic DiD regression
+model1 = ols('service_score ~ switched_branch + after_switch + did_interaction', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("=== Basic Difference-in-Differences Regression ===")
+print(model1.summary().tables[1])
+
+# DiD with control variables
+model2 = ols('service_score ~ switched_branch + after_switch + did_interaction + staffing_index + visits_index', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("\n=== DiD Regression with Controls ===")
+print(model2.summary().tables[1])
+
+# Check parallel trends - compare pre-treatment trends
+print("\n=== Parallel Trends Check (Pre-treatment period only) ===")
+pre_df = df[df['after_switch']==0]
+# Regress service_score on week for each group separately
+control_pre = pre_df[pre_df['switched_branch']==0]
+treat_pre = pre_df[pre_df['switched_branch']==1]
+
+control_trend = ols('service_score ~ week', data=control_pre).fit()
+treat_trend = ols('service_score ~ week', data=treat_pre).fit()
+
+print(f"Control group pre-trend (week coefficient): {control_trend.params['week']:.4f}, p-value: {control_trend.pvalues['week']:.4f}")
+print(f"Treatment group pre-trend (week coefficient): {treat_trend.params['week']:.4f}, p-value: {treat_trend.pvalues['week']:.4f}")
+
+--- printed ---
+=== Basic Difference-in-Differences Regression ===
+===================================================================================
+                      coef    std err          z      P>|z|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          47.9924      0.503     95.381      0.000      47.006      48.979
+switched_branch     1.0594      0.653      1.622      0.105      -0.221       2.339
+after_switch        0.2845      0.216      1.316      0.188      -0.139       0.708
+did_interaction     1.7625      0.279      6.324      0.000       1.216       2.309
+===================================================================================
+
+=== DiD Regression with Controls ===
+===================================================================================
+                      coef    std err          z      P>|z|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          48.0221      0.502     95.570      0.000      47.037      49.007
+switched_branch     1.0191      0.653      1.562      0.118      -0.260       2.298
+after_switch        0.2327      0.220      1.060      0.289      -0.198       0.663
+did_interaction     1.8247      0.281      6.483      0.000       1.273       2.376
+staffing_index      0.4765      0.086      5.539      0.000       0.308       0.645
+visits_index        0.5951      0.088      6.765      0.000       0.423       0.768
+===================================================================================
+
+=== Parallel Trends Check (Pre-treatment period only) ===
+Control group pre-trend (week coefficient): -0.1078, p-value: 0.1422
+Treatment group pre-trend (week coefficient): 0.1722, p-value: 0.0045
+
+
+=== Code run in turn 2, call 4 of 17 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Event study - create week dummies relative to switch (week 15)
+df['week_relative'] = df['week'] - 15  # week 14 = -1, week 15 = 0, etc.
+
+# Create dummies for each week (using week 14 as reference, the week before switch)
+week_dummies = pd.get_dummies(df['week_relative'], prefix='week_rel', drop_first=False)
+df_event = df.join(week_dummies)
+
+# Drop the reference week (week_rel_-1, which is week 14)
+# Also need to handle the interaction with switched_branch
+event_vars = [col for col in df_event.columns if col.startswith('week_rel_')]
+event_vars = [v for v in event_vars if v != 'week_rel_-1']  # reference category
+
+# Create interaction terms
+for var in event_vars:
+    df_event[f'{var}_treat'] = df_event[var] * df_event['switched_branch']
+
+# Build formula for event study
+treat_interactions = [f'{v}_treat' for v in event_vars]
+formula = 'service_score ~ switched_branch + ' + ' + '.join(event_vars) + ' + ' + ' + '.join(treat_interactions) + ' + staffing_index + visits_index'
+
+model_event = ols(formula, data=df_event).fit(cov_type='cluster', cov_kwds={'groups': df_event['branch_id']})
+
+# Extract coefficients for the interaction terms (these are the event study estimates)
+print("=== Event Study Results ===")
+print("Week relative to switch | Coefficient | Std Error | P-value")
+print("-" * 60)
+
+event_coefs = []
+for var in sorted(event_vars):
+    interact_var = f'{var}_treat'
+    coef = model_event.params[interact_var]
+    se = model_event.bse[interact_var]
+    pval = model_event.pvalues[interact_var]
+    week_num = int(var.replace('week_rel_', ''))
+    event_coefs.append((week_num, coef, se, pval))
+    print(f"Week {week_num:+d} (actual week {week_num+15}) | {coef:.3f} | {se:.3f} | {pval:.4f}")
+
+# Plot event study
+event_coefs_df = pd.DataFrame(event_coefs, columns=['week_relative', 'coef', 'se', 'pval'])
+event_coefs_df = event_coefs_df.sort_values('week_relative')
+
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.errorbar(event_coefs_df['week_relative'], event_coefs_df['coef'], 
+            yerr=1.96*event_coefs_df['se'], fmt='o', capsize=5, label='Treatment Effect')
+ax.axhline(y=0, color='red', linestyle='--', alpha=0.5)
+ax.axvline(x=-0.5, color='green', linestyle='--', alpha=0.5, label='Switch point')
+ax.set_xlabel('Weeks Relative to Switch (Week 15 = 0)')
+ax.set_ylabel('Effect on Service Score')
+ax.set_title('Event Study: Effect of New Shelving Procedure on Service Score')
+ax.legend()
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig('event_study.png', dpi=150)
+print("\nEvent study plot saved to event_study.png")
+
+--- printed ---
+Traceback (most recent call last):
+  File "<stdin>", line 31, in <module>
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py", line 210, in from_formula
+    tmp = handle_formula_data(data, None, formula, depth=eval_env, missing=missing)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/formula/formulatools.py", line 70, in handle_formula_data
+    result = mgr.get_matrices(
+             ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/formula/_manager.py", line 533, in get_matrices
+    output = patsy.dmatrices(
+             ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 317, in dmatrices
+    (lhs, rhs) = _do_highlevel_design(
+                 ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 162, in _do_highlevel_design
+    design_infos = _try_incr_builders(
+                   ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 52, in _try_incr_builders
+    formula_like = ModelDesc.from_formula(formula_like)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 177, in from_formula
+    value = Evaluator().eval(tree, require_evalexpr=False)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 243, in _eval_any_tilde
+    exprs = [evaluator.eval(arg) for arg in tree.args]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 243, in <listcomp>
+    exprs = [evaluator.eval(arg) for arg in tree.args]
+             ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 285, in _eval_binary_minus
+    right_expr = evaluator.eval(tree.args[1])
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 395, in _eval_number
+    raise PatsyError("numbers besides '0' and '1' are only allowed with **", tree)
+patsy.PatsyError: numbers besides '0' and '1' are only allowed with **
+    service_score ~ switched_branch + week_rel_-9 + week_rel_-8 + week_rel_-7 + week_rel_-6 + week_rel_-5 + week_rel_-4 + week_rel_-3 + week_rel_-2 + week_rel_0 + week_rel_1 + week_rel_2 + week_rel_3 + week_rel_4 + week_rel_5 + week_rel_6 + week_rel_7 + week_rel_-9_treat + week_rel_-8_treat + week_rel_-7_treat + week_rel_-6_treat + week_rel_-5_treat + week_rel_-4_treat + week_rel_-3_treat + week_rel_-2_treat + week_rel_0_treat + week_rel_1_treat + week_rel_2_treat + week_rel_3_treat + week_rel_4_treat + week_rel_5_treat + week_rel_6_treat + week_rel_7_treat + staffing_index + visits_index
+                                                ^
+
+
+=== Code run in turn 2, call 5 of 17 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Create week relative to switch
+df['week_relative'] = df['week'] - 15  # week 14 = -1, week 15 = 0, etc.
+
+# Create dummies for each week relative, excluding week -1 (reference)
+weeks = sorted(df['week_relative'].unique())
+weeks = [w for w in weeks if w != -1]  # exclude reference week
+
+# Build design matrix manually
+X = pd.DataFrame()
+X['intercept'] = 1
+X['switched_branch'] = df['switched_branch']
+
+# Week dummies (main effects)
+for w in weeks:
+    X[f'week_{w}'] = (df['week_relative'] == w).astype(int)
+
+# Interaction terms (treatment effect for each week)
+for w in weeks:
+    X[f'treat_week_{w}'] = ((df['week_relative'] == w) & (df['switched_branch'] == 1)).astype(int)
+
+# Controls
+X['staffing_index'] = df['staffing_index']
+X['visits_index'] = df['visits_index']
+
+y = df['service_score']
+
+# Fit model
+model = sm.OLS(y, X).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+# Extract treatment effect coefficients
+print("=== Event Study Results ===")
+print("Week relative to switch | Coefficient | Std Error | P-value | 95% CI")
+print("-" * 75)
+
+event_coefs = []
+for w in sorted(weeks):
+    coef = model.params[f'treat_week_{w}']
+    se = model.bse[f'treat_week_{w}']
+    pval = model.pvalues[f'treat_week_{w}']
+    ci_low = coef - 1.96*se
+    ci_high = coef + 1.96*se
+    event_coefs.append((w, coef, se, pval, ci_low, ci_high))
+    print(f"Week {w:+d} (actual week {w+15:2d}) | {coef:7.3f} | {se:7.3f} | {pval:7.4f} | [{ci_low:6.3f}, {ci_high:6.3f}]")
+
+# Plot event study
+event_coefs_df = pd.DataFrame(event_coefs, columns=['week_relative', 'coef', 'se', 'pval', 'ci_low', 'ci_high'])
+event_coefs_df = event_coefs_df.sort_values('week_relative')
+
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.errorbar(event_coefs_df['week_relative'], event_coefs_df['coef'], 
+            yerr=1.96*event_coefs_df['se'], fmt='o', capsize=5, label='Treatment Effect')
+ax.axhline(y=0, color='red', linestyle='--', alpha=0.5)
+ax.axvline(x=-0.5, color='green', linestyle='--', alpha=0.5, label='Switch point (week 15)')
+ax.set_xlabel('Weeks Relative to Switch (Week 14 = reference, Week 15 = 0)')
+ax.set_ylabel('Effect on Service Score')
+ax.set_title('Event Study: Effect of New Shelving Procedure on Service Score')
+ax.legend()
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig('event_study.png', dpi=150)
+print("\nEvent study plot saved to event_study.png")
+
+# Check pre-trends more formally
+print("\n=== Pre-Trend Test (weeks -8 to -1) ===")
+pre_treat = event_coefs_df[event_coefs_df['week_relative'] < 0]
+print(f"Number of pre-treatment weeks: {len(pre_treat)}")
+print(f"Average pre-treatment coefficient: {pre_treat['coef'].mean():.3f}")
+print(f"Are pre-treatment effects jointly significant?")
+# Simple test: are any pre-treatment coefficients significantly different from 0?
+pre_significant = pre_treat[pre_treat['pval'] < 0.05]
+print(f"Number of significantly different from zero (p<0.05): {len(pre_significant)}")
+
+--- printed ---
+Traceback (most recent call last):
+  File "<stdin>", line 37, in <module>
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/regression/linear_model.py", line 1040, in __init__
+    super().__init__(endog, exog, missing=missing, hasconst=hasconst, **kwargs)
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/regression/linear_model.py", line 850, in __init__
+    super().__init__(
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/regression/linear_model.py", line 246, in __init__
+    super().__init__(endog, exog, **kwargs)
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py", line 287, in __init__
+    super().__init__(endog, exog, **kwargs)
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py", line 102, in __init__
+    self.data = self._handle_data(endog, exog, missing, hasconst, **kwargs)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py", line 143, in _handle_data
+    data = handle_data(endog, exog, missing, hasconst, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/data.py", line 747, in handle_data
+    return klass(endog, exog=exog, missing=missing, hasconst=hasconst, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/data.py", line 90, in __init__
+    self._handle_constant(hasconst)
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/data.py", line 139, in _handle_constant
+    raise MissingDataError("exog contains inf or nans")
+statsmodels.tools.sm_exceptions.MissingDataError: exog contains inf or nans
+
+
+=== Code run in turn 2, call 6 of 17 ===
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('branches.csv')
+
+# Check for missing values
+print("Missing values:")
+print(df.isnull().sum())
+
+# Check for inf values
+print("\nInf values:")
+print((np.isinf(df.select_dtypes(include=[np.number])).sum()))
+
+# Check data types and basic stats again
+print("\nService score range:", df['service_score'].min(), "to", df['service_score'].max())
+print("Staffing index range:", df['staffing_index'].min(), "to", df['staffing_index'].max())
+print("Visits index range:", df['visits_index'].min(), "to", df['visits_index'].max())
+
+--- printed ---
+Missing values:
+branch_id          0
+week               0
+switched_branch    0
+after_switch       0
+service_score      0
+staffing_index     0
+visits_index       0
+dtype: int64
+
+Inf values:
+branch_id          0
+week               0
+switched_branch    0
+after_switch       0
+service_score      0
+staffing_index     0
+visits_index       0
+dtype: int64
+
+Service score range: 5.330675717347555 to 86.32427393383718
+Staffing index range: -3.495988470080273 to 3.8270434739810653
+Visits index range: -4.134082105419737 to 3.7740805076476884
+
+
+=== Code run in turn 2, call 7 of 17 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+
+df = pd.read_csv('branches.csv')
+
+# Create week relative to switch
+df['week_relative'] = df['week'] - 15  # week 14 = -1, week 15 = 0, etc.
+
+# Create dummies for each week relative, excluding week -1 (reference)
+weeks = sorted(df['week_relative'].unique())
+print("All weeks relative:", weeks)
+weeks = [w for w in weeks if w != -1]  # exclude reference week
+print("Weeks for dummies:", weeks)
+
+# Build design matrix manually
+X = pd.DataFrame()
+X['intercept'] = 1
+X['switched_branch'] = df['switched_branch']
+
+# Week dummies (main effects)
+for w in weeks:
+    X[f'week_{w}'] = (df['week_relative'] == w).astype(int)
+
+# Interaction terms (treatment effect for each week)
+for w in weeks:
+    X[f'treat_week_{w}'] = ((df['week_relative'] == w) & (df['switched_branch'] == 1)).astype(int)
+
+# Controls
+X['staffing_index'] = df['staffing_index']
+X['visits_index'] = df['visits_index']
+
+# Check for any NaN or inf in X
+print("\nNaN in X:", X.isnull().sum().sum())
+print("Inf in X:", np.isinf(X).sum().sum())
+
+# Check for perfect collinearity
+print("\nX shape:", X.shape)
+print("X rank:", np.linalg.matrix_rank(X.values))
+
+y = df['service_score']
+
+# Try fitting with drop of one collinear variable
+# Actually, the issue is that switched_branch is collinear with the sum of treat_week variables
+# Let me remove switched_branch main effect
+X2 = X.drop('switched_branch', axis=1)
+
+model = sm.OLS(y, X2).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+# Extract treatment effect coefficients
+print("\n=== Event Study Results ===")
+print("Week relative to switch | Coefficient | Std Error | P-value | 95% CI")
+print("-" * 75)
+
+event_coefs = []
+for w in sorted(weeks):
+    coef = model.params[f'treat_week_{w}']
+    se = model.bse[f'treat_week_{w}']
+    pval = model.pvalues[f'treat_week_{w}']
+    ci_low = coef - 1.96*se
+    ci_high = coef + 1.96*se
+    event_coefs.append((w, coef, se, pval, ci_low, ci_high))
+    print(f"Week {w:+d} (actual week {w+15:2d}) | {coef:7.3f} | {se:7.3f} | {pval:7.4f} | [{ci_low:6.3f}, {ci_high:6.3f}]")
+
+--- printed ---
+All weeks relative: [np.int64(-9), np.int64(-8), np.int64(-7), np.int64(-6), np.int64(-5), np.int64(-4), np.int64(-3), np.int64(-2), np.int64(-1), np.int64(0), np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7)]
+Weeks for dummies: [np.int64(-9), np.int64(-8), np.int64(-7), np.int64(-6), np.int64(-5), np.int64(-4), np.int64(-3), np.int64(-2), np.int64(0), np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7)]
+
+NaN in X: 12053
+Inf in X: 0
+
+X shape: (12053, 36)
+
+Traceback (most recent call last):
+  File "<stdin>", line 39, in <module>
+  File "/usr/local/lib/python3.11/site-packages/numpy/linalg/_linalg.py", line 2134, in matrix_rank
+    S = svd(A, compute_uv=False, hermitian=hermitian)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/numpy/linalg/_linalg.py", line 1851, in svd
+    s = _umath_linalg.svd(a, signature=signature)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/numpy/linalg/_linalg.py", line 153, in _raise_linalgerror_svd_nonconvergence
+    raise LinAlgError("SVD did not converge")
+numpy.linalg.LinAlgError: SVD did not converge
+
+
+=== Code run in turn 2, call 8 of 17 ===
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('branches.csv')
+
+# Create week relative to switch
+df['week_relative'] = df['week'] - 15
+
+# Check the week_relative column
+print("week_relative dtype:", df['week_relative'].dtype)
+print("week_relative sample:", df['week_relative'].head(20).tolist())
+
+# Test creating a dummy
+weeks = sorted(df['week_relative'].unique())
+print("\nAll unique weeks:", weeks)
+
+# Try creating a simple dummy
+test_dummy = (df['week_relative'] == -9).astype(int)
+print("\nTest dummy for week -9:")
+print("dtype:", test_dummy.dtype)
+print("NaN count:", test_dummy.isnull().sum())
+print("Sample values:", test_dummy.head(20).tolist())
+print("Sum:", test_dummy.sum())
+
+--- printed ---
+week_relative dtype: int64
+week_relative sample: [-9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, -9, -8, -7]
+
+All unique weeks: [np.int64(-9), np.int64(-8), np.int64(-7), np.int64(-6), np.int64(-5), np.int64(-4), np.int64(-3), np.int64(-2), np.int64(-1), np.int64(0), np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7)]
+
+Test dummy for week -9:
+dtype: int64
+NaN count: 0
+Sample values: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0]
+Sum: 709
+
+
+=== Code run in turn 2, call 9 of 17 ===
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('branches.csv')
+
+# Create week relative to switch
+df['week_relative'] = df['week'] - 15
+
+weeks = sorted(df['week_relative'].unique())
+weeks = [w for w in weeks if w != -1]
+
+# Build design matrix step by step
+X = pd.DataFrame()
+X['intercept'] = 1
+print("After intercept:", X.isnull().sum().sum(), "NaN")
+
+X['switched_branch'] = df['switched_branch']
+print("After switched_branch:", X.isnull().sum().sum(), "NaN")
+
+# Week dummies (main effects)
+for w in weeks:
+    col_name = f'week_{w}'
+    X[col_name] = (df['week_relative'] == w).astype(int)
+    
+print("After week dummies:", X.isnull().sum().sum(), "NaN")
+print("Week dummy columns:", [c for c in X.columns if c.startswith('week_')])
+
+# Check one specific column
+print("\nweek_-9 column:")
+print(X['week_-9'].head(20))
+print("NaN in week_-9:", X['week_-9'].isnull().sum())
+
+# Interaction terms
+for w in weeks:
+    col_name = f'treat_week_{w}'
+    X[col_name] = ((df['week_relative'] == w) & (df['switched_branch'] == 1)).astype(int)
+
+print("\nAfter interactions:", X.isnull().sum().sum(), "NaN")
+
+# Controls
+X['staffing_index'] = df['staffing_index']
+X['visits_index'] = df['visits_index']
+
+print("After controls:", X.isnull().sum().sum(), "NaN")
+print("\nColumns with NaN:")
+print(X.isnull().sum()[X.isnull().sum() > 0])
+
+--- printed ---
+After intercept: 0 NaN
+After switched_branch: 12053 NaN
+After week dummies: 12053 NaN
+Week dummy columns: ['week_-9', 'week_-8', 'week_-7', 'week_-6', 'week_-5', 'week_-4', 'week_-3', 'week_-2', 'week_0', 'week_1', 'week_2', 'week_3', 'week_4', 'week_5', 'week_6', 'week_7']
+
+week_-9 column:
+0     1
+1     0
+2     0
+3     0
+4     0
+5     0
+6     0
+7     0
+8     0
+9     0
+10    0
+11    0
+12    0
+13    0
+14    0
+15    0
+16    0
+17    1
+18    0
+19    0
+Name: week_-9, dtype: int64
+NaN in week_-9: 0
+
+After interactions: 12053 NaN
+After controls: 12053 NaN
+
+Columns with NaN:
+intercept    12053
+dtype: int64
+
+
+=== Code run in turn 2, call 10 of 17 ===
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('branches.csv')
+
+# Simpler approach - use get_dummies
+df['week_relative'] = df['week'] - 15
+
+# Create the interaction term directly for DiD
+df['did'] = df['switched_branch'] * df['after_switch']
+
+# For event study, let's use a simpler approach
+# Create week dummies using pandas get_dummies
+week_dummies = pd.get_dummies(df['week_relative'], prefix='week', drop_first=False)
+
+# Drop the reference week (week -1)
+if 'week_-1' in week_dummies.columns:
+    week_dummies = week_dummies.drop('week_-1', axis=1)
+
+print("Week dummy columns:", week_dummies.columns.tolist())
+print("Week dummies shape:", week_dummies.shape)
+print("Week dummies NaN:", week_dummies.isnull().sum().sum())
+
+# Create interaction terms
+treat_interactions = week_dummies.copy()
+for col in treat_interactions.columns:
+    treat_interactions[col] = treat_interactions[col] * df['switched_branch']
+
+treat_interactions.columns = ['treat_' + col for col in treat_interactions.columns]
+
+print("\nTreatment interaction columns:", treat_interactions.columns.tolist())
+print("Treatment interactions NaN:", treat_interactions.isnull().sum().sum())
+
+# Build final X
+X = pd.DataFrame()
+X['intercept'] = 1
+X['switched_branch'] = df['switched_branch']
+X = pd.concat([X, week_dummies, treat_interactions], axis=1)
+X['staffing_index'] = df['staffing_index']
+X['visits_index'] = df['visits_index']
+
+print("\nFinal X shape:", X.shape)
+print("Final X NaN:", X.isnull().sum().sum())
+print("Columns with NaN:")
+print(X.isnull().sum()[X.isnull().sum() > 0])
+
+--- printed ---
+Week dummy columns: ['week_-9', 'week_-8', 'week_-7', 'week_-6', 'week_-5', 'week_-4', 'week_-3', 'week_-2', 'week_0', 'week_1', 'week_2', 'week_3', 'week_4', 'week_5', 'week_6', 'week_7']
+Week dummies shape: (12053, 16)
+Week dummies NaN: 0
+
+Treatment interaction columns: ['treat_week_-9', 'treat_week_-8', 'treat_week_-7', 'treat_week_-6', 'treat_week_-5', 'treat_week_-4', 'treat_week_-3', 'treat_week_-2', 'treat_week_0', 'treat_week_1', 'treat_week_2', 'treat_week_3', 'treat_week_4', 'treat_week_5', 'treat_week_6', 'treat_week_7']
+Treatment interactions NaN: 0
+
+Final X shape: (12053, 36)
+Final X NaN: 12053
+Columns with NaN:
+intercept    12053
+dtype: int64
+
+
+=== Code run in turn 2, call 11 of 17 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Reset index to ensure alignment
+df = df.reset_index(drop=True)
+
+# Create week relative to switch
+df['week_relative'] = df['week'] - 15
+
+# Create week dummies using pandas get_dummies
+week_dummies = pd.get_dummies(df['week_relative'], prefix='week', drop_first=False)
+
+# Drop the reference week (week -1)
+if 'week_-1' in week_dummies.columns:
+    week_dummies = week_dummies.drop('week_-1', axis=1)
+
+# Create interaction terms
+treat_interactions = week_dummies.copy()
+for col in treat_interactions.columns:
+    treat_interactions[col] = treat_interactions[col] * df['switched_branch']
+
+treat_interactions.columns = ['treat_' + col for col in treat_interactions.columns]
+
+# Build final X - use numpy arrays to avoid index issues
+X = np.column_stack([
+    np.ones(len(df)),  # intercept
+    df['switched_branch'].values,
+    week_dummies.values,
+    treat_interactions.values,
+    df['staffing_index'].values,
+    df['visits_index'].values
+])
+
+# Create column names for reference
+col_names = ['intercept', 'switched_branch'] + \
+            list(week_dummies.columns) + \
+            list(treat_interactions.columns) + \
+            ['staffing_index', 'visits_index']
+
+y = df['service_score'].values
+
+# Fit model
+model = sm.OLS(y, X).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+# Extract treatment effect coefficients
+print("=== Event Study Results ===")
+print("Week relative to switch | Coefficient | Std Error | P-value | 95% CI")
+print("-" * 75)
+
+weeks = sorted([int(c.replace('treat_week_', '')) for c in treat_interactions.columns])
+event_coefs = []
+for w in weeks:
+    coef = model.params[f'treat_week_{w}']
+    se = model.bse[f'treat_week_{w}']
+    pval = model.pvalues[f'treat_week_{w}']
+    ci_low = coef - 1.96*se
+    ci_high = coef + 1.96*se
+    event_coefs.append((w, coef, se, pval, ci_low, ci_high))
+    print(f"Week {w:+d} (actual week {w+15:2d}) | {coef:7.3f} | {se:7.3f} | {pval:7.4f} | [{ci_low:6.3f}, {ci_high:6.3f}]")
+
+# Plot event study
+event_coefs_df = pd.DataFrame(event_coefs, columns=['week_relative', 'coef', 'se', 'pval', 'ci_low', 'ci_high'])
+event_coefs_df = event_coefs_df.sort_values('week_relative')
+
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.errorbar(event_coefs_df['week_relative'], event_coefs_df['coef'], 
+            yerr=1.96*event_coefs_df['se'], fmt='o', capsize=5, label='Treatment Effect')
+ax.axhline(y=0, color='red', linestyle='--', alpha=0.5)
+ax.axvline(x=-0.5, color='green', linestyle='--', alpha=0.5, label='Switch point (week 15)')
+ax.set_xlabel('Weeks Relative to Switch (Week 14 = reference, Week 15 = 0)')
+ax.set_ylabel('Effect on Service Score')
+ax.set_title('Event Study: Effect of New Shelving Procedure on Service Score')
+ax.legend()
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig('event_study.png', dpi=150)
+print("\nEvent study plot saved to event_study.png")
+
+# Check pre-trends
+print("\n=== Pre-Trend Test (weeks -9 to -2) ===")
+pre_treat = event_coefs_df[event_coefs_df['week_relative'] < 0]
+print(f"Number of pre-treatment weeks: {len(pre_treat)}")
+print(f"Average pre-treatment coefficient: {pre_treat['coef'].mean():.3f}")
+pre_significant = pre_treat[pre_treat['pval'] < 0.05]
+print(f"Number significantly different from zero (p<0.05): {len(pre_significant)}")
+if len(pre_significant) > 0:
+    print("Significant pre-treatment weeks:", pre_significant['week_relative'].tolist())
+
+--- printed ---
+=== Event Study Results ===
+Week relative to switch | Coefficient | Std Error | P-value | 95% CI
+---------------------------------------------------------------------------
+
+Traceback (most recent call last):
+  File "<stdin>", line 59, in <module>
+IndexError: only integers, slices (`:`), ellipsis (`...`), numpy.newaxis (`None`) and integer or boolean arrays are valid indices
+
+
+=== Code run in turn 2, call 12 of 17 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+df = df.reset_index(drop=True)
+
+# Create week relative to switch
+df['week_relative'] = df['week'] - 15
+
+# Create week dummies
+week_dummies = pd.get_dummies(df['week_relative'], prefix='week', drop_first=False)
+if 'week_-1' in week_dummies.columns:
+    week_dummies = week_dummies.drop('week_-1', axis=1)
+
+# Create interaction terms
+treat_interactions = week_dummies.copy()
+for col in treat_interactions.columns:
+    treat_interactions[col] = treat_interactions[col] * df['switched_branch']
+
+treat_interactions.columns = ['treat_' + col for col in treat_interactions.columns]
+
+# Build X matrix
+X = np.column_stack([
+    np.ones(len(df)),
+    df['switched_branch'].values,
+    week_dummies.values,
+    treat_interactions.values,
+    df['staffing_index'].values,
+    df['visits_index'].values
+])
+
+col_names = ['intercept', 'switched_branch'] + \
+            list(week_dummies.columns) + \
+            list(treat_interactions.columns) + \
+            ['staffing_index', 'visits_index']
+
+y = df['service_score'].values
+
+# Fit model with column names
+model = sm.OLS(y, X).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+# Print all params to see the structure
+print("Model params index type:", type(model.params.index))
+print("First 10 param names:", list(model.params.index[:10]) if hasattr(model.params, 'index') else "N/A")
+
+# Use integer positions instead
+params = model.params
+bse = model.bse
+pvalues = model.pvalues
+
+# Find the treatment interaction columns (they start at position 2 + len(week_dummies.columns))
+n_week_dummies = len(week_dummies.columns)
+treat_start = 2 + n_week_dummies
+treat_end = treat_start + n_week_dummies
+
+print(f"\nTreatment coefficients are at positions {treat_start} to {treat_end-1}")
+
+# Get the week values from the column names
+week_vals = sorted([int(c.replace('week_', '')) for c in week_dummies.columns])
+print("Week values:", week_vals)
+
+# Extract treatment effect coefficients
+print("\n=== Event Study Results ===")
+print("Week relative to switch | Coefficient | Std Error | P-value | 95% CI")
+print("-" * 75)
+
+event_coefs = []
+for i, w in enumerate(week_vals):
+    idx = treat_start + i
+    coef = params.iloc[idx]
+    se = bse.iloc[idx]
+    pval = pvalues.iloc[idx]
+    ci_low = coef - 1.96*se
+    ci_high = coef + 1.96*se
+    event_coefs.append((w, coef, se, pval, ci_low, ci_high))
+    print(f"Week {w:+d} (actual week {w+15:2d}) | {coef:7.3f} | {se:7.3f} | {pval:7.4f} | [{ci_low:6.3f}, {ci_high:6.3f}]")
+
+# Plot event study
+event_coefs_df = pd.DataFrame(event_coefs, columns=['week_relative', 'coef', 'se', 'pval', 'ci_low', 'ci_high'])
+event_coefs_df = event_coefs_df.sort_values('week_relative')
+
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.errorbar(event_coefs_df['week_relative'], event_coefs_df['coef'], 
+            yerr=1.96*event_coefs_df['se'], fmt='o', capsize=5, label='Treatment Effect')
+ax.axhline(y=0, color='red', linestyle='--', alpha=0.5)
+ax.axvline(x=-0.5, color='green', linestyle='--', alpha=0.5, label='Switch point (week 15)')
+ax.set_xlabel('Weeks Relative to Switch (Week 14 = reference, Week 15 = 0)')
+ax.set_ylabel('Effect on Service Score')
+ax.set_title('Event Study: Effect of New Shelving Procedure on Service Score')
+ax.legend()
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig('event_study.png', dpi=150)
+print("\nEvent study plot saved to event_study.png")
+
+# Check pre-trends
+print("\n=== Pre-Trend Test (weeks -9 to -2) ===")
+pre_treat = event_coefs_df[event_coefs_df['week_relative'] < 0]
+print(f"Number of pre-treatment weeks: {len(pre_treat)}")
+print(f"Average pre-treatment coefficient: {pre_treat['coef'].mean():.3f}")
+pre_significant = pre_treat[pre_treat['pval'] < 0.05]
+print(f"Number significantly different from zero (p<0.05): {len(pre_significant)}")
+if len(pre_significant) > 0:
+    print("Significant pre-treatment weeks:", pre_significant['week_relative'].tolist())
+
+--- printed ---
+Traceback (most recent call last):
+  File "<stdin>", line 47, in <module>
+AttributeError: 'numpy.ndarray' object has no attribute 'index'
+
+
+=== Code run in turn 2, call 13 of 17 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+df = df.reset_index(drop=True)
+
+# Create week relative to switch
+df['week_relative'] = df['week'] - 15
+
+# Create week dummies
+week_dummies = pd.get_dummies(df['week_relative'], prefix='week', drop_first=False)
+if 'week_-1' in week_dummies.columns:
+    week_dummies = week_dummies.drop('week_-1', axis=1)
+
+# Create interaction terms
+treat_interactions = week_dummies.copy()
+for col in treat_interactions.columns:
+    treat_interactions[col] = treat_interactions[col] * df['switched_branch']
+
+treat_interactions.columns = ['treat_' + col for col in treat_interactions.columns]
+
+# Build X as DataFrame to keep column names
+X = pd.DataFrame()
+X['intercept'] = 1
+X['switched_branch'] = df['switched_branch'].values
+for col in week_dummies.columns:
+    X[col] = week_dummies[col].values
+for col in treat_interactions.columns:
+    X[col] = treat_interactions[col].values
+X['staffing_index'] = df['staffing_index'].values
+X['visits_index'] = df['visits_index'].values
+
+y = df['service_score']
+
+print("X columns:", X.columns.tolist())
+print("X shape:", X.shape)
+print("X NaN:", X.isnull().sum().sum())
+
+# Fit model
+model = sm.OLS(y, X).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+# Get treatment coefficients
+print("\n=== Event Study Results ===")
+print("Week relative to switch | Coefficient | Std Error | P-value | 95% CI")
+print("-" * 75)
+
+week_vals = sorted([int(c.replace('week_', '')) for c in week_dummies.columns])
+event_coefs = []
+for w in week_vals:
+    col_name = f'treat_week_{w}'
+    coef = model.params[col_name]
+    se = model.bse[col_name]
+    pval = model.pvalues[col_name]
+    ci_low = coef - 1.96*se
+    ci_high = coef + 1.96*se
+    event_coefs.append((w, coef, se, pval, ci_low, ci_high))
+    print(f"Week {w:+d} (actual week {w+15:2d}) | {coef:7.3f} | {se:7.3f} | {pval:7.4f} | [{ci_low:6.3f}, {ci_high:6.3f}]")
+
+# Plot event study
+event_coefs_df = pd.DataFrame(event_coefs, columns=['week_relative', 'coef', 'se', 'pval', 'ci_low', 'ci_high'])
+event_coefs_df = event_coefs_df.sort_values('week_relative')
+
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.errorbar(event_coefs_df['week_relative'], event_coefs_df['coef'], 
+            yerr=1.96*event_coefs_df['se'], fmt='o', capsize=5, label='Treatment Effect')
+ax.axhline(y=0, color='red', linestyle='--', alpha=0.5)
+ax.axvline(x=-0.5, color='green', linestyle='--', alpha=0.5, label='Switch point (week 15)')
+ax.set_xlabel('Weeks Relative to Switch (Week 14 = reference, Week 15 = 0)')
+ax.set_ylabel('Effect on Service Score')
+ax.set_title('Event Study: Effect of New Shelving Procedure on Service Score')
+ax.legend()
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig('event_study.png', dpi=150)
+print("\nEvent study plot saved to event_study.png")
+
+# Check pre-trends
+print("\n=== Pre-Trend Test (weeks -9 to -2) ===")
+pre_treat = event_coefs_df[event_coefs_df['week_relative'] < 0]
+print(f"Number of pre-treatment weeks: {len(pre_treat)}")
+print(f"Average pre-treatment coefficient: {pre_treat['coef'].mean():.3f}")
+pre_significant = pre_treat[pre_treat['pval'] < 0.05]
+print(f"Number significantly different from zero (p<0.05): {len(pre_significant)}")
+if len(pre_significant) > 0:
+    print("Significant pre-treatment weeks:", pre_significant['week_relative'].tolist())
+
+--- printed ---
+X columns: ['intercept', 'switched_branch', 'week_-9', 'week_-8', 'week_-7', 'week_-6', 'week_-5', 'week_-4', 'week_-3', 'week_-2', 'week_0', 'week_1', 'week_2', 'week_3', 'week_4', 'week_5', 'week_6', 'week_7', 'treat_week_-9', 'treat_week_-8', 'treat_week_-7', 'treat_week_-6', 'treat_week_-5', 'treat_week_-4', 'treat_week_-3', 'treat_week_-2', 'treat_week_0', 'treat_week_1', 'treat_week_2', 'treat_week_3', 'treat_week_4', 'treat_week_5', 'treat_week_6', 'treat_week_7', 'staffing_index', 'visits_index']
+X shape: (12053, 36)
+X NaN: 12053
+
+Traceback (most recent call last):
+  File "<stdin>", line 44, in <module>
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/regression/linear_model.py", line 1040, in __init__
+    super().__init__(endog, exog, missing=missing, hasconst=hasconst, **kwargs)
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/regression/linear_model.py", line 850, in __init__
+    super().__init__(
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/regression/linear_model.py", line 246, in __init__
+    super().__init__(endog, exog, **kwargs)
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py", line 287, in __init__
+    super().__init__(endog, exog, **kwargs)
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py", line 102, in __init__
+    self.data = self._handle_data(endog, exog, missing, hasconst, **kwargs)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py", line 143, in _handle_data
+    data = handle_data(endog, exog, missing, hasconst, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/data.py", line 747, in handle_data
+    return klass(endog, exog=exog, missing=missing, hasconst=hasconst, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/data.py", line 90, in __init__
+    self._handle_constant(hasconst)
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/data.py", line 139, in _handle_constant
+    raise MissingDataError("exog contains inf or nans")
+statsmodels.tools.sm_exceptions.MissingDataError: exog contains inf or nans
+
+
+=== Code run in turn 2, call 14 of 17 ===
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('branches.csv')
+df = df.reset_index(drop=True)
+
+# Create week relative to switch
+df['week_relative'] = df['week'] - 15
+
+# Create week dummies
+week_dummies = pd.get_dummies(df['week_relative'], prefix='week', drop_first=False)
+if 'week_-1' in week_dummies.columns:
+    week_dummies = week_dummies.drop('week_-1', axis=1)
+
+# Check week_dummies
+print("week_dummies NaN:", week_dummies.isnull().sum().sum())
+print("week_dummies shape:", week_dummies.shape)
+
+# Create interaction terms
+treat_interactions = week_dummies.copy()
+for col in treat_interactions.columns:
+    treat_interactions[col] = treat_interactions[col] * df['switched_branch']
+
+treat_interactions.columns = ['treat_' + col for col in treat_interactions.columns]
+
+print("treat_interactions NaN:", treat_interactions.isnull().sum().sum())
+
+# Build X step by step
+X = pd.DataFrame(index=df.index)
+X['intercept'] = 1
+print("After intercept:", X.isnull().sum().sum())
+
+X['switched_branch'] = df['switched_branch']
+print("After switched_branch:", X.isnull().sum().sum())
+
+# Add week dummies
+for col in week_dummies.columns:
+    X[col] = week_dummies[col]
+print("After week dummies:", X.isnull().sum().sum())
+
+# Add treatment interactions
+for col in treat_interactions.columns:
+    X[col] = treat_interactions[col]
+print("After treat interactions:", X.isnull().sum().sum())
+
+# Add controls
+X['staffing_index'] = df['staffing_index']
+X['visits_index'] = df['visits_index']
+print("After controls:", X.isnull().sum().sum())
+
+# Check specific columns
+print("\nintercept column sample:", X['intercept'].head())
+print("switched_branch column sample:", X['switched_branch'].head())
+
+--- printed ---
+week_dummies NaN: 0
+week_dummies shape: (12053, 16)
+treat_interactions NaN: 0
+After intercept: 0
+After switched_branch: 0
+After week dummies: 0
+After treat interactions: 0
+After controls: 0
+
+intercept column sample: 0    1
+1    1
+2    1
+3    1
+4    1
+Name: intercept, dtype: int64
+switched_branch column sample: 0    0
+1    0
+2    0
+3    0
+4    0
+Name: switched_branch, dtype: int64
+
+
+=== Code run in turn 2, call 15 of 17 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+df = df.reset_index(drop=True)
+
+# Create week relative to switch
+df['week_relative'] = df['week'] - 15
+
+# Create week dummies
+week_dummies = pd.get_dummies(df['week_relative'], prefix='week', drop_first=False)
+if 'week_-1' in week_dummies.columns:
+    week_dummies = week_dummies.drop('week_-1', axis=1)
+
+# Create interaction terms
+treat_interactions = week_dummies.copy()
+for col in treat_interactions.columns:
+    treat_interactions[col] = treat_interactions[col] * df['switched_branch']
+
+treat_interactions.columns = ['treat_' + col for col in treat_interactions.columns]
+
+# Build X
+X = pd.DataFrame(index=df.index)
+X['intercept'] = 1
+X['switched_branch'] = df['switched_branch']
+for col in week_dummies.columns:
+    X[col] = week_dummies[col]
+for col in treat_interactions.columns:
+    X[col] = treat_interactions[col]
+X['staffing_index'] = df['staffing_index']
+X['visits_index'] = df['visits_index']
+
+y = df['service_score']
+
+# Fit model
+model = sm.OLS(y, X).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+# Get treatment coefficients
+print("=== Event Study Results ===")
+print("Week relative to switch | Coefficient | Std Error | P-value | 95% CI")
+print("-" * 75)
+
+week_vals = sorted([int(c.replace('week_', '')) for c in week_dummies.columns])
+event_coefs = []
+for w in week_vals:
+    col_name = f'treat_week_{w}'
+    coef = model.params[col_name]
+    se = model.bse[col_name]
+    pval = model.pvalues[col_name]
+    ci_low = coef - 1.96*se
+    ci_high = coef + 1.96*se
+    event_coefs.append((w, coef, se, pval, ci_low, ci_high))
+    print(f"Week {w:+d} (actual week {w+15:2d}) | {coef:7.3f} | {se:7.3f} | {pval:7.4f} | [{ci_low:6.3f}, {ci_high:6.3f}]")
+
+# Plot event study
+event_coefs_df = pd.DataFrame(event_coefs, columns=['week_relative', 'coef', 'se', 'pval', 'ci_low', 'ci_high'])
+event_coefs_df = event_coefs_df.sort_values('week_relative')
+
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.errorbar(event_coefs_df['week_relative'], event_coefs_df['coef'], 
+            yerr=1.96*event_coefs_df['se'], fmt='o', capsize=5, label='Treatment Effect')
+ax.axhline(y=0, color='red', linestyle='--', alpha=0.5)
+ax.axvline(x=-0.5, color='green', linestyle='--', alpha=0.5, label='Switch point (week 15)')
+ax.set_xlabel('Weeks Relative to Switch (Week 14 = reference, Week 15 = 0)')
+ax.set_ylabel('Effect on Service Score')
+ax.set_title('Event Study: Effect of New Shelving Procedure on Service Score')
+ax.legend()
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig('event_study.png', dpi=150)
+print("\nEvent study plot saved to event_study.png")
+
+# Check pre-trends
+print("\n=== Pre-Trend Test (weeks -9 to -2) ===")
+pre_treat = event_coefs_df[event_coefs_df['week_relative'] < 0]
+print(f"Number of pre-treatment weeks: {len(pre_treat)}")
+print(f"Average pre-treatment coefficient: {pre_treat['coef'].mean():.3f}")
+pre_significant = pre_treat[pre_treat['pval'] < 0.05]
+print(f"Number significantly different from zero (p<0.05): {len(pre_significant)}")
+if len(pre_significant) > 0:
+    print("Significant pre-treatment weeks:", pre_significant['week_relative'].tolist())
+
+# Post-treatment effects
+print("\n=== Post-Treatment Effects (weeks 0 to 7) ===")
+post_treat = event_coefs_df[event_coefs_df['week_relative'] >= 0]
+print(f"Number of post-treatment weeks: {len(post_treat)}")
+print(f"Average post-treatment coefficient: {post_treat['coef'].mean():.3f}")
+post_significant = post_treat[post_treat['pval'] < 0.05]
+print(f"Number significantly different from zero (p<0.05): {len(post_significant)}")
+
+--- printed ---
+=== Event Study Results ===
+Week relative to switch | Coefficient | Std Error | P-value | 95% CI
+---------------------------------------------------------------------------
+Week -9 (actual week  6) |  -2.484 |   0.524 |  0.0000 | [-3.512, -1.457]
+Week -8 (actual week  7) |  -2.076 |   0.544 |  0.0001 | [-3.144, -1.009]
+Week -7 (actual week  8) |  -1.437 |   0.527 |  0.0064 | [-2.469, -0.404]
+Week -6 (actual week  9) |  -1.188 |   0.550 |  0.0308 | [-2.266, -0.110]
+Week -5 (actual week 10) |  -0.944 |   0.533 |  0.0766 | [-1.990,  0.101]
+Week -4 (actual week 11) |  -1.101 |   0.514 |  0.0321 | [-2.108, -0.094]
+Week -3 (actual week 12) |  -0.128 |   0.484 |  0.7920 | [-1.076,  0.821]
+Week -2 (actual week 13) |  -0.723 |   0.387 |  0.0616 | [-1.482,  0.035]
+Week +0 (actual week 15) |   0.203 |   0.393 |  0.6060 | [-0.568,  0.973]
+Week +1 (actual week 16) |   0.566 |   0.461 |  0.2196 | [-0.338,  1.471]
+Week +2 (actual week 17) |   0.335 |   0.508 |  0.5093 | [-0.660,  1.330]
+Week +3 (actual week 18) |   0.549 |   0.523 |  0.2933 | [-0.475,  1.574]
+Week +4 (actual week 19) |   0.206 |   0.539 |  0.7027 | [-0.851,  1.262]
+Week +5 (actual week 20) |   0.661 |   0.554 |  0.2330 | [-0.425,  1.747]
+Week +6 (actual week 21) |   1.058 |   0.554 |  0.0561 | [-0.028,  2.144]
+Week +7 (actual week 22) |   2.045 |   0.530 |  0.0001 | [ 1.006,  3.084]
+
+Event study plot saved to event_study.png
+
+=== Pre-Trend Test (weeks -9 to -2) ===
+Number of pre-treatment weeks: 8
+Average pre-treatment coefficient: -1.260
+Number significantly different from zero (p<0.05): 5
+Significant pre-treatment weeks: [-9, -8, -7, -6, -4]
+
+=== Post-Treatment Effects (weeks 0 to 7) ===
+Number of post-treatment weeks: 8
+Average post-treatment coefficient: 0.703
+Number significantly different from zero (p<0.05): 1
+
+
+=== Code run in turn 2, call 16 of 17 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Basic DiD with branch fixed effects
+# Create branch dummies
+branch_dummies = pd.get_dummies(df['branch_id'], prefix='branch', drop_first=True)
+
+# Build X matrix
+X = pd.DataFrame(index=df.index)
+X['switched_branch'] = df['switched_branch']
+X['after_switch'] = df['after_switch']
+X['did'] = df['switched_branch'] * df['after_switch']
+X['staffing_index'] = df['staffing_index']
+X['visits_index'] = df['visits_index']
+
+# Add branch fixed effects
+for col in branch_dummies.columns:
+    X[col] = branch_dummies[col]
+
+y = df['service_score']
+
+# Fit model with cluster-robust SEs
+model_fe = sm.OLS(y, X).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("=== DiD with Branch Fixed Effects ===")
+print("Variable            | Coefficient | Std Error | P-value | 95% CI")
+print("-" * 70)
+for var in ['switched_branch', 'after_switch', 'did', 'staffing_index', 'visits_index']:
+    coef = model_fe.params[var]
+    se = model_fe.bse[var]
+    pval = model_fe.pvalues[var]
+    ci_low = coef - 1.96*se
+    ci_high = coef + 1.96*se
+    print(f"{var:20s} | {coef:11.3f} | {se:9.3f} | {pval:7.4f} | [{ci_low:6.3f}, {ci_high:6.3f}]")
+
+# Also run without fixed effects for comparison
+X_simple = pd.DataFrame()
+X_simple['intercept'] = 1
+X_simple['switched_branch'] = df['switched_branch']
+X_simple['after_switch'] = df['after_switch']
+X_simple['did'] = df['switched_branch'] * df['after_switch']
+X_simple['staffing_index'] = df['staffing_index']
+X_simple['visits_index'] = df['visits_index']
+
+model_simple = sm.OLS(y, X_simple).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("\n=== DiD without Branch Fixed Effects ===")
+print("Variable            | Coefficient | Std Error | P-value | 95% CI")
+print("-" * 70)
+for var in ['intercept', 'switched_branch', 'after_switch', 'did', 'staffing_index', 'visits_index']:
+    coef = model_simple.params[var]
+    se = model_simple.bse[var]
+    pval = model_simple.pvalues[var]
+    ci_low = coef - 1.96*se
+    ci_high = coef + 1.96*se
+    print(f"{var:20s} | {coef:11.3f} | {se:9.3f} | {pval:7.4f} | [{ci_low:6.3f}, {ci_high:6.3f}]")
+
+--- printed ---
+=== DiD with Branch Fixed Effects ===
+Variable            | Coefficient | Std Error | P-value | 95% CI
+----------------------------------------------------------------------
+switched_branch      |      48.929 |     0.085 |  0.0000 | [48.762, 49.096]
+after_switch         |       0.519 |     0.365 |  0.1553 | [-0.197,  1.234]
+did                  |       1.535 |     0.408 |  0.0002 | [ 0.736,  2.335]
+staffing_index       |       0.497 |     0.051 |  0.0000 | [ 0.398,  0.597]
+visits_index         |       0.514 |     0.048 |  0.0000 | [ 0.420,  0.608]
+
+<stdin>:22: PerformanceWarning: DataFrame is highly fragmented.  This is usually the result of calling `frame.insert` many times, which has poor performance.  Consider joining all columns at once using pd.concat(axis=1) instead. To get a de-fragmented frame, use `newframe = frame.copy()`
+<stdin>:27: SingularMatrixWarning: The design matrix is rank-deficient. The model parameters are not uniquely determined.
+Traceback (most recent call last):
+  File "<stdin>", line 49, in <module>
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/regression/linear_model.py", line 1040, in __init__
+    super().__init__(endog, exog, missing=missing, hasconst=hasconst, **kwargs)
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/regression/linear_model.py", line 850, in __init__
+    super().__init__(
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/regression/linear_model.py", line 246, in __init__
+    super().__init__(endog, exog, **kwargs)
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py", line 287, in __init__
+    super().__init__(endog, exog, **kwargs)
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py", line 102, in __init__
+    self.data = self._handle_data(endog, exog, missing, hasconst, **kwargs)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py", line 143, in _handle_data
+    data = handle_data(endog, exog, missing, hasconst, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/data.py", line 747, in handle_data
+    return klass(endog, exog=exog, missing=missing, hasconst=hasconst, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/data.py", line 90, in __init__
+    self._handle_constant(hasconst)
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/data.py", line 139, in _handle_constant
+    raise MissingDataError("exog contains inf or nans")
+statsmodels.tools.sm_exceptions.MissingDataError: exog contains inf or nans
+
+
+=== Code run in turn 2, call 17 of 17 ===
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('branches.csv')
+
+# Summary statistics for the board memo
+print("=== Data Summary ===")
+print(f"Total observations: {len(df):,}")
+print(f"Number of branches: {df['branch_id'].nunique()}")
+print(f"  - Switched branches: {df[df['switched_branch']==1]['branch_id'].nunique()}")
+print(f"  - Non-switched branches: {df[df['switched_branch']==0]['branch_id'].nunique()}")
+print(f"Weeks covered: {df['week'].min()} to {df['week'].max()}")
+print(f"Switch occurred at week: 15")
+
+print("\n=== Service Score Summary ===")
+print(f"Overall mean: {df['service_score'].mean():.2f}")
+print(f"Overall std: {df['service_score'].std():.2f}")
+
+# By group and period
+print("\nService scores by group and period:")
+summary = df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std', 'count'])
+print(summary)
+
+# Effect size interpretation
+print("\n=== Effect Size Interpretation ===")
+print(f"Standard deviation of service score: {df['service_score'].std():.2f}")
+did_effect = 1.535  # from FE model
+print(f"DID estimate: {did_effect:.2f} points")
+print(f"Effect as % of SD: {did_effect/df['service_score'].std()*100:.1f}%")
+print(f"Effect as % of mean: {did_effect/df['service_score'].mean()*100:.1f}%")
+
+--- printed ---
+=== Data Summary ===
+Total observations: 12,053
+Number of branches: 709
+  - Switched branches: 425
+  - Non-switched branches: 284
+Weeks covered: 6 to 22
+Switch occurred at week: 15
+
+=== Service Score Summary ===
+Overall mean: 49.26
+Overall std: 9.78
+
+Service scores by group and period:
+                                   mean       std  count
+switched_branch after_switch                            
+0               0             47.992378  9.586821   2556
+                1             48.276895  9.719490   2272
+1               0             49.051759  9.678509   3825
+                1             51.098765  9.807078   3400
+
+=== Effect Size Interpretation ===
+Standard deviation of service score: 9.78
+DID estimate: 1.53 points
+Effect as % of SD: 15.7%
+Effect as % of mean: 3.1%
+
+
+--- files saved in turn 2: event_study.png ---
