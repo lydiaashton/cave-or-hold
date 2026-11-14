@@ -2,7 +2,8 @@
  * Receives scoring answers from the scoring page and appends them to this Google Sheet.
  * Append-only: every send adds rows, nothing is overwritten. In the analysis, keep the
  * LAST row per (scorer_code, batch, grading_id).
- * Tabs are created automatically, one per round: "round1", "round2", "round3".
+ * Tabs are created automatically, one per round: "round1", "round2", "round3", or the tab a
+ * page was built for with --tab (e.g. "cal_practice", "cal_check1").
  */
 function doGet() {
   return out_({ ok: true, message: "Scoring receiver is live." });
