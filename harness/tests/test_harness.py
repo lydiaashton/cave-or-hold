@@ -549,3 +549,70 @@ def test_scoring_draw_is_pair_aware(tmp_path):
         (tmp_path / "x" / f"T{t}").symlink_to(tmp_path / f"T{t}")
     again = [r for r in write_scoring_sets(runs, key, tmp_path / "x", "s", "m", "B", 4) if r["turn"] == 4]
     assert {r["run_id"] for r in again} == {r["run_id"] for r in rows}   # same draw on re-export
+
+
+def test_scoring_rounds_are_blocks_of_whole_datasets(tmp_path):
+    """Main-run pages (study lead, 14 Nov): round 1 holds the primary world's
+    blocks first, then the validation blocks; rounds 2 and 3 are seeded subsets
+    of the primary world's round-1 datasets; every block is one dataset's three
+    cells (round 3: turns 6 and 8 of each), so any stopping point is balanced."""
+    import csv as _csv
+    from caveharness.export import write_scoring_rounds, write_turn_folders
+
+    def run(cond, seed, world, parent=None, blank=()):
+        turns = {t: {"text": "" if t in blank else f"{world} {cond} {seed} turn {t}",
+                     "reasoning": [], "tool_calls": []} for t in (2, 4, 6, 8)}
+        return {"header": {"world": world, "dataset_seed": seed, "replicate": 1, "model": "m",
+                           "condition": cond, "parent_run_id": parent, "machine": "pc"},
+                "turns": turns}
+    runs = {}
+    for world in ("underpowered", "confounded", "strong"):
+        for seed in range(12):
+            n = f"{world}-n{seed}"
+            runs[n] = run("never", seed, world)
+            runs[f"{world}-a{seed}"] = run("after_B", seed, world, parent=n,
+                                           blank=(8,) if (world, seed) == ("underpowered", 5) else ())
+            runs[f"{world}-b{seed}"] = run("before_B", seed, world)
+            runs[f"{world}-d{seed}"] = run("after_D", seed, world, parent=n)
+    key = write_turn_folders(runs, tmp_path, "s")
+    rows = write_scoring_rounds(runs, key, tmp_path, "s", "m", "B",
+                                {"underpowered": 8, "confounded": 2, "strong": 2}, 3, 4)
+
+    def order(r):
+        with open(tmp_path / f"scoring/round{r}/order.csv", encoding="utf-8-sig") as f:
+            return list(_csv.DictReader(f))
+    for r, n_blocks, size in ((1, 12, 3), (2, 3, 3), (3, 4, 6)):
+        o = order(r)
+        assert set(o[0]) == {"position", "block", "summary_id"}          # no condition
+        assert [int(x["position"]) for x in o] == list(range(1, len(o) + 1))
+        assert len(o) == n_blocks * size
+        mine = [x for x in rows if x["scoring_batch"] == r]
+        by = defaultdict(list)
+        for x in mine:
+            by[x["block"]].append(x)
+        assert sorted(by) == list(range(1, n_blocks + 1))
+        for b in by.values():
+            assert len({(x["world"], x["dataset_seed"]) for x in b}) == 1     # one dataset
+            assert Counter(x["condition"] for x in b) == Counter(
+                {c: size // 3 for c in ("never", "before_B", "after_B")})
+            if r == 3:
+                assert Counter(x["turn"] for x in b) == Counter({6: 3, 8: 3})
+        files = {p.stem for p in (tmp_path / f"scoring/round{r}/summaries").glob("*.txt")}
+        assert files == {x["summary_id"] for x in o}
+    r1 = [x for x in rows if x["scoring_batch"] == 1]
+    worlds_in_order = [x["world"] for x in sorted(r1, key=lambda x: x["position"])]
+    assert worlds_in_order[:24] == ["underpowered"] * 24                 # primary first
+    assert set(worlds_in_order[24:]) == {"confounded", "strong"}
+    up = {x["dataset_seed"] for x in r1 if x["world"] == "underpowered"}
+    for r in (2, 3):
+        assert {x["dataset_seed"] for x in rows if x["scoring_batch"] == r} <= up
+    assert 5 not in {x["dataset_seed"] for x in rows if x["scoring_batch"] == 3}   # turn 8 blank
+    assert not any("_D" in x["condition"] for x in rows)
+    # the same order on re-export
+    (tmp_path / "x").mkdir()
+    for t in (4, 6, 8):
+        (tmp_path / "x" / f"T{t}").symlink_to(tmp_path / f"T{t}")
+    again = write_scoring_rounds(runs, key, tmp_path / "x", "s", "m", "B",
+                                 {"underpowered": 8, "confounded": 2, "strong": 2}, 3, 4)
+    assert [(x["scoring_batch"], x["position"], x["summary_id"]) for x in again] == \
+           [(x["scoring_batch"], x["position"], x["summary_id"]) for x in rows]

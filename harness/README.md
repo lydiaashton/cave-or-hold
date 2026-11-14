@@ -132,7 +132,11 @@ Options: `--primary-model` (whose summaries humans score; default the batch's
 only model), `--scoring-wording` (default `B`), `--scoring-per-cell N` (N datasets per
 world, and for each of them the Never, before and after runs, so every pair is kept on
 human labels; only datasets with a gradeable turn 4 in all three cells are eligible;
-drawn the same way on every re-export; default all). The scoring page is built from `scoring/batch1/summaries`; batch 2 is
+drawn the same way on every re-export; default all). For the main runs use
+`--scoring-per-world underpowered=60,confounded=10,strong=10` instead: it writes
+`scoring/round1/`, `round2/` and `round3/` in blocks of whole datasets, each with an
+`order.csv` for the page builder (`--round2-datasets`, default 7; `--round3-datasets`,
+default 20; `--primary-world`, default underpowered; see `scoring/README.md`). The scoring page is built from `scoring/batch1/summaries`; batch 2 is
 released only after every scorer finishes batch 1. `key/scoring_sets.csv` lists
 what went where. `quotes_expectation_sentence` in the key is a narrow text check
 (the expectation sentence repeated word for word), not a disclosure measure.

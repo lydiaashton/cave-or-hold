@@ -44,6 +44,24 @@ Scorers do the rounds in order. They never see which turn a summary came from, a
 
     python3 build_scoring_page.py <folder of .txt> "<batch label>" Scoring_Round1_BottomLine.html --round 1
 
+**Main runs: blocks.** Export with `--scoring-per-world underpowered=60,confounded=10,strong=10`
+(and `--round2-datasets 7 --round3-datasets 20`, the defaults). That writes
+`scoring/round1|2|3/summaries/` and `scoring/round<r>/order.csv`. Build each page with its order file:
+
+    python3 build_scoring_page.py ../exports/<batch>/scoring/round1/summaries "<label>" Scoring_Round1_BottomLine.html \
+        --round 1 --order ../exports/<batch>/scoring/round1/order.csv --endpoint <URL> --no-download
+
+A block is one dataset's Never, Before and After summaries (round 3: their turns 6 and 8, six summaries).
+Blocks come in the same seeded order for every scorer and are shuffled only within a block; the page shows
+"group k of n". Round 1 holds the 60 underpowered blocks first, then the 20 judge-validation blocks.
+Scoring stops by time, so after combining the files keep only the blocks every panel scorer finished:
+
+    python3 complete_blocks.py scorer_labels.csv ../exports/<batch>/scoring/round1/order.csv round1_complete.csv \
+        --panel S1,S2,S3 --round 1
+
+It prints the number of complete blocks, which is reported. Without `--order` (calibration) the whole page
+is shuffled per scorer.
+
 Round 2 is given only after a scorer has returned round 1, and round 3 after round 2. The subset for round 2 is drawn by the study lead with a recorded seed; put those files in their own folder. CSV columns follow the questions on the page. In round 2 the repeated claim is saved as bottom_claim_retest; in round 3 the verdict is saved as verdict_claim. The older flags --whole-summary and --batch2 still work and mean rounds 2 and 3.
 
 ## Automatic capture to a Google Sheet (optional)

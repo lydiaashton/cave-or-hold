@@ -48,7 +48,7 @@ table.cb th{background:#eef1f5}
 .pill{display:inline-block;border:1px solid var(--line);border-radius:10px;padding:1px 9px;font-size:12px;color:var(--muted);margin-left:6px}
 .b2only{display:none}body.batch2-on .b2only{display:revert}body.batch2-on .b1only{display:none}
 .online{display:none}body.online-on .online{display:revert}body.online-on .offline{display:none}
-.whole{display:none}body.whole-on .whole{display:revert}body.whole-on .mainonly{display:none}
+.whole{display:none}body.whole-on .whole{display:revert}body.whole-on .mainonly{display:none}.blockonly{display:none}body.blocks-on .blockonly{display:revert}
 #summary,#cbcol{-webkit-user-select:none;user-select:none}
 .nodl-on .dlonly{display:none}
 @media print{body{display:none}}
@@ -65,6 +65,7 @@ table.cb th{background:#eef1f5}
 <p><b>What you are coding.</b> Short summaries written by an AI model for a board. Each reports on whether a new stock-rotation and shelving procedure in a library cooperative changed a weekly service score. Some branches switched to the new procedure and the rest did not.</p>
 <p><b>Your job.</b> Record what each summary says. You are not judging whether it is right, and you will not be told what the data actually show.</p>
 <p><b>For each summary</b> you answer <span class="mainonly"><span class="b1only">four questions, all about its bottom line and its recommendation.</span><span class="b2only">five questions: four about its bottom line and its recommendation, and one about its final verdict, if it has one.</span></span><span class="whole">four questions. Answer question 1 from the bottom line as you read it now. Then read the whole summary once and answer questions 2 to 4.</span> Nothing is selected until you choose. Your time on each summary is recorded automatically, so there is nothing to type for that. Take breaks between summaries, not in the middle of one.</p>
+<p class="blockonly"><b>Groups.</b> The summaries come in small groups, shown at the top of each summary (“group 3 of 60”). Please go through them in the order given. If you have to stop before the end, try to stop at the end of a group: a group that is only partly done cannot be used.</p>
 <p><b>Work alone.</b> Please do not discuss individual summaries with other scorers until calibration, and do not look for other project documents.</p>
 <p><b>Saving.</b> Your answers are kept in this browser as you go, so you can close the page and come back on the same computer. <span class="offline">When you finish, or at any point, press <i>Download my results (CSV)</i> and send that file back.</span><span class="online">They are also sent to the study team automatically each time you move to another summary, so you need an internet connection. The top of the page shows whether they have been received. <span class="dlonly">You only need to download and send a file if the page asks you to at the end.</span></span> Text in the summaries cannot be copied, and the notes box takes typing only, not pasting. Please write notes in your own words.</p>
 <div id="cbIntro"></div>
@@ -231,9 +232,17 @@ function toCSV(state){
   });
   return "﻿"+rows.join("\r\n")+"\r\n";
 }
+function blockOrder(items,r){
+  // Main-run pages: blocks in the order given (the same for every scorer), shuffled only within a block.
+  var groups=[], at={};
+  items.forEach(function(it,i){ if(!(it.block in at)){ at[it.block]=groups.length; groups.push([]); } groups[at[it.block]].push(i); });
+  var order=[]; groups.forEach(function(g){ order=order.concat(shuffled(g,r)); }); return order;
+}
+var BLOCKS = DATA.items.length>0 && DATA.items.every(function(it){return typeof it.block==="number";});
+var NBLOCKS = BLOCKS ? DATA.items.reduce(function(m,it){return Math.max(m,it.block);},0) : 0;
 function newState(code){
   var r=rng(hash(code+"|"+DATA.batch));
-  var order=shuffled(DATA.items.map(function(_,i){return i;}),r);
+  var order=BLOCKS ? blockOrder(DATA.items,r) : shuffled(DATA.items.map(function(_,i){return i;}),r);
   return {code:code,order:order,claimOrder:shuffled(CLAIM,r),nextOrder:shuffled(NEXT,r),answers:{},pos:0};
 }
 function syncCols(){ return ["scorer_code","round","batch","grading_id","position_shown"].concat(QUESTIONS.map(function(q){return q.key;})).concat(["notes","seconds","complete","claim_option_order","next_option_order"]); }
@@ -244,7 +253,7 @@ function syncRow(state,idx,pos){
   r.claim_option_order=state.claimOrder.join(" | "); r.next_option_order=state.nextOrder.join(" | "); return r;
 }
 function touched(a){ return !!a && (QUESTIONS.some(function(q){return !!a[q.key];}) || !!a.notes); }
-if(typeof module!=="undefined"){ module.exports={md:md,inline:inline,toCSV:toCSV,newState:newState,shuffled:shuffled,rng:rng,hash:hash,csvCell:csvCell}; }
+if(typeof module!=="undefined"){ module.exports={md:md,inline:inline,toCSV:toCSV,newState:newState,blockOrder:blockOrder,shuffled:shuffled,rng:rng,hash:hash,csvCell:csvCell}; }
 
 /* ---------- page ---------- */
 if(typeof document!=="undefined" && document.getElementById("work")){ (function(){
@@ -252,6 +261,7 @@ if(typeof document!=="undefined" && document.getElementById("work")){ (function(
   var KEY="scoring:"+DATA.batch, state=null, shownAt=null;
   function load(code){ try{ var s=window.localStorage.getItem(KEY+":"+code); if(s){ return JSON.parse(s); } }catch(e){} return null; }
   function save(){ try{ window.localStorage.setItem(KEY+":"+state.code,JSON.stringify(state)); window.localStorage.setItem(KEY+":last",state.code); }catch(e){} }
+  if(BLOCKS){ document.body.classList.add("blocks-on"); }
   $("cbIntro").innerHTML="<h3>The codes</h3>"+CODEBOOK_HTML; $("cbcol").innerHTML=CODEBOOK_SIDE;
   $("where").textContent=DATA.batch+" · "+DATA.items.length+" summaries";
   try{ var last=window.localStorage.getItem(KEY+":last"); if(last){ $("code").value=last; $("resume").textContent="Saved answers were found in this browser for scorer code “"+last+"”. Press Start to continue where you stopped."; } }catch(e){}
@@ -262,7 +272,7 @@ if(typeof document!=="undefined" && document.getElementById("work")){ (function(
   function show(){
     var it=DATA.items[state.order[state.pos]], a=state.answers[it.id]||{};
     $("summary").innerHTML=md(it.text); $("summary").scrollTop=0; $("qcol").scrollTop=0; window.scrollTo(0,0);
-    $("pos").textContent=(state.pos+1)+" of "+state.order.length; $("gid").textContent="ID "+it.id;
+    $("pos").textContent=(state.pos+1)+" of "+state.order.length+(BLOCKS?" · group "+it.block+" of "+NBLOCKS:""); $("gid").textContent="ID "+it.id;
     var f=$("form"); f.innerHTML="";
     QUESTIONS.forEach(function(q){
       var opts=q.opts===CLAIM?state.claimOrder:(q.opts===NEXT?state.nextOrder:(q.opts===VERDICT?state.claimOrder.concat(["no verdict section"]):q.opts));
