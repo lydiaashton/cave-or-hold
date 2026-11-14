@@ -10,9 +10,10 @@ changes what an AI analyst's final write-up claims, scored against simulated dat
 
 | Path | What it is | Goes into the tested model's sandbox? |
 |---|---|---|
-| `release/<world>_seed<seed>/branches.csv` | The 30 datasets built (10 per world), with scenario column names. How many are used is set by a pre-registered rule (below) | **Only this file**, one per run, copied in as `branches.csv` |
+| `release/<world>_seed<seed>/branches.csv` | The 180 main datasets (60 per world), with scenario column names. None was used in a pilot. How many are used is set by a pre-registered rule (below) | **Only this file**, one per run, copied in as `branches.csv` |
 | `release/README_release.md` | Column dictionary and the sandbox rule | No |
 | `release/RELABEL_CHECK.csv` | Check that relabelling changed names and week numbering only | No |
+| `release_pilot/` | Ten more datasets per world for pilot 3, with their own answer key; none is in `release/` | Only `branches.csv`, in pilot runs |
 | `release/answer_key/` | `ANSWER_KEY.md` and the three manifests: each dataset's correct conclusion and reference results | **Never.** The judges and the scorers need it |
 | `generator/` | Generator, answer-key builder, relabel script, wild cluster bootstrap checks, generator README | No |
 | `generator/out/` | The same datasets under generator column names, with manifests and answer key | **Never** |
@@ -32,9 +33,10 @@ the answer key, the manifests or anything in `generator/`.
 
 ## Which datasets are used
 
-Ten datasets were built per world. The first five per world, the five lowest seeds, are the original
-set and are byte-identical to the earlier build. Whether the study uses five or ten per world is fixed
-by a pre-registered rule that depends only on runs per cell, set before the main runs; see the design doc.
+Sixty datasets were built per world. The study uses the first R per world in seed order, one run per
+dataset in each cell; R is fixed before the main runs (see the design doc). No main dataset was used in a
+pilot: the ones pilots 1 and 2 ran on (`generator/piloted_seeds.json`: five underpowered, five confounded)
+were taken out on 14 Nov and each world topped back up to sixty, and pilot 3 runs on `release_pilot/`.
 
 Full figures per dataset are in `release/answer_key/ANSWER_KEY.md`; the accept rule and known limits
 are in `generator/README_generator_v2.md`.
@@ -44,7 +46,9 @@ are in `generator/README_generator_v2.md`.
 From `generator/`, with Python 3, numpy and pandas:
 
 ```
-python3 caveworlds_did.py                 # regenerates out/ (all three worlds, ten datasets each)
+python3 caveworlds_did.py                 # confounded and strong into out/; underpowered candidates
+# underpowered: the two bootstrap checks, then select_underpowered.py (steps in its docstring)
+python3 drop_piloted.py                   # confounded: leaves out the datasets pilots 1 and 2 used
 python3 build_answer_key.py out           # rewrites out/ANSWER_KEY.md from the manifests
 python3 relabel_for_release.py            # writes release/ from out/ and RELABEL_CHECK.csv
 Rscript wild_bootstrap_check.R out underpowered   # optional cross-check (fwildclusterboot)
@@ -53,11 +57,12 @@ Rscript wild_bootstrap_base_r.R out underpowered  # same check without fwildclus
 
 The 11-period check: `python3 -c "import caveworlds_did as c; [c.generate(w, k=10, outdir='out_11periods_check', params=c.Params(n_periods=11, treat_period=6)) for w in c.WORLDS]"`
 
-Checked 13 Nov 2026: a fresh `python3 caveworlds_did.py` reproduces `out/` byte for byte, and
-`relabel_for_release.py` on it reproduces every `branches.csv` and `RELABEL_CHECK.csv` in `release/`.
+Checked 14 Nov 2026 (Python 3.13, NumPy 2.5.3): a fresh build reproduces byte for byte the first 320
+underpowered candidates, every confounded dataset in `out/` and `out_pilot/`, and the strong sixty and their
+pilot ten; `relabel_for_release.py` leaves every `branches.csv` that was already in `release/` unchanged.
 
 ## Design, prompts and harness spec
 
 These are still changing and live in the project's design doc, not in this repository:
-the Engineering handoff, Prompt draft, Codebook draft and Scoring and analysis plan tabs.
+the Technical note, Prompt, Codebook, Scoring and Analysis plan tabs.
 See `docs/README.md`.

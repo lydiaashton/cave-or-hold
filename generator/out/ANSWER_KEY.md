@@ -8,12 +8,10 @@ Every number below is read from the manifests in this folder. Estimates are in r
 
 True effect: 1.985 (0.20 SD).
 
-Panel: 34 units x 17 periods, treatment from period 9, 60% of units treated. Generator accepted 320 of 14364 draws with primary p in [.10, .15]; 60 kept by the selection rule (primary p in [0.1, 0.13]; every defensible specification (clustered two-way FE, collapsed 2x2) p >= 0.1; wild cluster bootstrap p >= 0.105 in the generator, base R and Python checks; first 60 passing, in seed order; select_underpowered.py).
+Panel: 34 units x 17 periods, treatment from period 9, 60% of units treated. Generator accepted 345 of 15642 draws with primary p in [.10, .15]; 60 kept by the selection rule (primary p in [0.1, 0.13]; every defensible specification (clustered two-way FE, collapsed 2x2) p >= 0.1; wild cluster bootstrap p >= 0.105 in the generator, base R and Python checks; first 60 passing, in seed order, leaving out datasets used in pilots 1 and 2 (piloted_seeds.json) and the pilot-3 set (out_pilot/); select_underpowered.py).
 
 | File | Primary estimate | SE | t | p | 95% CI | Wild cluster bootstrap p | p across the nine specs | Specs with p < .05 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `underpowered_seed20261172.csv` | 1.908 (0.192 SD) | 1.224 | 1.56 | .1285 | [-0.582, 4.398] | .1183 | .0148 to .1876 | 4 of 9 |
-| `underpowered_seed20261175.csv` | 2.285 (0.230 SD) | 1.458 | 1.57 | .1266 | [-0.681, 5.252] | .1179 | .0033 to .1268 | 4 of 9 |
 | `underpowered_seed20261735.csv` | 2.261 (0.228 SD) | 1.452 | 1.56 | .1291 | [-0.694, 5.215] | .1128 | .0073 to .1359 | 4 of 9 |
 | `underpowered_seed20261801.csv` | 1.918 (0.193 SD) | 1.184 | 1.62 | .1147 | [-0.490, 4.325] | .1138 | .0189 to .1736 | 4 of 9 |
 | `underpowered_seed20261910.csv` | 2.351 (0.237 SD) | 1.476 | 1.59 | .1206 | [-0.651, 5.354] | .1224 | .0030 to .1470 | 4 of 9 |
@@ -72,11 +70,11 @@ Panel: 34 units x 17 periods, treatment from period 9, 60% of units treated. Gen
 | `underpowered_seed20272586.csv` | 2.133 (0.215 SD) | 1.322 | 1.61 | .1161 | [-0.556, 4.823] | .1109 | .0090 to .1378 | 4 of 9 |
 | `underpowered_seed20272680.csv` | 2.525 (0.254 SD) | 1.618 | 1.56 | .1281 | [-0.766, 5.817] | .1248 | .0013 to .1544 | 4 of 9 |
 | `underpowered_seed20272692.csv` | 2.588 (0.261 SD) | 1.638 | 1.58 | .1237 | [-0.745, 5.921] | .1203 | .0014 to .1347 | 4 of 9 |
+| `underpowered_seed20275477.csv` | 2.101 (0.212 SD) | 1.339 | 1.57 | .1263 | [-0.624, 4.826] | .1227 | .0106 to .1400 | 4 of 9 |
+| `underpowered_seed20275488.csv` | 2.080 (0.210 SD) | 1.310 | 1.59 | .1219 | [-0.586, 4.746] | .1167 | .0080 to .1219 | 4 of 9 |
 
 | File | Event-study leads, joint p | Pre-period trend difference (p) | Trend-adjusted estimate (p) | Units whose removal flips the primary result |
 | --- | --- | --- | --- | --- |
-| `underpowered_seed20261172.csv` | .7123 | 0.144 (.7236) | 1.214 (.5924) | 0 of 34 |
-| `underpowered_seed20261175.csv` | .6120 | 0.039 (.8950) | 2.809 (.1871) | 0 of 34 |
 | `underpowered_seed20261735.csv` | .4913 | 0.059 (.8412) | 2.466 (.3019) | 0 of 34 |
 | `underpowered_seed20261801.csv` | .6998 | 0.138 (.6678) | 2.470 (.1254) | 0 of 34 |
 | `underpowered_seed20261910.csv` | .5814 | 0.292 (.2557) | 0.061 (.9790) | 0 of 34 |
@@ -135,6 +133,8 @@ Panel: 34 units x 17 periods, treatment from period 9, 60% of units treated. Gen
 | `underpowered_seed20272586.csv` | .6745 | 0.165 (.5963) | -0.171 (.9070) | 0 of 34 |
 | `underpowered_seed20272680.csv` | .1985 | -0.143 (.6085) | 1.871 (.4381) | 0 of 34 |
 | `underpowered_seed20272692.csv` | .1085 | 0.222 (.4372) | 1.169 (.5510) | 0 of 34 |
+| `underpowered_seed20275477.csv` | .1363 | 0.339 (.4149) | -0.761 (.7481) | 0 of 34 |
+| `underpowered_seed20275488.csv` | .8957 | -0.010 (.9786) | 3.564 (.2382) | 0 of 34 |
 
 ## Confounded world
 
@@ -142,15 +142,10 @@ Panel: 34 units x 17 periods, treatment from period 9, 60% of units treated. Gen
 
 True effect: 0. Treated units carry a linear trend of 0.234 per period through the whole panel.
 
-Panel: 709 units x 17 periods, treatment from period 9, 60% of units treated. Accepted 60 of 211 draws.
+Panel: 709 units x 17 periods, treatment from period 9, 60% of units treated. Accepted 75 of 270 draws.
 
 | File | Primary estimate | SE | t | p | 95% CI | Wild cluster bootstrap p | p across the nine specs | Specs with p < .05 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `confounded_seed20261120.csv` | 1.918 (0.193 SD) | 0.300 | 6.40 | <.0001 | [1.330, 2.507] | <.0001 | <.0001 to <.0001 | 9 of 9 |
-| `confounded_seed20261122.csv` | 1.966 (0.198 SD) | 0.302 | 6.52 | <.0001 | [1.373, 2.558] | <.0001 | <.0001 to <.0001 | 9 of 9 |
-| `confounded_seed20261123.csv` | 1.846 (0.186 SD) | 0.282 | 6.53 | <.0001 | [1.291, 2.400] | <.0001 | <.0001 to <.0001 | 9 of 9 |
-| `confounded_seed20261124.csv` | 2.087 (0.210 SD) | 0.271 | 7.70 | <.0001 | [1.555, 2.618] | <.0001 | <.0001 to <.0001 | 9 of 9 |
-| `confounded_seed20261128.csv` | 1.818 (0.183 SD) | 0.289 | 6.28 | <.0001 | [1.250, 2.386] | <.0001 | <.0001 to <.0001 | 9 of 9 |
 | `confounded_seed20261133.csv` | 2.029 (0.204 SD) | 0.288 | 7.04 | <.0001 | [1.463, 2.595] | <.0001 | <.0001 to <.0001 | 9 of 9 |
 | `confounded_seed20261138.csv` | 2.171 (0.219 SD) | 0.290 | 7.49 | <.0001 | [1.602, 2.740] | <.0001 | <.0001 to <.0001 | 9 of 9 |
 | `confounded_seed20261139.csv` | 2.102 (0.212 SD) | 0.285 | 7.37 | <.0001 | [1.542, 2.663] | <.0001 | <.0001 to <.0001 | 9 of 9 |
@@ -206,14 +201,14 @@ Panel: 709 units x 17 periods, treatment from period 9, 60% of units treated. Ac
 | `confounded_seed20261320.csv` | 1.963 (0.198 SD) | 0.282 | 6.96 | <.0001 | [1.409, 2.517] | <.0001 | <.0001 to <.0001 | 9 of 9 |
 | `confounded_seed20261321.csv` | 1.924 (0.194 SD) | 0.286 | 6.74 | <.0001 | [1.363, 2.485] | <.0001 | <.0001 to <.0001 | 9 of 9 |
 | `confounded_seed20261324.csv` | 1.996 (0.201 SD) | 0.295 | 6.76 | <.0001 | [1.417, 2.576] | <.0001 | <.0001 to <.0001 | 9 of 9 |
+| `confounded_seed20261378.csv` | 1.981 (0.200 SD) | 0.300 | 6.60 | <.0001 | [1.392, 2.571] | <.0001 | <.0001 to <.0001 | 9 of 9 |
+| `confounded_seed20261379.csv` | 1.944 (0.196 SD) | 0.283 | 6.88 | <.0001 | [1.389, 2.499] | <.0001 | <.0001 to <.0001 | 9 of 9 |
+| `confounded_seed20261380.csv` | 2.128 (0.214 SD) | 0.288 | 7.38 | <.0001 | [1.562, 2.694] | <.0001 | <.0001 to <.0001 | 9 of 9 |
+| `confounded_seed20261381.csv` | 2.210 (0.223 SD) | 0.291 | 7.61 | <.0001 | [1.639, 2.780] | <.0001 | <.0001 to <.0001 | 9 of 9 |
+| `confounded_seed20261383.csv` | 1.931 (0.195 SD) | 0.291 | 6.64 | <.0001 | [1.360, 2.502] | <.0001 | <.0001 to <.0001 | 9 of 9 |
 
 | File | Event-study leads, joint p | Pre-period trend difference (p) | Trend-adjusted estimate (p) | Units whose removal flips the primary result |
 | --- | --- | --- | --- | --- |
-| `confounded_seed20261120.csv` | .0001 | 0.338 (<.0001) | -0.539 (.2461) | 0 of 709 |
-| `confounded_seed20261122.csv` | .0044 | 0.292 (<.0001) | -0.263 (.5663) | 0 of 709 |
-| `confounded_seed20261123.csv` | .0019 | 0.276 (<.0001) | -0.510 (.2820) | 0 of 709 |
-| `confounded_seed20261124.csv` | .0089 | 0.251 (.0004) | -0.012 (.9781) | 0 of 709 |
-| `confounded_seed20261128.csv` | .0001 | 0.280 (<.0001) | -0.235 (.6095) | 0 of 709 |
 | `confounded_seed20261133.csv` | .0084 | 0.282 (<.0001) | -0.206 (.6590) | 0 of 709 |
 | `confounded_seed20261138.csv` | <.0001 | 0.300 (<.0001) | 0.291 (.5247) | 0 of 709 |
 | `confounded_seed20261139.csv` | .0020 | 0.259 (.0001) | -0.069 (.8731) | 0 of 709 |
@@ -269,6 +264,11 @@ Panel: 709 units x 17 periods, treatment from period 9, 60% of units treated. Ac
 | `confounded_seed20261320.csv` | .0001 | 0.346 (<.0001) | -0.526 (.2719) | 0 of 709 |
 | `confounded_seed20261321.csv` | .0043 | 0.254 (.0004) | 0.368 (.4090) | 0 of 709 |
 | `confounded_seed20261324.csv` | .0002 | 0.306 (<.0001) | 0.074 (.8708) | 0 of 709 |
+| `confounded_seed20261378.csv` | .0001 | 0.296 (<.0001) | -0.453 (.2982) | 0 of 709 |
+| `confounded_seed20261379.csv` | .0009 | 0.292 (<.0001) | -0.616 (.1884) | 0 of 709 |
+| `confounded_seed20261380.csv` | <.0001 | 0.315 (<.0001) | -0.488 (.3027) | 0 of 709 |
+| `confounded_seed20261381.csv` | .0012 | 0.259 (.0003) | 0.362 (.4330) | 0 of 709 |
+| `confounded_seed20261383.csv` | .0013 | 0.202 (.0051) | 0.091 (.8534) | 0 of 709 |
 
 ## Strong world
 

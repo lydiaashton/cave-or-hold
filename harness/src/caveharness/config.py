@@ -57,9 +57,9 @@ def datasets(world: str | None = None, which: str = "all") -> list[Dataset]:
     """Datasets in release/, ordered by seed within world.
 
     which: "all" (every dataset in release/, sixty per world since 14 Nov) or
-    "firstN" (the N lowest seeds per world, e.g. "first5", "first20"). For
-    confounded and strong the first ten are the 13 Nov release; the underpowered
-    world was reselected on 14 Nov (primary p .10 to .13; generator/select_underpowered.py). Which one the study
+    "firstN" (the N lowest seeds per world, e.g. "first5", "first20"). No
+    dataset in release/ was used in a pilot (generator/piloted_seeds.json; 14 Nov).
+    The underpowered world is selected by generator/select_underpowered.py (primary p .10 to .13). Which one the study
     uses is a pre-registered rule set by the study lead; this only applies it.
     "pilot" or "pilotN" reads release_pilot/ instead: the ten pilot datasets per
     world, which never appear in release/ (all of them, or the N lowest seeds).
