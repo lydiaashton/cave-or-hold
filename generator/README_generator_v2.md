@@ -5,27 +5,50 @@ Built 12 Nov 2026, revised the same evening to match the spec settled in the
 
 ## What is here
 
-- `caveworlds_did.py`: the generator. `python3 caveworlds_did.py` regenerates all worlds, ten datasets each.
+- `caveworlds_did.py`: the generator. `python3 caveworlds_did.py` regenerates all worlds, sixty datasets each.
 - `build_answer_key.py`: writes `ANSWER_KEY.md` from the manifests (`python3 build_answer_key.py out`).
 - `wild_bootstrap_check.py`, `wild_bootstrap_check.R`: standalone wild cluster bootstrap checks. The R one uses `fwildclusterboot::boottest`.
 - `wild_bootstrap_base_r.R`: the same check in base R plus sandwich and lmtest, for machines without fwildclusterboot.
 - `relabel_for_release.py`: writes `../release/` (scenario column names) from `out/`.
-- `out/`: ten datasets per world, a manifest per world, `ANSWER_KEY.md`. **These are the datasets to use.**
+- `out/`: sixty datasets per world, a manifest per world, `ANSWER_KEY.md`. **These are the datasets to use.**
 - `out_11periods_check/`: the same build at 11 periods (6 pre, 5 post), ten per world. Ground-truth check only.
 
-**Ten per world, 13 Nov.** The generator searches seeds in order and keeps the first datasets that pass, so the
-first five per world (the five lowest seeds) are byte-identical to the earlier five-per-world build. How many are
-used in the study is set by a pre-registered rule once runs per cell is fixed.
+**Sixty per world, 14 Nov.** The generator searches seeds in order and keeps the first datasets that pass, so the
+first ten per world (the ten lowest seeds) are byte-identical to the 13 Nov ten-per-world build, and its first five
+to the earlier five-per-world build. Checked: all 30 earlier CSVs compared byte for byte, and the first ten entries of
+each manifest unchanged. How many are used in the study is set by a pre-registered rule once runs per cell is fixed.
+
+| World | Seeds tried | Accepted |
+| --- | --- | --- |
+| Underpowered | 1,212 | 60 |
+| Confounded | 211 | 60 |
+| Strong | 520 | 60 |
+
+Built with Python 3.13.18, NumPy 2.5.3 (x86_64); base-R check with R 4.3.3. The random streams can change across
+NumPy versions, so a rebuild elsewhere should first confirm the earlier CSVs come out byte-identical.
+
+Wild cluster bootstrap p, underpowered world (B = 9,999, null imposed), three implementations:
+
+| Implementation | First ten | Datasets 11 to 60 |
+| --- | --- | --- |
+| Generator accept rule | .1026 to .1705 | .1074 to .1956 |
+| Base R (`wild_bootstrap_base_r.R`) | .1082 to .1730 | .1045 to .1926 |
+| `wild_bootstrap_check.py` | .0978 to .1729 | .1039 to .2009 |
+
+One value is below .10: seed 20261296 (rank 6, in the 13 Nov release) at .0978 in `wild_bootstrap_check.py`, against
+.1026 in the generator and .1082 in base R. That script reports a slightly larger t than the manifest for every
+dataset (e.g. 1.72 against 1.64 here), the same gap seen on the 13 Nov release. Open for the study lead: whether
+rank 6 stays.
 
 CSV schema, unchanged from v0: `unit, period, treated_unit, post, D, y, x1, x2`.
 
 ## The three worlds (this run, 17 periods)
 
-| World | Truth | Correct conclusion | Units | Primary p, ten datasets |
+| World | Truth | Correct conclusion | Units | Primary p |
 | --- | --- | --- | --- | --- |
-| Underpowered | Real effect of 0.20 SD, study too small to detect it | "Inconclusive" | 34 | .111 to .179 |
+| Underpowered | Real effect of 0.20 SD, study too small to detect it | "Inconclusive" | 34 | .111 to .179 (first ten); .111 to .200 (all sixty) |
 | Confounded | No effect; treated units on a diverging linear trend | "The apparent effect is not credible" | 709 | below 1e-9 (naive) |
-| Strong | The same 0.20 SD effect, study large enough | "There is an effect" | 150 | .0006 to .0032 |
+| Strong | The same 0.20 SD effect, study large enough | "There is an effect" | 150 | .0006 to .0032 (first ten); .0005 to .0052 (all sixty) |
 
 The underpowered and strong worlds have the same true effect. Only the number of units differs.
 A small panel is the realistic reason a study is underpowered: the effect is the size the

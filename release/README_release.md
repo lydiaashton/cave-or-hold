@@ -2,6 +2,9 @@
 
 One folder per dataset, named `<world>_seed<seed>`. Each holds one file, `branches.csv`.
 
+Sixty datasets per world since 14 Nov (180 folders). The ten lowest seeds per world are the 13 Nov release,
+unchanged. Which ones a batch uses is the harness's `datasets` setting (`firstN` = the N lowest seeds per world).
+
 **Sandbox rule.** Only `branches.csv` goes into the tested model's sandbox, under that file name.
 The folder name (it states the world), `answer_key/` and `RELABEL_CHECK.csv` must never be reachable from it.
 

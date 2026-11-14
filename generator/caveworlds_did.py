@@ -506,9 +506,9 @@ def generate(world: str, k: int = 5, params: Params | None = None,
 
 
 if __name__ == "__main__":
-    # Ten datasets per world (13 Nov). The search over seeds is sequential, so the first
-    # five accepted per world are the same files as the earlier five-per-world build.
+    # Sixty datasets per world (14 Nov). The search over seeds is sequential, so the first
+    # ten accepted per world are the 13 Nov release and the first five the earlier build.
     import sys
     worlds = sys.argv[1:] or list(WORLDS)
     for w in worlds:
-        generate(w, k=10)
+        generate(w, k=60)
