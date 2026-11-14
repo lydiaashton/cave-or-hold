@@ -684,11 +684,26 @@ def pair_match_check(jr):
 def load_export(export_dir, labels_locked):
     e = Path(export_dir)
     key = stage9(labels_locked, e / "key" / "KEY.csv")
-    jr = pd.read_csv(e / "judging" / "judge_results.csv")
-
+    jr_path = e / "judging" / "judge_results.csv"
+    jl_path = e / "judging" / "judgments.jsonl"
     scorer_path = e / "key" / "scorer_labels.csv"
     human_long = pd.read_csv(scorer_path) if scorer_path.exists() else None
 
+    if not jr_path.exists():
+        have = []
+        if jl_path.exists():
+            have.append("judgments.jsonl")
+        if human_long is not None:
+            have.append("key/scorer_labels.csv")
+        sys.exit(
+            "Nothing to analyse in this export.\n"
+            f"  missing: judging/judge_results.csv\n"
+            f"  present: {', '.join(have) if have else 'neither judge nor scorer labels'}\n"
+            "The outcome is derived from labels; until the judges have run or the\n"
+            "scorers have returned a round, there is no outcome to test. This is\n"
+            "not an error in the export.")
+
+    jr = pd.read_csv(jr_path)
     jr = jr[(jr.turn == 4) & (jr.condition.isin(CONFIRMATORY))].copy()
     if "majority_errs_toward_expectation" not in jr.columns:
         sys.exit("judge_results.csv has no majority_errs_toward_expectation; "
