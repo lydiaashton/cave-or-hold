@@ -2,7 +2,7 @@
 """Combine the scorers' files into one table for the analysis.
 
 Usage:  python3 combine_scorer_files.py <folder of scorer .csv files> <scorers.csv> <output.csv>
-            [--ignore-codes TEST] [--batch "<batch label>"] [--skip-unfinished]
+            [--ignore-codes TEST] [--batch "<batch label>"] [--skip-unfinished] [--order <order.csv> ...]
 
 Input files: the CSVs scorers download from the scoring pages, or the tabs of the study
 Google Sheet saved as CSV. Any mix of rounds and scorers.
@@ -18,12 +18,47 @@ Rules. Nothing is guessed: any of these stops the script with a message and writ
   - a summary whose latest row is unfinished: not all questions answered, or (from the Google Sheet)
     answered but not yet submitted. With --skip-unfinished such summaries are left out and listed.
   - a file whose columns are not a scoring page's
+  - with --order: a summary ID that is in none of the order files and cannot be repaired (below)
+Google Sheets stores some summary IDs as numbers: an all-digit ID, or digits-e-digits read as
+scientific notation (0259488e19 becomes 2.59488E+24). With --order, an ID that is not in the order
+files is matched back by its numeric value, but only when exactly one known ID has that value; the
+repairs are listed. Without --order, IDs are passed through as they are.
 The Google Sheet is append-only, and the page sends the summary a scorer has open every 30 seconds
 (those rows show 0 seconds) and again when the scorer moves on (that row has the time). So one
 summary has several rows. The latest by the page's own clock is kept, only that row is checked, and
 the number of earlier rows is reported.
 """
 import argparse, csv, glob, os, sys
+
+
+def _num(x):
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return None
+    return v if v == v and v not in (float("inf"), float("-inf")) else None
+
+
+def id_repairer(order_files):
+    """Map a Sheets-mangled ID back to the one known ID with the same numeric value."""
+    known = set()
+    for path in order_files:
+        with open(path, newline="", encoding="utf-8-sig") as f:
+            known |= {r["summary_id"].strip() for r in csv.DictReader(f)}
+    by_value = {}
+    for i in known:
+        v = _num(i)
+        if v is not None:
+            by_value.setdefault(v, []).append(i)
+
+    def repair(gid):
+        if gid in known:
+            return gid, False
+        hits = by_value.get(_num(gid), []) if _num(gid) is not None else []
+        if len(hits) == 1:
+            return hits[0], True
+        return None, False
+    return known, repair
 
 SCHEMA = "1"
 FIXED = {"scorer_code", "round", "batch", "grading_id", "position_shown", "notes", "seconds", "complete",
@@ -51,6 +86,9 @@ def main():
                     help="comma list of scorer codes to leave out, e.g. TEST (rows typed while testing the page)")
     ap.add_argument("--batch", default="",
                     help="keep only rows whose batch label is exactly this, e.g. 'Calibration: check 1'")
+    ap.add_argument("--order", action="append", default=[],
+                    help="order.csv of a scoring round (repeatable). Checks every summary ID against them "
+                         "and repairs IDs that Google Sheets stored as numbers.")
     ap.add_argument("--skip-unfinished", action="store_true",
                     help="leave out a summary whose latest row is unfinished (not all questions answered, "
                          "or answered but not yet submitted) and list it, instead of stopping. For looking "
@@ -67,6 +105,8 @@ def main():
             roles[code] = role
     if not roles:
         stop(f"{scorers_file} lists no scorers")
+    known, repair = id_repairer(a.order) if a.order else (None, None)
+    repaired = {}
     latest, n_rows, n_ignored = {}, 0, 0
     files = sorted(glob.glob(os.path.join(folder, "*.csv")))
     if not files:
@@ -93,7 +133,16 @@ def main():
             if code not in roles:
                 stop(f"{path} line {n}: scorer code {code!r} is not in {scorers_file}")
             n_rows += 1
-            k = (code, rnd, r["grading_id"].strip())
+            gid = r["grading_id"].strip()
+            if known is not None:
+                fixed, was = repair(gid)
+                if fixed is None:
+                    stop(f"{path} line {n}: summary ID {gid!r} is in none of the order files "
+                         f"and does not match exactly one of them by numeric value")
+                if was:
+                    repaired[gid] = fixed
+                gid = fixed
+            k = (code, rnd, gid)
             # The page sends the open summary every 30 seconds and again when the scorer moves on, so
             # one summary has several rows. Keep the latest; only that row is checked.
             if k not in latest or _when(r, n) >= latest[k][2]:
@@ -133,6 +182,8 @@ def main():
     print(f"{len(latest)} scorer x summary rows from {len(files)} files, scorers {scorers}; "
           f"{n_rows - len(latest) - len(unfinished)} earlier rows superseded; {n_ignored} rows left out by "
           f"--ignore-codes or --batch -> {out}")
+    for bad, good in sorted(repaired.items()):
+        print(f"  repaired summary ID: {bad!r} (stored as a number by the Sheet) -> {good}")
     for code, rnd, gid, why in unfinished:
         print(f"  left out, unfinished: scorer {code}, round {rnd}, summary {gid}: {why}")
 
