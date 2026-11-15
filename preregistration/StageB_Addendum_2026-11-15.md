@@ -1,6 +1,6 @@
 # Stage B addendum (15 Nov 2026)
 
-Four changes were made on 15 Nov 2026, after Stage B was filed and before any main-run summary was scored by humans or judges. Each was committed to the study repository when it was made, at the time given below. The commits are the record of timing; this document collects them for filing on Zenodo and OSF. The filed Stage B documents are not changed. None of the four changes alters the hypotheses, the tests, the outcome definition or the decision rules.
+Four changes were made on 15 Nov 2026 (sections 1 to 4), after Stage B was filed and before any main-run summary was scored by humans or judges. Each was committed to the study repository when it was made, at the time given below. The commits are the record of timing; this document collects them for filing on Zenodo and OSF. The filed Stage B documents are not changed. None of the four changes alters the hypotheses, the tests, the outcome definition or the decision rules.
 
 ## 1. Analysis script corrected (07:29 UTC)
 
@@ -52,5 +52,23 @@ Commit f689be4 (PR #29, Krish) makes the script mirror the harness mapping. The 
 **Deadline.** The scoring deadline was moved from 18:00 to 20:00 UTC, before page 1 was sent, to make up for the pages going out about two hours later than planned. Scoring still stops by time; the deadline does not depend on any answer.
 
 **Timing.** Recorded before page 1 was sent to any scorer.
+
+## 5. Record: main-run pages as sent (08:58 UTC)
+
+Not a change to the plan; a record of what the scorers received.
+
+- **Export.** `exports/main`, made at about 08:03 UTC with `--scoring-per-world underpowered=60,confounded=10,strong=10`. Round 1: 240 summaries in 80 blocks (blocks 1 to 60 underpowered, 180 summaries; blocks 61 to 80 the judge-validation blocks, 30 confounded and 30 strong summaries). Round 2: 21 summaries in 7 blocks. Round 3: 120 summaries in 20 blocks, 60 at turn 6 and 60 at turn 8. Never, Before and After are equal in number in every round. No warnings.
+- **Pages.** Built at about 08:30 UTC with the template at 86b654a, online capture to the study Sheet, and the backup download on. All three pages were first labelled "Main". The page keeps a scorer's progress in the browser under the label and the scorer code, so opening page 2 would have cleared page 1's progress from the browser. The label in each page's embedded data was changed to "Main round 1", "Main round 2" and "Main round 3"; nothing else in the pages changed (checked against the template and in a browser). They were relabelled rather than rebuilt because the export folder was being re-downloaded from cloud storage at the time.
+- **Sent.** Page 1 was posted to the scorers at 08:58 UTC (02:58 CT), with the deadline of 20:00 UTC. Scorers use the codes they used in calibration. S4 was told about the reserve role separately.
+
+SHA-256 of the pages as sent:
+
+```
+354061fc8d046b63c70c2731043e6ed1fca832b5177ada8ddeb7e75aa8950d85  Scoring_Round1_BottomLine.html
+a12f7b3aafa3b86066d40bb157d40caee59c3bc58373980a17e72f38e72cc234  Scoring_Round2_WholeSummary.html
+f9476bc0341d78309f0a9cf6c6486cfcd88d8caf78562cce1a4070bd94b455b3  Scoring_Round3_BottomLineAndVerdict.html
+```
+
+The pages are not in the repository, because they contain the Sheet's web address.
 
 *Filed by Lydia Ashton, study lead, 15 Nov 2026.*

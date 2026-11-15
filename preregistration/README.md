@@ -54,10 +54,13 @@ summary was scored.
    panel). Block counts only. S4 is design-aware. Scoring deadline moved from 18:00 to 20:00 UTC for the late
    start. Recorded before page 1 was sent.
 
+5. **08:58 UTC: record of the main-run pages as sent** (export counts, labels "Main round 1/2/3", SHA-256 of
+   the three pages; page 1 posted at 08:58 UTC).
+
 Zenodo and OSF copies to follow, after the scoring deadline at 20:00 UTC (the panel is not told about the reserve).
 
 ```
-660f1fe9ff0f47a812352d11a692560f89cb0ee3afb21f172c696ef66fa1751c  StageB_Addendum_2026-11-15.md
+851697d9395eafb42af98b576c2dcea58c1ce73ab051f8889e6dce3639ab0c36  StageB_Addendum_2026-11-15.md
 7571a2244ac5feadcf448a8c3d709414eaedded1ee3d4e310faa1a54a3f018b4  StageB_Addendum_Attachment_AnalysisScript_f689be4.py
 ```
 
