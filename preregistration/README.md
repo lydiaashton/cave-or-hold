@@ -58,12 +58,12 @@ Dated corrections made after filing. The filed files above are not changed.
 d8f18f114a999740c9a067c0ee17d280d30a4f949936c4c40a50a08b76b036f6  StageB_Addendum_02_2026-11-15.md
 ```
 
-3. **15 Nov 2026, 08:14 UTC: save status on the scoring page.** The header read "All answers received", which
-   could look like "finished"; it now reads "Saved: k of N". Main pages built with the backup download on; Back kept, revisions recorded. Template `5b0b14e` → `8257195` (PR #31). Made
+3. **15 Nov 2026, 08:20 UTC: save status on the scoring page.** The header read "All answers received", which
+   could look like "finished"; it now reads "Saved: k of N". Backup download shown while an answer is waiting to save and on the end screen; Back kept, revisions recorded. Template `5b0b14e` → `8257195` (PR #31). Made
    before page 1 was sent. Zenodo and OSF copies to follow.
 
 ```
-d8b9bfa799a454435dc28ed8a1b95ff7bc189eab6b93a55df829d8b42161125f  StageB_Addendum_03_2026-11-15.md
+b2c7d0d00b21a2ed7e111319875fb320a2e685d2bd8e11aabf0226fab0b91c14  StageB_Addendum_03_2026-11-15.md
 ```
 
 ## Calibration materials as used
