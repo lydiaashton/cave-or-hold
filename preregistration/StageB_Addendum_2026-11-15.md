@@ -1,6 +1,6 @@
 # Stage B addendum (15 Nov 2026)
 
-Five changes were made on 15 Nov 2026, after Stage B was filed (sections 1 to 4, and 6); section 5 records the pages as sent. Sections 1 to 5 date from before any main-run summary was scored by humans or judges. Section 6 was made while scoring was under way, but before any judge was compared with the main-run human labels. Each change was committed to the study repository when it was made, at the time given below. The commits are the record of timing; this document collects them for filing on Zenodo and OSF. The filed Stage B documents are not changed. None of these changes alters the hypotheses, the tests, the outcome definition or the decision rules.
+Six changes were made on 15 Nov 2026, after Stage B was filed (sections 1 to 4, 6 and 7); section 5 records the pages as sent. Sections 1 to 5 date from before any main-run summary was scored by humans or judges. Section 6 was made while scoring was under way, but before any judge was compared with the main-run human labels. Section 7 was made after the labels were locked and before the key was released, so before any test was run. Each change was committed to the study repository when it was made, at the time given below. The commits are the record of timing; this document collects them for filing on Zenodo and OSF. The filed Stage B documents are not changed. None of these changes alters the hypotheses, the tests, the outcome definition or the decision rules.
 
 ## 1. Analysis script corrected (07:29 UTC)
 
@@ -80,5 +80,20 @@ The pages are not in the repository, because they contain the Sheet's web addres
 **Why.** Read strictly, a judge that failed the pass rule is still "available" and could supply labels through the fallback. If no judge passes, leaving the summaries without a judge majority unlabelled would drop the hardest summaries (those the judges disagree on) while still using the failed judges' majority labels, so the same rule is kept for all summaries.
 
 **Timing.** Raised by Krish at about 10:35 UTC; decided by the study lead. Made before any judge was compared with the main-run human labels, which are not locked until after 20:00 UTC.
+
+## 7. Analysis script corrected again (21:04 UTC)
+
+**What changed.** Two defects were found in the analysis script registered in section 1 (`analysis/cave_analysis.py` at f689be4) by its author, Krish, before it was run on main-run data:
+
+1. The confirmatory outcome was built from the judges' majority label (`judge_results.csv`, `majority_errs_toward_expectation`), not from the human labels. Stage A section 7 makes the human labels primary and the judge labels secondary. The script now builds the outcome from the human labels (each scorer's answers mapped, then the majority of the panel S1, S2, S3); the judge majority remains as the registered sensitivity analysis (`--labels judge`).
+2. There was no world filter, so the 60 judge-validation summaries from the confounded and strong worlds would have entered the confirmatory contrasts. The script now restricts the confirmatory tests to the underpowered world and the cells Never, Before_B and After_B, and reports how many labelled summaries it dropped.
+
+The registered hypotheses, tests, outcome definition and decision rules are unchanged; the corrections make the script do what the registration says.
+
+**Check.** The script's self-test (29 mapping cases) and simulation pass. On a synthetic export built like the real one (60 underpowered datasets plus 20 validation datasets), the script built 60 caving pairs and 60 timing pairs from the human labels, dropped the 60 validation summaries and reported them, and ran the caving test (H2) before the timing test (H1). This checks the code path only; it uses no study data.
+
+**Timing.** Pull request #33 (commits 26306fc and 6f7c9fe), merged as 7388722 at 21:03 UTC on 15 Nov 2026: after the labels were locked (20:00 UTC) and before the key was released, so before any test was run on main-run data.
+
+**Registered analysis script from this point:** `analysis/cave_analysis.py` at 6f7c9fe (merge 7388722), attached as `StageB_Addendum_Attachment_AnalysisScript_6f7c9fe.py`. This replaces the script named in section 1.
 
 *Filed by Lydia Ashton, study lead, 15 Nov 2026.*
