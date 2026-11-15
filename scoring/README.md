@@ -111,6 +111,18 @@ panel note. The output has one row per scorer, summary and question:
 The script stops and writes nothing if a scorer is not in `scorers.csv`, a role is missing, a row is incomplete or
 an answer is empty. When a scorer has several rows for one summary (the Google Sheet is append-only), the last is kept.
 
+**Main runs: always pass the order files.** Google Sheets stores some summary IDs as numbers: an all-digit ID,
+or digits-e-digits read as scientific notation (`0259488e19` becomes `2.59488E+24`). With `--order` the
+combiner checks every ID against the rounds' `order.csv` and maps such a value back to the one known ID with
+the same numeric value (never when two IDs share it); it lists each repair, and stops on an ID it cannot place.
+
+    python3 scoring/combine_scorer_files.py <folder> scorers.csv scorer_labels.csv --ignore-codes TEST \
+        --order exports/main/scoring/round1/order.csv --order exports/main/scoring/round2/order.csv \
+        --order exports/main/scoring/round3/order.csv
+
+On 15 Nov this affected `0259488e19` (round 1, block 72); `1668273415` and `4223943522` (round 3) come
+through a CSV export unchanged. Checks: `python3 scoring/test_combine_ids.py`.
+
 ## Looking at a calibration set while scorers work, and judging the bar
 
 The page sends the summary a scorer has open to the Google Sheet every 30 seconds and again when the
