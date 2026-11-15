@@ -1,0 +1,1334 @@
+Summary ID: c475b51b1e
+
+=== Code run in turn 2, call 1 of 10 ===
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Display basic info
+print("Dataset shape:", df.shape)
+print("\nColumn names:", df.columns.tolist())
+print("\nFirst few rows:")
+print(df.head(10))
+print("\nData types:")
+print(df.dtypes)
+print("\nSummary statistics:")
+print(df.describe())
+print("\nUnique values for key columns:")
+print("branch_id unique count:", df['branch_id'].nunique())
+print("switched_branch values:", df['switched_branch'].unique())
+print("after_switch values:", df['after_switch'].unique())
+print("week range:", df['week'].min(), "to", df['week'].max())
+--- printed ---
+Dataset shape: (2550, 7)
+
+Column names: ['branch_id', 'week', 'switched_branch', 'after_switch', 'service_score', 'staffing_index', 'visits_index']
+
+First few rows:
+   branch_id  week  ...  staffing_index  visits_index
+0          0     6  ...        1.589277      0.691312
+1          0     7  ...        0.974642      0.041858
+2          0     8  ...        0.073870     -2.196347
+3          0     9  ...        1.433526     -0.145823
+4          0    10  ...        1.571209     -0.895725
+5          0    11  ...        1.017783     -0.967657
+6          0    12  ...        0.482963      0.327960
+7          0    13  ...        3.085624     -2.021086
+8          0    14  ...       -0.285980      0.118114
+9          0    15  ...       -0.874463      1.661103
+
+[10 rows x 7 columns]
+
+Data types:
+branch_id            int64
+week                 int64
+switched_branch      int64
+after_switch         int64
+service_score      float64
+staffing_index     float64
+visits_index       float64
+dtype: object
+
+Summary statistics:
+         branch_id        week  ...  staffing_index  visits_index
+count  2550.000000  2550.00000  ...     2550.000000   2550.000000
+mean     74.500000    14.00000  ...        0.003427      0.005073
+std      43.308801     4.89994  ...        0.976857      0.990543
+min       0.000000     6.00000  ...       -3.344541     -3.510266
+25%      37.000000    10.00000  ...       -0.648994     -0.682837
+50%      74.500000    14.00000  ...       -0.013650      0.029657
+75%     112.000000    18.00000  ...        0.658802      0.672994
+max     149.000000    22.00000  ...        3.265373      3.794416
+
+[8 rows x 7 columns]
+
+Unique values for key columns:
+branch_id unique count: 150
+switched_branch values: [1 0]
+after_switch values: [0 1]
+week range: 6 to 22
+
+
+=== Code run in turn 2, call 2 of 10 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Check group sizes
+print("Branches by group:")
+print(df.groupby('switched_branch')['branch_id'].nunique())
+
+# Calculate pre/post averages by group
+print("\n\nAverage service scores by group and period:")
+pre_post = df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std', 'count']).round(2)
+print(pre_post)
+
+# Calculate the difference-in-differences manually
+# Treatment group (switched_branch=1)
+treatment_pre = df[(df['switched_branch']==1) & (df['after_switch']==0)]['service_score'].mean()
+treatment_post = df[(df['switched_branch']==1) & (df['after_switch']==1)]['service_score'].mean()
+treatment_change = treatment_post - treatment_pre
+
+# Control group (switched_branch=0)
+control_pre = df[(df['switched_branch']==0) & (df['after_switch']==0)]['service_score'].mean()
+control_post = df[(df['switched_branch']==0) & (df['after_switch']==1)]['service_score'].mean()
+control_change = control_post - control_pre
+
+# Difference-in-differences
+did_estimate = treatment_change - control_change
+
+print("\n\nDifference-in-Differences Calculation:")
+print(f"Treatment group (switched): Pre={treatment_pre:.2f}, Post={treatment_post:.2f}, Change={treatment_change:.2f}")
+print(f"Control group (not switched): Pre={control_pre:.2f}, Post={control_post:.2f}, Change={control_change:.2f}")
+print(f"\nDiD Estimate (Treatment Change - Control Change): {did_estimate:.2f}")
+--- printed ---
+Branches by group:
+switched_branch
+0    60
+1    90
+Name: branch_id, dtype: int64
+
+
+Average service scores by group and period:
+                               mean    std  count
+switched_branch after_switch                     
+0               0             51.89  10.14    540
+                1             51.25   9.42    480
+1               0             51.20   9.60    810
+                1             52.36   9.96    720
+
+
+Difference-in-Differences Calculation:
+Treatment group (switched): Pre=51.20, Post=52.36, Change=1.16
+Control group (not switched): Pre=51.89, Post=51.25, Change=-0.63
+
+DiD Estimate (Treatment Change - Control Change): 1.79
+
+
+=== Code run in turn 2, call 3 of 10 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Run a difference-in-differences regression
+# service_score = beta0 + beta1*switched_branch + beta2*after_switch + beta3*(switched_branch * after_switch) + error
+# beta3 is the DiD estimate
+
+model = ols('service_score ~ switched_branch * after_switch', data=df).fit()
+print("DiD Regression Results:")
+print(model.summary())
+
+# Also run with branch fixed effects for more robust estimate
+# This controls for time-invariant branch characteristics
+df['branch_id_str'] = df['branch_id'].astype(str)
+model_fe = ols('service_score ~ switched_branch * after_switch + C(branch_id_str)', data=df).fit()
+print("\n\nDiD Regression with Branch Fixed Effects:")
+print(model_fe.summary())
+
+# Check pre-treatment trends (parallel trends assumption)
+# Compare trends in weeks 6-14 between treatment and control
+pre_data = df[df['week'] < 15].copy()
+pre_data['relative_week'] = pre_data['week'] - 6  # weeks 0-8 relative to start
+
+# Calculate average service score by week and group
+weekly_avg = pre_data.groupby(['week', 'switched_branch'])['service_score'].mean().reset_index()
+print("\n\nPre-treatment weekly averages:")
+print(weekly_avg)
+
+# Simple trend analysis for pre-period
+pre_trend_model = ols('service_score ~ week * switched_branch', data=pre_data).fit()
+print("\n\nPre-treatment trend test (interaction term shows if trends differ):")
+print(pre_trend_model.summary())
+--- printed ---
+DiD Regression Results:
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.003
+Model:                            OLS   Adj. R-squared:                  0.001
+Method:                 Least Squares   F-statistic:                     2.199
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):             0.0862
+Time:                        02:41:39   Log-Likelihood:                -9432.3
+No. Observations:                2550   AIC:                         1.887e+04
+Df Residuals:                    2546   BIC:                         1.890e+04
+Df Model:                           3                                         
+Covariance Type:            nonrobust                                         
+================================================================================================
+                                   coef    std err          t      P>|t|      [0.025      0.975]
+------------------------------------------------------------------------------------------------
+Intercept                       51.8862      0.421    123.228      0.000      51.061      52.712
+switched_branch                 -0.6889      0.544     -1.267      0.205      -1.755       0.377
+after_switch                    -0.6320      0.614     -1.030      0.303      -1.836       0.572
+switched_branch:after_switch     1.7946      0.792      2.265      0.024       0.241       3.348
+==============================================================================
+Omnibus:                        6.552   Durbin-Watson:                   0.522
+Prob(Omnibus):                  0.038   Jarque-Bera (JB):                6.555
+Skew:                           0.124   Prob(JB):                       0.0377
+Kurtosis:                       3.002   Cond. No.                         7.47
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+
+
+DiD Regression with Branch Fixed Effects:
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.715
+Model:                            OLS   Adj. R-squared:                  0.697
+Method:                 Least Squares   F-statistic:                     39.91
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):               0.00
+Time:                        02:41:39   Log-Likelihood:                -7833.5
+No. Observations:                2550   AIC:                         1.597e+04
+Df Residuals:                    2398   BIC:                         1.686e+04
+Df Model:                         151                                         
+Covariance Type:            nonrobust                                         
+================================================================================================
+                                   coef    std err          t      P>|t|      [0.025      0.975]
+------------------------------------------------------------------------------------------------
+Intercept                    -2.043e+12   3.85e+12     -0.531      0.596   -9.59e+12    5.51e+12
+C(branch_id_str)[T.1]            0.5939      1.853      0.321      0.749      -3.039       4.227
+C(branch_id_str)[T.10]          13.7209      1.848      7.423      0.000      10.096      17.346
+C(branch_id_str)[T.100]         23.3223      1.848     12.624      0.000      19.699      26.945
+C(branch_id_str)[T.101]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.102]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.103]         10.2852      1.849      5.563      0.000       6.659      13.911
+C(branch_id_str)[T.104]         -0.6183      1.849     -0.334      0.738      -4.244       3.007
+C(branch_id_str)[T.105]        -19.6244      1.848    -10.622      0.000     -23.247     -16.001
+C(branch_id_str)[T.106]         -8.7384      1.850     -4.725      0.000     -12.365      -5.112
+C(branch_id_str)[T.107]          7.9465      1.849      4.298      0.000       4.321      11.572
+C(branch_id_str)[T.108]          5.3088      1.848      2.873      0.004       1.686       8.932
+C(branch_id_str)[T.109]        -11.3121      1.850     -6.116      0.000     -14.939      -7.685
+C(branch_id_str)[T.11]          -0.2704      1.848     -0.146      0.884      -3.895       3.354
+C(branch_id_str)[T.110]         -4.1815      1.848     -2.263      0.024      -7.805      -0.558
+C(branch_id_str)[T.111]        -19.2826      1.849    -10.431      0.000     -22.908     -15.657
+C(branch_id_str)[T.112]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.113]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.114]          2.7758      1.848      1.502      0.133      -0.848       6.400
+C(branch_id_str)[T.115]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.116]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.117]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.118]          1.6293      1.848      0.882      0.378      -1.994       5.253
+C(branch_id_str)[T.119]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.12]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.120]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.121]         -2.5717      1.849     -1.391      0.164      -6.197       1.054
+C(branch_id_str)[T.122]          6.2502      1.849      3.380      0.001       2.624       9.876
+C(branch_id_str)[T.123]        -13.0900      1.847     -7.086      0.000     -16.713      -9.467
+C(branch_id_str)[T.124]         -7.1155      1.849     -3.848      0.000     -10.741      -3.490
+C(branch_id_str)[T.125]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.126]         -4.6285      1.848     -2.505      0.012      -8.252      -1.005
+C(branch_id_str)[T.127]          2.2070      1.848      1.194      0.233      -1.417       5.831
+C(branch_id_str)[T.128]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.129]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.13]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.130]         -7.1195      1.848     -3.852      0.000     -10.744      -3.495
+C(branch_id_str)[T.131]          3.4628      1.848      1.874      0.061      -0.161       7.087
+C(branch_id_str)[T.132]          8.5196      1.848      4.609      0.000       4.895      12.144
+C(branch_id_str)[T.133]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.134]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.135]         -5.7376      1.849     -3.104      0.002      -9.363      -2.113
+C(branch_id_str)[T.136]         -3.6455      1.848     -1.973      0.049      -7.270      -0.021
+C(branch_id_str)[T.137]         -5.0549      1.848     -2.735      0.006      -8.679      -1.431
+C(branch_id_str)[T.138]          5.8527      1.848      3.167      0.002       2.228       9.477
+C(branch_id_str)[T.139]          4.6751      1.848      2.529      0.011       1.051       8.299
+C(branch_id_str)[T.14]          -4.4099      1.848     -2.386      0.017      -8.034      -0.786
+C(branch_id_str)[T.140]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.141]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.142]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.143]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.144]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.145]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.146]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.147]         -7.9885      1.848     -4.322      0.000     -11.613      -4.364
+C(branch_id_str)[T.148]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.149]       2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.15]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.16]          -6.6590      1.849     -3.602      0.000     -10.284      -3.034
+C(branch_id_str)[T.17]          -4.3676      1.849     -2.363      0.018      -7.992      -0.743
+C(branch_id_str)[T.18]          -5.6966      1.848     -3.083      0.002      -9.321      -2.073
+C(branch_id_str)[T.19]           4.2912      1.848      2.322      0.020       0.667       7.915
+C(branch_id_str)[T.2]          -13.1523      1.848     -7.116      0.000     -16.776      -9.528
+C(branch_id_str)[T.20]          -4.5732      1.848     -2.475      0.013      -8.197      -0.949
+C(branch_id_str)[T.21]           8.4679      1.849      4.580      0.000       4.842      12.093
+C(branch_id_str)[T.22]           1.7776      1.848      0.962      0.336      -1.847       5.402
+C(branch_id_str)[T.23]           4.9434      1.848      2.674      0.008       1.319       8.568
+C(branch_id_str)[T.24]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.25]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.26]          -0.9526      1.848     -0.515      0.606      -4.577       2.672
+C(branch_id_str)[T.27]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.28]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.29]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.3]           -2.3018      1.849     -1.245      0.213      -5.927       1.324
+C(branch_id_str)[T.30]           6.0261      1.849      3.260      0.001       2.401       9.651
+C(branch_id_str)[T.31]          13.8912      1.849      7.514      0.000      10.266      17.516
+C(branch_id_str)[T.32]          -7.8547      1.849     -4.248      0.000     -11.480      -4.229
+C(branch_id_str)[T.33]         -21.8199      1.849    -11.802      0.000     -25.445     -18.194
+C(branch_id_str)[T.34]         -16.0654      1.848     -8.691      0.000     -19.690     -12.441
+C(branch_id_str)[T.35]           2.5117      1.849      1.359      0.174      -1.114       6.137
+C(branch_id_str)[T.36]           4.4395      1.849      2.401      0.016       0.814       8.065
+C(branch_id_str)[T.37]           1.4020      1.849      0.758      0.448      -2.224       5.028
+C(branch_id_str)[T.38]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.39]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.4]         2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.40]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.41]         -10.5494      1.849     -5.705      0.000     -14.175      -6.924
+C(branch_id_str)[T.42]           4.1846      1.849      2.263      0.024       0.558       7.811
+C(branch_id_str)[T.43]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.44]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.45]           7.0069      1.849      3.790      0.000       3.382      10.632
+C(branch_id_str)[T.46]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.47]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.48]           8.8766      1.849      4.801      0.000       5.251      12.502
+C(branch_id_str)[T.49]           5.4233      1.848      2.934      0.003       1.799       9.048
+C(branch_id_str)[T.5]           -9.7806      1.850     -5.287      0.000     -13.408      -6.153
+C(branch_id_str)[T.50]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.51]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.52]         -10.5929      1.848     -5.731      0.000     -14.217      -6.969
+C(branch_id_str)[T.53]          -9.9087      1.848     -5.361      0.000     -13.533      -6.284
+C(branch_id_str)[T.54]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.55]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.56]          13.1374      1.848      7.109      0.000       9.513      16.761
+C(branch_id_str)[T.57]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.58]          -8.6343      1.848     -4.672      0.000     -12.258      -5.010
+C(branch_id_str)[T.59]          10.3075      1.848      5.578      0.000       6.684      13.931
+C(branch_id_str)[T.6]          -13.6366      1.847     -7.382      0.000     -17.259     -10.014
+C(branch_id_str)[T.60]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.61]           0.8908      1.848      0.482      0.630      -2.733       4.515
+C(branch_id_str)[T.62]          -4.5612      1.848     -2.468      0.014      -8.185      -0.937
+C(branch_id_str)[T.63]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.64]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.65]           1.0211      1.848      0.552      0.581      -2.603       4.645
+C(branch_id_str)[T.66]          -8.6470      1.848     -4.680      0.000     -12.271      -5.023
+C(branch_id_str)[T.67]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.68]          -1.9085      1.848     -1.033      0.302      -5.533       1.715
+C(branch_id_str)[T.69]          -4.5787      1.848     -2.478      0.013      -8.203      -0.955
+C(branch_id_str)[T.7]         2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.70]          -5.8579      1.848     -3.170      0.002      -9.481      -2.235
+C(branch_id_str)[T.71]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.72]           9.2459      1.848      5.004      0.000       5.622      12.869
+C(branch_id_str)[T.73]         -10.7736      1.848     -5.831      0.000     -14.397      -7.150
+C(branch_id_str)[T.74]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.75]          -3.5905      1.848     -1.943      0.052      -7.214       0.033
+C(branch_id_str)[T.76]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.77]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.78]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.79]           6.1866      1.848      3.347      0.001       2.562       9.811
+C(branch_id_str)[T.8]           -4.7774      1.848     -2.585      0.010      -8.401      -1.153
+C(branch_id_str)[T.80]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.81]          -1.9541      1.848     -1.057      0.291      -5.579       1.671
+C(branch_id_str)[T.82]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.83]           0.5155      1.848      0.279      0.780      -3.109       4.140
+C(branch_id_str)[T.84]          -7.7764      1.848     -4.207      0.000     -11.401      -4.152
+C(branch_id_str)[T.85]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.86]           9.2200      1.848      4.989      0.000       5.596      12.844
+C(branch_id_str)[T.87]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.88]           5.3341      1.848      2.887      0.004       1.710       8.958
+C(branch_id_str)[T.89]           0.5471      1.848      0.296      0.767      -3.077       4.171
+C(branch_id_str)[T.9]         2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.90]          -2.4183      1.848     -1.309      0.191      -6.042       1.205
+C(branch_id_str)[T.91]          -1.9992      1.848     -1.082      0.279      -5.623       1.624
+C(branch_id_str)[T.92]        2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+C(branch_id_str)[T.93]           3.3976      1.848      1.839      0.066      -0.226       7.021
+C(branch_id_str)[T.94]         -15.7426      1.848     -8.520      0.000     -19.366     -12.119
+C(branch_id_str)[T.95]          -5.2600      1.848     -2.847      0.004      -8.883      -1.637
+C(branch_id_str)[T.96]           3.0081      1.848      1.628      0.104      -0.615       6.632
+C(branch_id_str)[T.97]           1.7809      1.848      0.964      0.335      -1.842       5.404
+C(branch_id_str)[T.98]           3.2526      1.848      1.760      0.078      -0.371       6.876
+C(branch_id_str)[T.99]           0.0144      1.848      0.008      0.994      -3.609       3.638
+switched_branch               2.043e+12   3.85e+12      0.531      0.596   -5.51e+12    9.59e+12
+after_switch                    -0.6374      0.338     -1.886      0.059      -1.300       0.025
+switched_branch:after_switch     1.7888      0.436      4.100      0.000       0.933       2.644
+==============================================================================
+Omnibus:                        1.053   Durbin-Watson:                   1.573
+Prob(Omnibus):                  0.591   Jarque-Bera (JB):                1.094
+Skew:                          -0.047   Prob(JB):                        0.579
+Kurtosis:                       2.962   Cond. No.                     3.85e+14
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+[2] The smallest eigenvalue is 3.16e-26. This might indicate that there are
+strong multicollinearity problems or that the design matrix is singular.
+
+
+Pre-treatment weekly averages:
+    week  switched_branch  service_score
+0      6                0      50.901665
+1      6                1      50.603260
+2      7                0      55.508388
+3      7                1      55.944316
+4      8                0      50.102815
+5      8                1      49.123886
+6      9                0      51.217303
+7      9                1      49.588597
+8     10                0      57.348704
+9     10                1      55.612112
+10    11                0      52.961909
+11    11                1      51.623903
+12    12                0      46.324297
+13    12                1      45.585219
+14    13                0      52.083004
+15    13                1      51.809093
+16    14                0      50.527716
+17    14                1      50.885614
+
+
+Pre-treatment trend test (interaction term shows if trends differ):
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.007
+Model:                            OLS   Adj. R-squared:                  0.004
+Method:                 Least Squares   F-statistic:                     2.995
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):             0.0299
+Time:                        02:41:39   Log-Likelihood:                -4994.5
+No. Observations:                1350   AIC:                             9997.
+Df Residuals:                    1346   BIC:                         1.002e+04
+Df Model:                           3                                         
+Covariance Type:            nonrobust                                         
+========================================================================================
+                           coef    std err          t      P>|t|      [0.025      0.975]
+----------------------------------------------------------------------------------------
+Intercept               54.8169      1.686     32.503      0.000      51.508      58.125
+week                    -0.2931      0.163     -1.795      0.073      -0.613       0.027
+switched_branch         -0.8999      2.177     -0.413      0.679      -5.171       3.371
+week:switched_branch     0.0211      0.211      0.100      0.920      -0.392       0.435
+==============================================================================
+Omnibus:                        3.664   Durbin-Watson:                   0.664
+Prob(Omnibus):                  0.160   Jarque-Bera (JB):                3.578
+Skew:                           0.124   Prob(JB):                        0.167
+Kurtosis:                       3.047   Cond. No.                         122.
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+
+<stdin>:20: SingularMatrixWarning: The design matrix is rank-deficient. The model parameters are not uniquely determined.
+
+
+=== Code run in turn 2, call 4 of 10 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import statsmodels.stats.api as sms
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Pre-treatment trend test - get just the key coefficient
+pre_data = df[df['week'] < 15].copy()
+pre_trend_model = ols('service_score ~ week * switched_branch', data=pre_data).fit()
+print("Pre-treatment trend test (interaction shows if trends differ before switch):")
+print(f"Interaction coefficient (week:switched_branch): {pre_trend_model.params['week:switched_branch']:.4f}")
+print(f"P-value: {pre_trend_model.pvalues['week:switched_branch']:.4f}")
+print(f"95% CI: [{pre_trend_model.conf_int().loc['week:switched_branch'][0]:.4f}, {pre_trend_model.conf_int().loc['week:switched_branch'][1]:.4f}]")
+
+# Now run DiD with cluster-robust standard errors (clustered by branch)
+model_fe = ols('service_score ~ switched_branch * after_switch + C(branch_id)', data=df).fit()
+
+# Get cluster-robust standard errors
+cluster_robust_cov = model_fe.get_robustcov_results(cov_type='cluster', clusters=df['branch_id'])
+print("\n\nDiD with Branch Fixed Effects and Cluster-Robust SEs:")
+print(f"Interaction coefficient (switched_branch:after_switch): {model_fe.params['switched_branch:after_switch']:.4f}")
+print(f"Cluster-robust SE: {cluster_robust_cov.bse['switched_branch:after_switch']:.4f}")
+print(f"T-statistic: {cluster_robust_cov.tvalues['switched_branch:after_switch']:.4f}")
+print(f"P-value: {cluster_robust_cov.pvalues['switched_branch:after_switch']:.4f}")
+print(f"95% CI: [{cluster_robust_cov.conf_int().loc['switched_branch:after_switch'][0]:.4f}, {cluster_robust_cov.conf_int().loc['switched_branch:after_switch'][1]:.4f}]")
+
+# Also check if staffing and visits might be mediators or confounders
+# Let's see if they changed differently for treatment vs control
+print("\n\nChecking if staffing_index changed differently:")
+staffing_model = ols('staffing_index ~ switched_branch * after_switch + C(branch_id)', data=df).fit()
+staffing_robust = staffing_model.get_robustcov_results(cov_type='cluster', clusters=df['branch_id'])
+print(f"Interaction coefficient: {staffing_model.params['switched_branch:after_switch']:.4f}, p={staffing_robust.pvalues['switched_branch:after_switch']:.4f}")
+
+print("\nChecking if visits_index changed differently:")
+visits_model = ols('visits_index ~ switched_branch * after_switch + C(branch_id)', data=df).fit()
+visits_robust = visits_model.get_robustcov_results(cov_type='cluster', clusters=df['branch_id'])
+print(f"Interaction coefficient: {visits_model.params['switched_branch:after_switch']:.4f}, p={visits_robust.pvalues['switched_branch:after_switch']:.4f}")
+
+# Add staffing and visits as controls to see if the effect persists
+print("\n\nDiD with controls for staffing and visits:")
+full_model = ols('service_score ~ switched_branch * after_switch + C(branch_id) + staffing_index + visits_index', data=df).fit()
+full_robust = full_model.get_robustcov_results(cov_type='cluster', clusters=df['branch_id'])
+print(f"Interaction coefficient: {full_model.params['switched_branch:after_switch']:.4f}")
+print(f"Cluster-robust SE: {full_robust.bse['switched_branch:after_switch']:.4f}")
+print(f"P-value: {full_robust.pvalues['switched_branch:after_switch']:.4f}")
+print(f"95% CI: [{full_robust.conf_int().loc['switched_branch:after_switch'][0]:.4f}, {full_robust.conf_int().loc['switched_branch:after_switch'][1]:.4f}]")
+--- printed ---
+Pre-treatment trend test (interaction shows if trends differ before switch):
+Interaction coefficient (week:switched_branch): 0.0211
+P-value: 0.9203
+95% CI: [-0.3925, 0.4347]
+
+<stdin>:19: SingularMatrixWarning: The design matrix is rank-deficient. The model parameters are not uniquely determined.
+Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/regression/linear_model.py", line 2905, in get_robustcov_results
+    groups = kwargs["groups"]
+             ~~~~~~^^^^^^^^^^
+KeyError: 'groups'
+
+
+=== Code run in turn 2, call 5 of 10 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Pre-treatment trend test - get just the key coefficient
+pre_data = df[df['week'] < 15].copy()
+pre_trend_model = ols('service_score ~ week * switched_branch', data=pre_data).fit()
+print("Pre-treatment trend test (interaction shows if trends differ before switch):")
+print(f"Interaction coefficient (week:switched_branch): {pre_trend_model.params['week:switched_branch']:.4f}")
+print(f"P-value: {pre_trend_model.pvalues['week:switched_branch']:.4f}")
+print(f"95% CI: [{pre_trend_model.conf_int().loc['week:switched_branch'][0]:.4f}, {pre_trend_model.conf_int().loc['week:switched_branch'][1]:.4f}]")
+
+# Now run DiD with cluster-robust standard errors (clustered by branch)
+# Using C(branch_id) as fixed effects
+model_fe = ols('service_score ~ switched_branch * after_switch + C(branch_id)', data=df).fit()
+
+# Get cluster-robust standard errors - correct syntax
+cluster_robust_cov = model_fe.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n\nDiD with Branch Fixed Effects and Cluster-Robust SEs:")
+print(f"Interaction coefficient (switched_branch:after_switch): {model_fe.params['switched_branch:after_switch']:.4f}")
+print(f"Cluster-robust SE: {cluster_robust_cov.bse['switched_branch:after_switch']:.4f}")
+print(f"T-statistic: {cluster_robust_cov.tvalues['switched_branch:after_switch']:.4f}")
+print(f"P-value: {cluster_robust_cov.pvalues['switched_branch:after_switch']:.4f}")
+print(f"95% CI: [{cluster_robust_cov.conf_int().loc['switched_branch:after_switch'][0]:.4f}, {cluster_robust_cov.conf_int().loc['switched_branch:after_switch'][1]:.4f}]")
+
+# Also check if staffing and visits might be mediators or confounders
+# Let's see if they changed differently for treatment vs control
+print("\n\nChecking if staffing_index changed differently:")
+staffing_model = ols('staffing_index ~ switched_branch * after_switch + C(branch_id)', data=df).fit()
+staffing_robust = staffing_model.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print(f"Interaction coefficient: {staffing_model.params['switched_branch:after_switch']:.4f}, p={staffing_robust.pvalues['switched_branch:after_switch']:.4f}")
+
+print("\nChecking if visits_index changed differently:")
+visits_model = ols('visits_index ~ switched_branch * after_switch + C(branch_id)', data=df).fit()
+visits_robust = visits_model.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print(f"Interaction coefficient: {visits_model.params['switched_branch:after_switch']:.4f}, p={visits_robust.pvalues['switched_branch:after_switch']:.4f}")
+
+# Add staffing and visits as controls to see if the effect persists
+print("\n\nDiD with controls for staffing and visits:")
+full_model = ols('service_score ~ switched_branch * after_switch + C(branch_id) + staffing_index + visits_index', data=df).fit()
+full_robust = full_model.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print(f"Interaction coefficient: {full_model.params['switched_branch:after_switch']:.4f}")
+print(f"Cluster-robust SE: {full_robust.bse['switched_branch:after_switch']:.4f}")
+print(f"P-value: {full_robust.pvalues['switched_branch:after_switch']:.4f}")
+print(f"95% CI: [{full_robust.conf_int().loc['switched_branch:after_switch'][0]:.4f}, {full_robust.conf_int().loc['switched_branch:after_switch'][1]:.4f}]")
+
+# Effect size relative to baseline
+baseline_score = df['service_score'].mean()
+effect_size_pct = (model_fe.params['switched_branch:after_switch'] / baseline_score) * 100
+print(f"\n\nEffect size: {model_fe.params['switched_branch:after_switch']:.2f} points ({effect_size_pct:.1f}% of average score)")
+--- printed ---
+Pre-treatment trend test (interaction shows if trends differ before switch):
+Interaction coefficient (week:switched_branch): 0.0211
+P-value: 0.9203
+95% CI: [-0.3925, 0.4347]
+
+
+DiD with Branch Fixed Effects and Cluster-Robust SEs:
+Interaction coefficient (switched_branch:after_switch): 1.7931
+
+<stdin>:19: SingularMatrixWarning: The design matrix is rank-deficient. The model parameters are not uniquely determined.
+/usr/local/lib/python3.11/site-packages/statsmodels/regression/linear_model.py:2121: RuntimeWarning: invalid value encountered in sqrt
+  return np.sqrt(np.diag(self.cov_params()))
+Traceback (most recent call last):
+  File "<stdin>", line 25, in <module>
+IndexError: only integers, slices (`:`), ellipsis (`...`), numpy.newaxis (`None`) and integer or boolean arrays are valid indices
+
+
+=== Code run in turn 2, call 6 of 10 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Simple DiD regression (no fixed effects) with cluster-robust SEs
+model_simple = ols('service_score ~ switched_branch * after_switch', data=df).fit()
+cluster_robust_simple = model_simple.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+
+print("Simple DiD Regression with Cluster-Robust SEs:")
+print(f"Interaction coefficient (switched_branch:after_switch): {model_simple.params['switched_branch:after_switch']:.4f}")
+print(f"Cluster-robust SE: {cluster_robust_simple.bse['switched_branch:after_switch']:.4f}")
+print(f"T-statistic: {cluster_robust_simple.tvalues['switched_branch:after_switch']:.4f}")
+print(f"P-value: {cluster_robust_simple.pvalues['switched_branch:after_switch']:.4f}")
+print(f"95% CI: [{cluster_robust_simple.conf_int().loc['switched_branch:after_switch'][0]:.4f}, {cluster_robust_simple.conf_int().loc['switched_branch:after_switch'][1]:.4f}]")
+
+# Check branch coverage in both periods
+print("\n\nBranch coverage check:")
+branch_periods = df.groupby('branch_id')['after_switch'].agg(['min', 'max']).reset_index()
+print("Branches with data in both periods (min=0, max=1):", ((branch_periods['min']==0) & (branch_periods['max']==1)).sum())
+print("Branches only in pre-period (min=0, max=0):", ((branch_periods['min']==0) & (branch_periods['max']==0)).sum())
+print("Branches only in post-period (min=1, max=1):", ((branch_periods['min']==1) & (branch_periods['max']==1)).sum())
+
+# Try fixed effects with only branches that have both periods
+df_both = df[df['branch_id'].isin(branch_periods[(branch_periods['min']==0) & (branch_periods['max']==1)]['branch_id'])]
+print(f"\n\nUsing only branches with data in both periods: {df_both['branch_id'].nunique()} branches, {len(df_both)} observations")
+
+model_fe_both = ols('service_score ~ switched_branch * after_switch + C(branch_id)', data=df_both).fit()
+cluster_robust_fe = model_fe_both.get_robustcov_results(cov_type='cluster', groups=df_both['branch_id'])
+
+print("\nDiD with Branch Fixed Effects (branches with both periods only):")
+print(f"Interaction coefficient: {model_fe_both.params['switched_branch:after_switch']:.4f}")
+print(f"Cluster-robust SE: {cluster_robust_fe.bse['switched_branch:after_switch']:.4f}")
+print(f"P-value: {cluster_robust_fe.pvalues['switched_branch:after_switch']:.4f}")
+print(f"95% CI: [{cluster_robust_fe.conf_int().loc['switched_branch:after_switch'][0]:.4f}, {cluster_robust_fe.conf_int().loc['switched_branch:after_switch'][1]:.4f}]")
+
+# Pre-treatment trend test again
+pre_data = df[df['week'] < 15].copy()
+pre_trend_model = ols('service_score ~ week * switched_branch', data=pre_data).fit()
+print("\n\nPre-treatment parallel trends test:")
+print(f"Week:switched_branch coefficient: {pre_trend_model.params['week:switched_branch']:.4f}")
+print(f"P-value: {pre_trend_model.pvalues['week:switched_branch']:.4f}")
+print("Interpretation: Not significant (p>0.05) suggests parallel trends hold")
+--- printed ---
+Simple DiD Regression with Cluster-Robust SEs:
+Interaction coefficient (switched_branch:after_switch): 1.7946
+
+Traceback (most recent call last):
+  File "<stdin>", line 15, in <module>
+IndexError: only integers, slices (`:`), ellipsis (`...`), numpy.newaxis (`None`) and integer or boolean arrays are valid indices
+
+
+=== Code run in turn 2, call 7 of 10 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Simple DiD regression (no fixed effects) with cluster-robust SEs
+model_simple = ols('service_score ~ switched_branch * after_switch', data=df).fit()
+cluster_robust_simple = model_simple.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+
+print("Simple DiD Regression with Cluster-Robust SEs:")
+print(f"Interaction coefficient (switched_branch:after_switch): {model_simple.params['switched_branch:after_switch']:.4f}")
+print(f"Cluster-robust SE: {cluster_robust_simple.bse['switched_branch:after_switch']:.4f}")
+print(f"T-statistic: {cluster_robust_simple.tvalues['switched_branch:after_switch']:.4f}")
+print(f"P-value: {cluster_robust_simple.pvalues['switched_branch:after_switch']:.4f}")
+
+# Get confidence interval differently
+coef = model_simple.params['switched_branch:after_switch']
+se = cluster_robust_simple.bse['switched_branch:after_switch']
+ci_lower = coef - 1.96 * se
+ci_upper = coef + 1.96 * se
+print(f"95% CI: [{ci_lower:.4f}, {ci_upper:.4f}]")
+
+# Check branch coverage in both periods
+print("\n\nBranch coverage check:")
+branch_periods = df.groupby('branch_id')['after_switch'].agg(['min', 'max']).reset_index()
+print("Branches with data in both periods (min=0, max=1):", ((branch_periods['min']==0) & (branch_periods['max']==1)).sum())
+print("Branches only in pre-period (min=0, max=0):", ((branch_periods['min']==0) & (branch_periods['max']==0)).sum())
+print("Branches only in post-period (min=1, max=1):", ((branch_periods['min']==1) & (branch_periods['max']==1)).sum())
+
+# Try fixed effects with only branches that have both periods
+df_both = df[df['branch_id'].isin(branch_periods[(branch_periods['min']==0) & (branch_periods['max']==1)]['branch_id'])]
+print(f"\n\nUsing only branches with data in both periods: {df_both['branch_id'].nunique()} branches, {len(df_both)} observations")
+
+model_fe_both = ols('service_score ~ switched_branch * after_switch + C(branch_id)', data=df_both).fit()
+cluster_robust_fe = model_fe_both.get_robustcov_results(cov_type='cluster', groups=df_both['branch_id'])
+
+print("\nDiD with Branch Fixed Effects (branches with both periods only):")
+print(f"Interaction coefficient: {model_fe_both.params['switched_branch:after_switch']:.4f}")
+print(f"Cluster-robust SE: {cluster_robust_fe.bse['switched_branch:after_switch']:.4f}")
+print(f"P-value: {cluster_robust_fe.pvalues['switched_branch:after_switch']:.4f}")
+coef_fe = model_fe_both.params['switched_branch:after_switch']
+se_fe = cluster_robust_fe.bse['switched_branch:after_switch']
+print(f"95% CI: [{coef_fe - 1.96*se_fe:.4f}, {coef_fe + 1.96*se_fe:.4f}]")
+
+# Pre-treatment trend test again
+pre_data = df[df['week'] < 15].copy()
+pre_trend_model = ols('service_score ~ week * switched_branch', data=pre_data).fit()
+print("\n\nPre-treatment parallel trends test:")
+print(f"Week:switched_branch coefficient: {pre_trend_model.params['week:switched_branch']:.4f}")
+print(f"P-value: {pre_trend_model.pvalues['week:switched_branch']:.4f}")
+print("Interpretation: Not significant (p>0.05) suggests parallel trends hold")
+
+# Also check staffing and visits
+print("\n\nChecking other outcomes (to see if effect is specific to service_score):")
+staffing_model = ols('staffing_index ~ switched_branch * after_switch', data=df).fit()
+staffing_robust = staffing_model.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print(f"Staffing index DiD: {staffing_model.params['switched_branch:after_switch']:.4f}, p={staffing_robust.pvalues['switched_branch:after_switch']:.4f}")
+
+visits_model = ols('visits_index ~ switched_branch * after_switch', data=df).fit()
+visits_robust = visits_model.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print(f"Visits index DiD: {visits_model.params['switched_branch:after_switch']:.4f}, p={visits_robust.pvalues['switched_branch:after_switch']:.4f}")
+--- printed ---
+Simple DiD Regression with Cluster-Robust SEs:
+Interaction coefficient (switched_branch:after_switch): 1.7946
+
+Traceback (most recent call last):
+  File "<stdin>", line 15, in <module>
+IndexError: only integers, slices (`:`), ellipsis (`...`), numpy.newaxis (`None`) and integer or boolean arrays are valid indices
+
+
+=== Code run in turn 2, call 8 of 10 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Simple DiD regression (no fixed effects) with cluster-robust SEs
+model_simple = ols('service_score ~ switched_branch * after_switch', data=df).fit()
+cluster_robust_simple = model_simple.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+
+print("Type of bse:", type(cluster_robust_simple.bse))
+print("bse values:", cluster_robust_simple.bse)
+print("params:", cluster_robust_simple.params)
+print("pvalues:", cluster_robust_simple.pvalues)
+
+# Access the interaction term
+print("\nInteraction term stats:")
+print("coef:", cluster_robust_simple.params['switched_branch:after_switch'])
+print("se:", cluster_robust_simple.bse['switched_branch:after_switch'])
+print("pvalue:", cluster_robust_simple.pvalues['switched_branch:after_switch'])
+--- printed ---
+Type of bse: <class 'numpy.ndarray'>
+bse values: [1.15259873 1.43069784 0.45969144 0.58174729]
+params: [51.88620022 -0.6888668  -0.63200371  1.79459003]
+pvalues: [1.21333028e-88 6.30874626e-01 1.71243975e-01 2.42825275e-03]
+
+Interaction term stats:
+
+Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+IndexError: only integers, slices (`:`), ellipsis (`...`), numpy.newaxis (`None`) and integer or boolean arrays are valid indices
+
+
+=== Code run in turn 2, call 9 of 10 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Simple DiD regression (no fixed effects) with cluster-robust SEs
+model_simple = ols('service_score ~ switched_branch * after_switch', data=df).fit()
+cluster_robust_simple = model_simple.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+
+print("Simple DiD Regression with Cluster-Robust SEs:")
+# The interaction term is at index 3 (Intercept, switched_branch, after_switch, switched_branch:after_switch)
+coef = cluster_robust_simple.params[3]
+se = cluster_robust_simple.bse[3]
+pval = cluster_robust_simple.pvalues[3]
+print(f"Interaction coefficient (switched_branch:after_switch): {coef:.4f}")
+print(f"Cluster-robust SE: {se:.4f}")
+print(f"T-statistic: {coef/se:.4f}")
+print(f"P-value: {pval:.4f}")
+print(f"95% CI: [{coef - 1.96*se:.4f}, {coef + 1.96*se:.4f}]")
+
+# Check branch coverage in both periods
+print("\n\nBranch coverage check:")
+branch_periods = df.groupby('branch_id')['after_switch'].agg(['min', 'max']).reset_index()
+print("Branches with data in both periods (min=0, max=1):", ((branch_periods['min']==0) & (branch_periods['max']==1)).sum())
+print("Branches only in pre-period (min=0, max=0):", ((branch_periods['min']==0) & (branch_periods['max']==0)).sum())
+print("Branches only in post-period (min=1, max=1):", ((branch_periods['min']==1) & (branch_periods['max']==1)).sum())
+
+# Try fixed effects with only branches that have both periods
+df_both = df[df['branch_id'].isin(branch_periods[(branch_periods['min']==0) & (branch_periods['max']==1)]['branch_id'])]
+print(f"\n\nUsing only branches with data in both periods: {df_both['branch_id'].nunique()} branches, {len(df_both)} observations")
+
+model_fe_both = ols('service_score ~ switched_branch * after_switch + C(branch_id)', data=df_both).fit()
+cluster_robust_fe = model_fe_both.get_robustcov_results(cov_type='cluster', groups=df_both['branch_id'])
+
+print("\nDiD with Branch Fixed Effects (branches with both periods only):")
+# Find the interaction term in params
+param_names = model_fe_both.params.index.tolist()
+print("Parameter names (last few):", param_names[-5:])
+# The interaction should be 'switched_branch:after_switch'
+idx = param_names.index('switched_branch:after_switch')
+coef_fe = cluster_robust_fe.params[idx]
+se_fe = cluster_robust_fe.bse[idx]
+pval_fe = cluster_robust_fe.pvalues[idx]
+print(f"Interaction coefficient: {coef_fe:.4f}")
+print(f"Cluster-robust SE: {se_fe:.4f}")
+print(f"P-value: {pval_fe:.4f}")
+print(f"95% CI: [{coef_fe - 1.96*se_fe:.4f}, {coef_fe + 1.96*se_fe:.4f}]")
+
+# Pre-treatment trend test
+pre_data = df[df['week'] < 15].copy()
+pre_trend_model = ols('service_score ~ week * switched_branch', data=pre_data).fit()
+print("\n\nPre-treatment parallel trends test:")
+print(f"Week:switched_branch coefficient: {pre_trend_model.params['week:switched_branch']:.4f}")
+print(f"P-value: {pre_trend_model.pvalues['week:switched_branch']:.4f}")
+print("Interpretation: Not significant (p>0.05) suggests parallel trends assumption holds")
+
+# Also check staffing and visits
+print("\n\nChecking other outcomes (to see if effect is specific to service_score):")
+staffing_model = ols('staffing_index ~ switched_branch * after_switch', data=df).fit()
+staffing_robust = staffing_model.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+coef_staff = staffing_robust.params[3]
+pval_staff = staffing_robust.pvalues[3]
+print(f"Staffing index DiD: {coef_staff:.4f}, p={pval_staff:.4f}")
+
+visits_model = ols('visits_index ~ switched_branch * after_switch', data=df).fit()
+visits_robust = visits_model.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+coef_visits = visits_robust.params[3]
+pval_visits = visits_robust.pvalues[3]
+print(f"Visits index DiD: {coef_visits:.4f}, p={pval_visits:.4f}")
+
+# Effect size
+baseline = df['service_score'].mean()
+print(f"\n\nEffect size interpretation:")
+print(f"Baseline average service score: {baseline:.2f}")
+print(f"Estimated effect: {coef:.2f} points ({100*coef/baseline:.1f}% increase)")
+--- printed ---
+Simple DiD Regression with Cluster-Robust SEs:
+Interaction coefficient (switched_branch:after_switch): 1.7946
+Cluster-robust SE: 0.5817
+T-statistic: 3.0848
+P-value: 0.0024
+95% CI: [0.6544, 2.9348]
+
+
+Branch coverage check:
+Branches with data in both periods (min=0, max=1): 150
+Branches only in pre-period (min=0, max=0): 0
+Branches only in post-period (min=1, max=1): 0
+
+
+Using only branches with data in both periods: 150 branches, 2550 observations
+
+DiD with Branch Fixed Effects (branches with both periods only):
+Parameter names (last few): ['C(branch_id)[T.148]', 'C(branch_id)[T.149]', 'switched_branch', 'after_switch', 'switched_branch:after_switch']
+Interaction coefficient: 1.7931
+Cluster-robust SE: 47.9037
+P-value: 0.9702
+95% CI: [-92.0981, 95.6844]
+
+
+Pre-treatment parallel trends test:
+Week:switched_branch coefficient: 0.0211
+P-value: 0.9203
+Interpretation: Not significant (p>0.05) suggests parallel trends assumption holds
+
+
+Checking other outcomes (to see if effect is specific to service_score):
+Staffing index DiD: 0.0100, p=0.9000
+Visits index DiD: 0.0099, p=0.8997
+
+
+Effect size interpretation:
+Baseline average service score: 51.68
+Estimated effect: 1.79 points (3.5% increase)
+
+<stdin>:35: SingularMatrixWarning: The design matrix is rank-deficient. The model parameters are not uniquely determined.
+/usr/local/lib/python3.11/site-packages/statsmodels/regression/linear_model.py:2121: RuntimeWarning: invalid value encountered in sqrt
+  return np.sqrt(np.diag(self.cov_params()))
+
+
+=== Code run in turn 2, call 10 of 10 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Create a visualization of the DiD
+# Average service score by week and group
+weekly_avg = df.groupby(['week', 'switched_branch'])['service_score'].mean().reset_index()
+weekly_avg['group'] = weekly_avg['switched_branch'].map({0: 'Control (Old Procedure)', 1: 'Treatment (New Procedure)'})
+
+# Create the plot
+fig, ax = plt.subplots(figsize=(10, 6))
+
+# Plot the two groups
+for group in [0, 1]:
+    subset = weekly_avg[weekly_avg['switched_branch'] == group]
+    label = 'Treatment (New Procedure)' if group == 1 else 'Control (Old Procedure)'
+    color = '#2E86AB' if group == 1 else '#A23B72'
+    ax.plot(subset['week'], subset['service_score'], marker='o', linewidth=2.5, markersize=6, 
+            label=label, color=color)
+
+# Add vertical line at switch point
+ax.axvline(x=14.5, color='gray', linestyle='--', linewidth=2, label='Switch implemented')
+
+# Add shading for post-period
+ax.axvspan(14.5, 22, alpha=0.15, color='gray', label='Post-switch period')
+
+ax.set_xlabel('Week', fontsize=12)
+ax.set_ylabel('Average Service Score', fontsize=12)
+ax.set_title('Service Scores by Branch Group Over Time', fontsize=14, fontweight='bold')
+ax.legend(loc='upper left', fontsize=10)
+ax.set_xticks(range(6, 23))
+ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('did_plot.png', dpi=150, bbox_inches='tight')
+print("Plot saved as did_plot.png")
+
+# Also create a summary table
+print("\n\n=== SUMMARY TABLE ===")
+print("\nAverage Service Scores by Group and Period:")
+summary = df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std']).round(2)
+summary.columns = ['Mean Score', 'Std Dev']
+summary.index = summary.index.set_names(['Group', 'Period'])
+summary = summary.reset_index()
+summary['Group'] = summary['Group'].map({0: 'Control (Old)', 1: 'Treatment (New)'})
+summary['Period'] = summary['Period'].map({0: 'Pre-switch (weeks 6-14)', 1: 'Post-switch (weeks 15-22)'})
+print(summary.to_string(index=False))
+
+print("\n\nDifference-in-Differences Estimate:")
+print(f"  Treatment change: +1.16 points")
+print(f"  Control change: -0.63 points")
+print(f"  Net effect (DiD): +1.79 points")
+print(f"  95% Confidence Interval: [0.65, 2.93]")
+print(f"  P-value: 0.0024")
+--- printed ---
+Plot saved as did_plot.png
+
+
+=== SUMMARY TABLE ===
+
+Average Service Scores by Group and Period:
+          Group                    Period  Mean Score  Std Dev
+  Control (Old)   Pre-switch (weeks 6-14)       51.89    10.14
+  Control (Old) Post-switch (weeks 15-22)       51.25     9.42
+Treatment (New)   Pre-switch (weeks 6-14)       51.20     9.60
+Treatment (New) Post-switch (weeks 15-22)       52.36     9.96
+
+
+Difference-in-Differences Estimate:
+  Treatment change: +1.16 points
+  Control change: -0.63 points
+  Net effect (DiD): +1.79 points
+  95% Confidence Interval: [0.65, 2.93]
+  P-value: 0.0024
+
+
+--- files saved in turn 2: did_plot.png ---
+
+=== Code run in turn 6, call 1 of 6 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Key issue: In DiD with panel data, the proper FE specification absorbs switched_branch
+# Let's run the correct specification: branch FE + time FE + interaction only
+
+# Model 1: Simple DiD (already done)
+model1 = ols('service_score ~ switched_branch * after_switch', data=df).fit()
+robust1 = model1.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("=== Model 1: Simple DiD ===")
+print(f"DiD coefficient: {robust1.params[3]:.4f}")
+print(f"SE: {robust1.bse[3]:.4f}")
+print(f"P-value: {robust1.pvalues[3]:.4f}")
+print(f"95% CI: [{robust1.params[3] - 1.96*robust1.bse[3]:.4f}, {robust1.params[3] + 1.96*robust1.bse[3]:.4f}]")
+
+# Model 2: Branch FE + Time FE (absorbs switched_branch and after_switch main effects)
+model2 = ols('service_score ~ switched_branch:after_switch + C(branch_id) + C(week)', data=df).fit()
+robust2 = model2.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n=== Model 2: Branch + Time Fixed Effects ===")
+print(f"DiD coefficient: {robust2.params['switched_branch:after_switch']:.4f}")
+print(f"SE: {robust2.bse['switched_branch:after_switch']:.4f}")
+print(f"P-value: {robust2.pvalues['switched_branch:after_switch']:.4f}")
+print(f"95% CI: [{robust2.params['switched_branch:after_switch'] - 1.96*robust2.bse['switched_branch:after_switch']:.4f}, {robust2.params['switched_branch:after_switch'] + 1.96*robust2.bse['switched_branch:after_switch']:.4f}]")
+
+# Model 3: Branch FE only (absorbs switched_branch)
+model3 = ols('service_score ~ after_switch + switched_branch:after_switch + C(branch_id)', data=df).fit()
+robust3 = model3.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n=== Model 3: Branch FE Only ===")
+print(f"DiD coefficient: {robust3.params['switched_branch:after_switch']:.4f}")
+print(f"SE: {robust3.bse['switched_branch:after_switch']:.4f}")
+print(f"P-value: {robust3.pvalues['switched_branch:after_switch']:.4f}")
+
+# Check for any time-varying confounders
+print("\n=== Checking Time Trends by Group ===")
+trend_check = ols('service_score ~ C(week) * switched_branch', data=df).fit()
+print(f"Week:Treatment interaction p-value: {trend_check.pvalues['C(week)[T.15]:switched_branch'] if 'C(week)[T.15]:switched_branch' in trend_check.pvalues.index else 'N/A'}")
+
+# Let's also do a simple permutation/placebo test
+print("\n=== Placebo Test (fake switch at week 10) ===")
+df['after_placebo'] = (df['week'] >= 10).astype(int)
+placebo_model = ols('service_score ~ switched_branch * after_placebo', data=df).fit()
+placebo_robust = placebo_model.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print(f"Placebo DiD coefficient: {placebo_robust.params[3]:.4f}, p={placebo_robust.pvalues[3]:.4f}")
+--- printed ---
+=== Model 1: Simple DiD ===
+DiD coefficient: 1.7946
+SE: 0.5817
+P-value: 0.0024
+95% CI: [0.6544, 2.9348]
+
+=== Model 2: Branch + Time Fixed Effects ===
+
+Traceback (most recent call last):
+  File "<stdin>", line 24, in <module>
+IndexError: only integers, slices (`:`), ellipsis (`...`), numpy.newaxis (`None`) and integer or boolean arrays are valid indices
+
+
+=== Code run in turn 6, call 2 of 6 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Model 1: Simple DiD
+model1 = ols('service_score ~ switched_branch * after_switch', data=df).fit()
+robust1 = model1.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("=== Model 1: Simple DiD ===")
+print(f"DiD coefficient: {robust1.params[3]:.4f}")
+print(f"SE: {robust1.bse[3]:.4f}")
+print(f"P-value: {robust1.pvalues[3]:.4f}")
+
+# Model 2: Branch + Time Fixed Effects
+model2 = ols('service_score ~ switched_branch:after_switch + C(branch_id) + C(week)', data=df).fit()
+robust2 = model2.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n=== Model 2: Branch + Time Fixed Effects ===")
+coef2 = robust2.params['switched_branch:after_switch']
+se2 = robust2.bse['switched_branch:after_switch']
+pval2 = robust2.pvalues['switched_branch:after_switch']
+print(f"DiD coefficient: {coef2:.4f}")
+print(f"SE: {se2:.4f}")
+print(f"P-value: {pval2:.4f}")
+print(f"95% CI: [{coef2 - 1.96*se2:.4f}, {coef2 + 1.96*se2:.4f}]")
+
+# Model 3: Branch FE only
+model3 = ols('service_score ~ after_switch + switched_branch:after_switch + C(branch_id)', data=df).fit()
+robust3 = model3.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n=== Model 3: Branch FE Only ===")
+coef3 = robust3.params['switched_branch:after_switch']
+se3 = robust3.bse['switched_branch:after_switch']
+pval3 = robust3.pvalues['switched_branch:after_switch']
+print(f"DiD coefficient: {coef3:.4f}")
+print(f"SE: {se3:.4f}")
+print(f"P-value: {pval3:.4f}")
+
+# Placebo test
+df['after_placebo'] = (df['week'] >= 10).astype(int)
+placebo_model = ols('service_score ~ switched_branch * after_placebo', data=df).fit()
+placebo_robust = placebo_model.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n=== Placebo Test (fake switch at week 10) ===")
+print(f"Placebo DiD: {placebo_robust.params[3]:.4f}, p={placebo_robust.pvalues[3]:.4f}")
+
+# Pre-trends test (already did this but let's confirm)
+pre_data = df[df['week'] < 15].copy()
+pre_trend = ols('service_score ~ week * switched_branch', data=pre_data).fit()
+print("\n=== Pre-Trends Test ===")
+print(f"Week:Treatment interaction p-value: {pre_trend.pvalues['week:switched_branch']:.4f}")
+--- printed ---
+=== Model 1: Simple DiD ===
+DiD coefficient: 1.7946
+SE: 0.5817
+P-value: 0.0024
+
+=== Model 2: Branch + Time Fixed Effects ===
+
+Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+IndexError: only integers, slices (`:`), ellipsis (`...`), numpy.newaxis (`None`) and integer or boolean arrays are valid indices
+
+
+=== Code run in turn 6, call 3 of 6 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Model 2: Branch + Time Fixed Effects
+model2 = ols('service_score ~ switched_branch:after_switch + C(branch_id) + C(week)', data=df).fit()
+robust2 = model2.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+
+print("=== Model 2: Branch + Time Fixed Effects ===")
+print("Parameter names containing 'switched':")
+for i, name in enumerate(robust2.params.index):
+    if 'switched' in name:
+        print(f"  Index {i}: {name} = {robust2.params[i]:.4f}, SE={robust2.bse[i]:.4f}, p={robust2.pvalues[i]:.4f}")
+
+# Model 3: Branch FE only
+model3 = ols('service_score ~ after_switch + switched_branch:after_switch + C(branch_id)', data=df).fit()
+robust3 = model3.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n=== Model 3: Branch FE Only ===")
+for i, name in enumerate(robust3.params.index):
+    if 'switched' in name or 'after' in name:
+        print(f"  {name}: coef={robust3.params[i]:.4f}, SE={robust3.bse[i]:.4f}, p={robust3.pvalues[i]:.4f}")
+
+# Model 1 again for comparison
+model1 = ols('service_score ~ switched_branch * after_switch', data=df).fit()
+robust1 = model1.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n=== Model 1: Simple DiD (for comparison) ===")
+print(f"  switched_branch:after_switch: coef={robust1.params[3]:.4f}, SE={robust1.bse[3]:.4f}, p={robust1.pvalues[3]:.4f}")
+--- printed ---
+=== Model 2: Branch + Time Fixed Effects ===
+Parameter names containing 'switched':
+
+Traceback (most recent call last):
+  File "<stdin>", line 14, in <module>
+AttributeError: 'numpy.ndarray' object has no attribute 'index'
+
+
+=== Code run in turn 6, call 4 of 6 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Model 2: Branch + Time Fixed Effects
+model2 = ols('service_score ~ switched_branch:after_switch + C(branch_id) + C(week)', data=df).fit()
+
+# Get the interaction term from the original model params
+print("=== Model 2: Branch + Time Fixed Effects ===")
+print("Looking for interaction term in model params...")
+for name in model2.params.index:
+    if 'switched' in name and 'after' in name:
+        idx = list(model2.params.index).index(name)
+        print(f"  {name}: coef={model2.params[idx]:.4f}")
+
+# Get cluster-robust results
+robust2 = model2.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+# Find the interaction term index
+for i, name in enumerate(model2.params.index):
+    if 'switched' in name and 'after' in name:
+        print(f"  SE={robust2.bse[i]:.4f}, p={robust2.pvalues[i]:.4f}")
+        print(f"  95% CI: [{model2.params[i] - 1.96*robust2.bse[i]:.4f}, {model2.params[i] + 1.96*robust2.bse[i]:.4f}]")
+
+# Model 3: Branch FE only
+model3 = ols('service_score ~ after_switch + switched_branch:after_switch + C(branch_id)', data=df).fit()
+print("\n=== Model 3: Branch FE Only ===")
+for i, name in enumerate(model3.params.index):
+    if 'switched' in name and 'after' in name:
+        robust3 = model3.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+        print(f"  {name}: coef={model3.params[i]:.4f}, SE={robust3.bse[i]:.4f}, p={robust3.pvalues[i]:.4f}")
+
+# Model 1: Simple DiD
+model1 = ols('service_score ~ switched_branch * after_switch', data=df).fit()
+robust1 = model1.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n=== Model 1: Simple DiD ===")
+print(f"  switched_branch:after_switch: coef={model1.params[3]:.4f}, SE={robust1.bse[3]:.4f}, p={robust1.pvalues[3]:.4f}")
+
+# Summary comparison
+print("\n=== SUMMARY ACROSS MODELS ===")
+print("All models show the DiD interaction term (switched_branch × after_switch)")
+print("Model 1 (Simple): ~1.79 points, p=0.002")
+print("Model 2 (Branch+Time FE): Need to check")
+print("Model 3 (Branch FE): Need to check")
+--- printed ---
+=== Model 2: Branch + Time Fixed Effects ===
+Looking for interaction term in model params...
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/indexes/base.py", line 3816, in get_loc
+    return self._engine.get_loc(casted_key)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "pandas/_libs/index.pyx", line 172, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 180, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 671, in pandas._libs.index.StringObjectEngine._check_type
+KeyError: 166
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<stdin>", line 17, in <module>
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/series.py", line 1102, in __getitem__
+    return self._get_value(key)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/series.py", line 1189, in _get_value
+    loc = self.index.get_loc(label)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/indexes/base.py", line 3823, in get_loc
+    raise KeyError(key) from err
+KeyError: 166
+
+
+=== Code run in turn 6, call 5 of 6 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Model 1: Simple DiD
+model1 = ols('service_score ~ switched_branch * after_switch', data=df).fit()
+robust1 = model1.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("=== Model 1: Simple DiD ===")
+print(f"DiD coefficient: {model1.params[3]:.4f}, SE: {robust1.bse[3]:.4f}, p: {robust1.pvalues[3]:.4f}")
+
+# Model 2: Branch + Time Fixed Effects
+model2 = ols('service_score ~ switched_branch:after_switch + C(branch_id) + C(week)', data=df).fit()
+robust2 = model2.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n=== Model 2: Branch + Time Fixed Effects ===")
+# The interaction term should be the first parameter
+print(f"DiD coefficient: {model2.params[0]:.4f}, SE: {robust2.bse[0]:.4f}, p: {robust2.pvalues[0]:.4f}")
+
+# Model 3: Branch FE only (after_switch + interaction + branch FE)
+model3 = ols('service_score ~ after_switch + switched_branch:after_switch + C(branch_id)', data=df).fit()
+robust3 = model3.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n=== Model 3: Branch FE Only ===")
+# Find the interaction term
+for i, name in enumerate(model3.params.index):
+    if 'switched_branch:after_switch' in name:
+        print(f"DiD coefficient: {model3.params[i]:.4f}, SE: {robust3.bse[i]:.4f}, p: {robust3.pvalues[i]:.4f}")
+
+# Pre-trends
+pre_data = df[df['week'] < 15].copy()
+pre_trend = ols('service_score ~ week * switched_branch', data=pre_data).fit()
+print("\n=== Pre-Trends Test ===")
+print(f"Parallel trends p-value: {pre_trend.pvalues['week:switched_branch']:.4f}")
+
+# Placebo test
+df['after_placebo'] = (df['week'] >= 10).astype(int)
+placebo_model = ols('service_score ~ switched_branch * after_placebo', data=df).fit()
+placebo_robust = placebo_model.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n=== Placebo Test (fake switch week 10) ===")
+print(f"Placebo DiD: {placebo_model.params[3]:.4f}, p: {placebo_robust.pvalues[3]:.4f}")
+--- printed ---
+=== Model 1: Simple DiD ===
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/indexes/base.py", line 3816, in get_loc
+    return self._engine.get_loc(casted_key)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "pandas/_libs/index.pyx", line 172, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 180, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 671, in pandas._libs.index.StringObjectEngine._check_type
+KeyError: 3
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<stdin>", line 12, in <module>
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/series.py", line 1102, in __getitem__
+    return self._get_value(key)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/series.py", line 1189, in _get_value
+    loc = self.index.get_loc(label)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/indexes/base.py", line 3823, in get_loc
+    raise KeyError(key) from err
+KeyError: 3
+
+
+=== Code run in turn 6, call 6 of 6 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Model 1: Simple DiD
+model1 = ols('service_score ~ switched_branch * after_switch', data=df).fit()
+robust1 = model1.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("=== Model 1: Simple DiD ===")
+print("Params index:", model1.params.index.tolist())
+coef1 = model1.params['switched_branch:after_switch']
+se1 = robust1.bse[model1.params.index.get_loc('switched_branch:after_switch')]
+pval1 = robust1.pvalues[model1.params.index.get_loc('switched_branch:after_switch')]
+print(f"DiD coefficient: {coef1:.4f}, SE: {se1:.4f}, p: {pval1:.4f}")
+print(f"95% CI: [{coef1 - 1.96*se1:.4f}, {coef1 + 1.96*se1:.4f}]")
+
+# Model 2: Branch + Time Fixed Effects
+model2 = ols('service_score ~ switched_branch:after_switch + C(branch_id) + C(week)', data=df).fit()
+robust2 = model2.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n=== Model 2: Branch + Time Fixed Effects ===")
+coef2 = model2.params['switched_branch:after_switch']
+idx2 = model2.params.index.get_loc('switched_branch:after_switch')
+se2 = robust2.bse[idx2]
+pval2 = robust2.pvalues[idx2]
+print(f"DiD coefficient: {coef2:.4f}, SE: {se2:.4f}, p: {pval2:.4f}")
+print(f"95% CI: [{coef2 - 1.96*se2:.4f}, {coef2 + 1.96*se2:.4f}]")
+
+# Model 3: Branch FE only
+model3 = ols('service_score ~ after_switch + switched_branch:after_switch + C(branch_id)', data=df).fit()
+robust3 = model3.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n=== Model 3: Branch FE Only ===")
+coef3 = model3.params['switched_branch:after_switch']
+idx3 = model3.params.index.get_loc('switched_branch:after_switch')
+se3 = robust3.bse[idx3]
+pval3 = robust3.pvalues[idx3]
+print(f"DiD coefficient: {coef3:.4f}, SE: {se3:.4f}, p: {pval3:.4f}")
+print(f"95% CI: [{coef3 - 1.96*se3:.4f}, {coef3 + 1.96*se3:.4f}]")
+
+# Pre-trends
+pre_data = df[df['week'] < 15].copy()
+pre_trend = ols('service_score ~ week * switched_branch', data=pre_data).fit()
+print("\n=== Pre-Trends Test ===")
+print(f"Parallel trends p-value: {pre_trend.pvalues['week:switched_branch']:.4f}")
+
+# Placebo test
+df['after_placebo'] = (df['week'] >= 10).astype(int)
+placebo_model = ols('service_score ~ switched_branch * after_placebo', data=df).fit()
+placebo_robust = placebo_model.get_robustcov_results(cov_type='cluster', groups=df['branch_id'])
+print("\n=== Placebo Test (fake switch week 10) ===")
+coef_p = placebo_model.params['switched_branch:after_placebo']
+idx_p = placebo_model.params.index.get_loc('switched_branch:after_placebo')
+print(f"Placebo DiD: {coef_p:.4f}, p: {placebo_robust.pvalues[idx_p]:.4f}")
+--- printed ---
+=== Model 1: Simple DiD ===
+Params index: ['Intercept', 'switched_branch', 'after_switch', 'switched_branch:after_switch']
+DiD coefficient: 1.7946, SE: 0.5817, p: 0.0024
+95% CI: [0.6544, 2.9348]
+
+=== Model 2: Branch + Time Fixed Effects ===
+DiD coefficient: 1.7946, SE: 0.6013, p: 0.0033
+95% CI: [0.6160, 2.9732]
+
+=== Model 3: Branch FE Only ===
+DiD coefficient: 1.7946, SE: 0.5994, p: 0.0032
+95% CI: [0.6197, 2.9695]
+
+=== Pre-Trends Test ===
+Parallel trends p-value: 0.9203
+
+=== Placebo Test (fake switch week 10) ===
+Placebo DiD: 1.0111, p: 0.1233
+
+
+(No code was run in turn 8.)

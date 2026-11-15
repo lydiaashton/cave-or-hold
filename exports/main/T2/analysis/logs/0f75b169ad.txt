@@ -1,0 +1,764 @@
+Summary ID: 0f75b169ad
+
+=== Code run in turn 2, call 1 of 7 ===
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Basic exploration
+print("Shape:", df.shape)
+print("\nColumns:", df.columns.tolist())
+print("\nFirst few rows:")
+print(df.head(10))
+print("\nData types:")
+print(df.dtypes)
+print("\nSummary statistics:")
+print(df.describe())
+print("\nValue counts for switched_branch:")
+print(df['switched_branch'].value_counts())
+print("\nValue counts for after_switch:")
+print(df['after_switch'].value_counts())
+print("\nWeek range:")
+print(df['week'].min(), "to", df['week'].max())
+print("\nNumber of unique branches:")
+print(df['branch_id'].nunique())
+--- printed ---
+Shape: (578, 7)
+
+Columns: ['branch_id', 'week', 'switched_branch', 'after_switch', 'service_score', 'staffing_index', 'visits_index']
+
+First few rows:
+   branch_id  week  ...  staffing_index  visits_index
+0          0     6  ...       -0.308202      2.389534
+1          0     7  ...        0.621256     -0.261540
+2          0     8  ...       -1.217556     -1.079912
+3          0     9  ...       -1.088737      1.002654
+4          0    10  ...        0.181826      0.625496
+5          0    11  ...        0.404345     -0.313221
+6          0    12  ...       -0.872543     -0.699193
+7          0    13  ...        0.342078      1.309662
+8          0    14  ...       -0.878078      0.609087
+9          0    15  ...       -0.390701      0.442457
+
+[10 rows x 7 columns]
+
+Data types:
+branch_id            int64
+week                 int64
+switched_branch      int64
+after_switch         int64
+service_score      float64
+staffing_index     float64
+visits_index       float64
+dtype: object
+
+Summary statistics:
+        branch_id        week  ...  staffing_index  visits_index
+count  578.000000  578.000000  ...      578.000000    578.000000
+mean    16.500000   14.000000  ...       -0.075068     -0.060718
+std      9.819206    4.903223  ...        0.976309      1.021818
+min      0.000000    6.000000  ...       -3.229739     -3.060163
+25%      8.000000   10.000000  ...       -0.717044     -0.765520
+50%     16.500000   14.000000  ...       -0.081711     -0.003382
+75%     25.000000   18.000000  ...        0.632741      0.653806
+max     33.000000   22.000000  ...        2.836216      2.736796
+
+[8 rows x 7 columns]
+
+Value counts for switched_branch:
+switched_branch
+1    340
+0    238
+Name: count, dtype: int64
+
+Value counts for after_switch:
+after_switch
+0    306
+1    272
+Name: count, dtype: int64
+
+Week range:
+6 to 22
+
+Number of unique branches:
+34
+
+
+=== Code run in turn 2, call 2 of 7 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create the DiD interaction term
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# Basic DiD: Calculate means for each group/period combination
+print("=" * 60)
+print("DIFFERENCE-IN-DIFFERENCES: SERVICE SCORE ANALYSIS")
+print("=" * 60)
+
+# Group means
+group_means = df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std', 'count'])
+print("\nGroup Means (service_score):")
+print(group_means)
+
+# Calculate DiD manually
+# Control group (switched_branch=0)
+control_before = df[(df['switched_branch'] == 0) & (df['after_switch'] == 0)]['service_score'].mean()
+control_after = df[(df['switched_branch'] == 0) & (df['after_switch'] == 1)]['service_score'].mean()
+control_change = control_after - control_before
+
+# Treatment group (switched_branch=1)
+treat_before = df[(df['switched_branch'] == 1) & (df['after_switch'] == 0)]['service_score'].mean()
+treat_after = df[(df['switched_branch'] == 1) & (df['after_switch'] == 1)]['service_score'].mean()
+treat_change = treat_after - treat_before
+
+# DiD estimate
+did_estimate = treat_change - control_change
+
+print("\n" + "=" * 60)
+print("MANUAL DiD CALCULATION:")
+print("=" * 60)
+print(f"Control group (old procedure):")
+print(f"  Before: {control_before:.2f}")
+print(f"  After:  {control_after:.2f}")
+print(f"  Change: {control_change:.2f}")
+print(f"\nTreatment group (new procedure):")
+print(f"  Before: {treat_before:.2f}")
+print(f"  After:  {treat_after:.2f}")
+print(f"  Change: {treat_change:.2f}")
+print(f"\nDiD Estimate (Treatment Change - Control Change): {did_estimate:.2f}")
+
+# Regression-based DiD
+print("\n" + "=" * 60)
+print("REGRESSION-BASED DiD:")
+print("=" * 60)
+
+# Simple DiD regression
+model1 = ols('service_score ~ switched_branch + after_switch + treatment', data=df).fit()
+print("\nModel 1: Simple DiD (no controls)")
+print(model1.summary().tables[1])
+
+# DiD with controls
+model2 = ols('service_score ~ switched_branch + after_switch + treatment + staffing_index + visits_index', data=df).fit()
+print("\nModel 2: DiD with staffing and visits controls")
+print(model2.summary().tables[1])
+
+# Clustered standard errors by branch
+print("\n" + "=" * 60)
+print("CLUSTERED STANDARD ERRORS (by branch):")
+print("=" * 60)
+
+from statsmodels.stats.sandwich_covariance import cov_cluster
+
+# Get the covariance matrix with clustering
+cov_clustered = cov_cluster(model2, df['branch_id'])
+se_clustered = np.sqrt(np.diag(cov_clustered))
+
+# Create a summary table
+coef_df = pd.DataFrame({
+    'Coefficient': model2.params,
+    'Std Error (Clustered)': se_clustered,
+    't-value': model2.params / se_clustered,
+    'P-value': [sm.stats.t.sf(abs(t), df['branch_id'].nunique() - 1) * 2 for t in model2.params / se_clustered]
+})
+print(coef_df.round(4))
+--- printed ---
+============================================================
+DIFFERENCE-IN-DIFFERENCES: SERVICE SCORE ANALYSIS
+============================================================
+
+Group Means (service_score):
+                                   mean        std  count
+switched_branch after_switch                             
+0               0             51.882114  10.691187    126
+                1             50.287591   9.971849    112
+1               0             52.203659   9.008386    180
+                1             52.472595   9.039684    160
+
+============================================================
+MANUAL DiD CALCULATION:
+============================================================
+Control group (old procedure):
+  Before: 51.88
+  After:  50.29
+  Change: -1.59
+
+Treatment group (new procedure):
+  Before: 52.20
+  After:  52.47
+  Change: 0.27
+
+DiD Estimate (Treatment Change - Control Change): 1.86
+
+============================================================
+REGRESSION-BASED DiD:
+============================================================
+
+Model 1: Simple DiD (no controls)
+===================================================================================
+                      coef    std err          t      P>|t|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          51.8821      0.855     60.696      0.000      50.203      53.561
+switched_branch     0.3215      1.115      0.289      0.773      -1.867       2.511
+after_switch       -1.5945      1.246     -1.280      0.201      -4.042       0.853
+treatment           1.8635      1.625      1.147      0.252      -1.328       5.054
+===================================================================================
+
+Model 2: DiD with staffing and visits controls
+===================================================================================
+                      coef    std err          t      P>|t|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          52.0414      0.855     60.887      0.000      50.363      53.720
+switched_branch     0.2414      1.111      0.217      0.828      -1.941       2.424
+after_switch       -1.7008      1.243     -1.368      0.172      -4.143       0.742
+treatment           1.9927      1.620      1.230      0.219      -1.189       5.175
+staffing_index      0.8093      0.409      1.980      0.048       0.007       1.612
+visits_index        0.6116      0.390      1.568      0.117      -0.154       1.377
+===================================================================================
+
+============================================================
+CLUSTERED STANDARD ERRORS (by branch):
+============================================================
+
+Traceback (most recent call last):
+  File "<stdin>", line 79, in <module>
+  File "<stdin>", line 79, in <listcomp>
+AttributeError: module 'statsmodels.stats.api' has no attribute 't'
+
+
+=== Code run in turn 2, call 3 of 7 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+from scipy import stats
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Create the DiD interaction term
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# Regression with clustered standard errors
+model = ols('service_score ~ switched_branch + after_switch + treatment + staffing_index + visits_index', data=df).fit()
+
+# Get clustered standard errors
+from statsmodels.stats.sandwich_covariance import cov_cluster
+cov_clustered = cov_cluster(model, df['branch_id'])
+se_clustered = np.sqrt(np.diag(cov_clustered))
+
+# Calculate p-values with clustered SEs
+n_clusters = df['branch_id'].nunique()
+df_clusters = n_clusters - 1
+
+t_values = model.params / se_clustered
+p_values = [stats.t.sf(abs(t), df_clusters) * 2 for t in t_values]
+
+# Create summary
+coef_df = pd.DataFrame({
+    'Coefficient': model.params,
+    'Std Error (Clustered)': se_clustered,
+    't-value': t_values,
+    'P-value': p_values,
+    '95% CI Lower': model.params - stats.t.ppf(0.975, df_clusters) * se_clustered,
+    '95% CI Upper': model.params + stats.t.ppf(0.975, df_clusters) * se_clustered
+})
+
+print("REGRESSION WITH CLUSTERED STANDARD ERRORS (by branch)")
+print("=" * 80)
+print(coef_df.round(4))
+
+# Check parallel trends: plot average service scores by week for treatment vs control
+print("\n" + "=" * 80)
+print("PARALLEL TRENDS CHECK: Average Service Score by Week")
+print("=" * 80)
+
+weekly_avg = df.groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+print(weekly_avg)
+
+# Create visualization
+fig, ax = plt.subplots(figsize=(10, 6))
+
+# Plot treatment and control trends
+weeks = weekly_avg.index
+control_scores = weekly_avg[0].values
+treat_scores = weekly_avg[1].values
+
+ax.plot(weeks, control_scores, 'o-', label='Control (Old Procedure)', linewidth=2, markersize=8)
+ax.plot(weeks, treat_scores, 's-', label='Treatment (New Procedure)', linewidth=2, markersize=8)
+
+# Mark the switch point
+ax.axvline(x=14.5, color='red', linestyle='--', linewidth=2, label='Switch Point (Week 15)')
+ax.axvspan(15, 22, alpha=0.2, color='green', label='After Switch')
+
+ax.set_xlabel('Week', fontsize=12)
+ax.set_ylabel('Average Service Score', fontsize=12)
+ax.set_title('Service Score Trends: Treatment vs Control Groups', fontsize=14, fontweight='bold')
+ax.legend(loc='best')
+ax.grid(True, alpha=0.3)
+ax.set_xticks(range(6, 23))
+
+plt.tight_layout()
+plt.savefig('service_score_trends.png', dpi=150)
+print("\nVisualization saved as 'service_score_trends.png'")
+
+# Pre-trend analysis (weeks 6-14 only)
+print("\n" + "=" * 80)
+print("PRE-TREND ANALYSIS (Weeks 6-14 only)")
+print("=" * 80)
+
+pre_df = df[df['week'] < 15].copy()
+pre_model = ols('service_score ~ week + switched_branch + week:switched_branch', data=pre_df).fit()
+print("\nTesting if trends were parallel before the switch:")
+print(pre_model.summary().tables[1])
+
+# Calculate the DiD effect size in practical terms
+did_effect = coef_df.loc['treatment', 'Coefficient']
+print("\n" + "=" * 80)
+print("PRACTICAL SIGNIFICANCE")
+print("=" * 80)
+print(f"DiD Estimate: {did_effect:.2f} points on service score")
+print(f"Baseline average service score: ~{df['service_score'].mean():.1f}")
+print(f"Effect as % of baseline: {(did_effect / df['service_score'].mean() * 100):.1f}%")
+--- printed ---
+REGRESSION WITH CLUSTERED STANDARD ERRORS (by branch)
+================================================================================
+                 Coefficient  ...  95% CI Upper
+Intercept            52.0414  ...       57.1305
+switched_branch       0.2414  ...        6.4042
+after_switch         -1.7008  ...       -0.1236
+treatment             1.9927  ...        4.4100
+staffing_index        0.8093  ...        1.3645
+visits_index          0.6116  ...        1.6656
+
+[6 rows x 6 columns]
+
+================================================================================
+PARALLEL TRENDS CHECK: Average Service Score by Week
+================================================================================
+switched_branch          0          1
+week                                 
+6                46.077928  49.451390
+7                51.738478  51.953938
+8                49.789552  51.334249
+9                57.473409  55.561848
+10               56.354695  56.284414
+11               48.979321  48.400408
+12               51.636693  51.808960
+13               53.769828  54.818271
+14               51.119121  50.219450
+15               47.981849  50.782852
+16               48.965194  51.786293
+17               49.552811  51.606332
+18               47.777999  50.007833
+19               50.712957  51.807286
+20               54.105325  56.295631
+21               51.196574  53.987584
+22               52.008017  53.506945
+
+Visualization saved as 'service_score_trends.png'
+
+================================================================================
+PRE-TREND ANALYSIS (Weeks 6-14 only)
+================================================================================
+
+Testing if trends were parallel before the switch:
+========================================================================================
+                           coef    std err          t      P>|t|      [0.025      0.975]
+----------------------------------------------------------------------------------------
+Intercept               48.3056      3.474     13.906      0.000      41.470      55.141
+week                     0.3577      0.336      1.063      0.288      -0.304       1.020
+switched_branch          2.9892      4.529      0.660      0.510      -5.923      11.902
+week:switched_branch    -0.2668      0.439     -0.608      0.543      -1.130       0.596
+========================================================================================
+
+================================================================================
+PRACTICAL SIGNIFICANCE
+================================================================================
+DiD Estimate: 1.99 points on service score
+Baseline average service score: ~51.8
+Effect as % of baseline: 3.8%
+
+
+=== Code run in turn 2, call 4 of 7 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+from scipy import stats
+from statsmodels.stats.sandwich_covariance import cov_cluster
+
+df = pd.read_csv('branches.csv')
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# Main DiD model with controls
+model = ols('service_score ~ switched_branch + after_switch + treatment + staffing_index + visits_index', data=df).fit()
+
+# Clustered SEs
+cov_clustered = cov_cluster(model, df['branch_id'])
+se_clustered = np.sqrt(np.diag(cov_clustered))
+
+n_clusters = df['branch_id'].nunique()
+df_clusters = n_clusters - 1
+
+t_values = model.params / se_clustered
+p_values = [stats.t.sf(abs(t), df_clusters) * 2 for t in t_values]
+ci_lower = model.params - stats.t.ppf(0.975, df_clusters) * se_clustered
+ci_upper = model.params + stats.t.ppf(0.975, df_clusters) * se_clustered
+
+# Full summary table
+coef_df = pd.DataFrame({
+    'Coefficient': model.params,
+    'Std Error (Clustered)': se_clustered,
+    't-value': t_values,
+    'P-value': p_values,
+    '95% CI Lower': ci_lower,
+    '95% CI Upper': ci_upper
+})
+
+print("FULL REGRESSION RESULTS WITH CLUSTERED STANDARD ERRORS")
+print("=" * 90)
+print(coef_df.round(4).to_string())
+
+# Also run a simpler model without controls for comparison
+model_simple = ols('service_score ~ switched_branch + after_switch + treatment', data=df).fit()
+cov_simple = cov_cluster(model_simple, df['branch_id'])
+se_simple = np.sqrt(np.diag(cov_simple))
+t_simple = model_simple.params / se_simple
+p_simple = [stats.t.sf(abs(t), df_clusters) * 2 for t in t_simple]
+
+print("\n" + "=" * 90)
+print("SIMPLE DiD MODEL (no controls) - for comparison")
+print("=" * 90)
+print(f"Treatment coefficient: {model_simple.params['treatment']:.3f}")
+print(f"Clustered SE: {se_simple[model_simple.params.index.get_loc('treatment')]:.3f}")
+print(f"t-value: {t_simple[model_simple.params.index.get_loc('treatment')]:.3f}")
+print(f"p-value: {p_simple[model_simple.params.index.get_loc('treatment')]:.3f}")
+
+# Effect size interpretation
+print("\n" + "=" * 90)
+print("EFFECT SIZE INTERPRETATION")
+print("=" * 90)
+did_coef = coef_df.loc['treatment', 'Coefficient']
+did_se = coef_df.loc['treatment', 'Std Error (Clustered)']
+did_p = coef_df.loc['treatment', 'P-value']
+did_ci_low = coef_df.loc['treatment', '95% CI Lower']
+did_ci_high = coef_df.loc['treatment', '95% CI Upper']
+
+print(f"Point estimate: {did_coef:.2f} points")
+print(f"95% Confidence Interval: [{did_ci_low:.2f}, {did_ci_high:.2f}]")
+print(f"P-value: {did_p:.3f}")
+print(f"\nStandard deviation of service_score: {df['service_score'].std():.2f}")
+print(f"Effect size in SD units: {did_coef / df['service_score'].std():.3f}")
+
+# Check how many branches are in each group
+print("\n" + "=" * 90)
+print("SAMPLE COMPOSITION")
+print("=" * 90)
+branch_info = df.groupby('branch_id')[['switched_branch']].first()
+print(f"Total branches: {len(branch_info)}")
+print(f"Switched branches (treatment): {branch_info['switched_branch'].sum()}")
+print(f"Non-switched branches (control): {(branch_info['switched_branch'] == 0).sum()}")
+
+# Check balance in pre-period
+print("\n" + "=" * 90)
+print("PRE-PERIOD BALANCE CHECK (Weeks 6-14)")
+print("=" * 90)
+pre_df = df[df['week'] < 15]
+pre_means = pre_df.groupby('switched_branch')[['service_score', 'staffing_index', 'visits_index']].mean()
+print(pre_means.round(3))
+--- printed ---
+FULL REGRESSION RESULTS WITH CLUSTERED STANDARD ERRORS
+==========================================================================================
+                 Coefficient  Std Error (Clustered)  t-value  P-value  95% CI Lower  95% CI Upper
+Intercept            52.0414                 2.5014  20.8048   0.0000       46.9522       57.1305
+switched_branch       0.2414                 3.0291   0.0797   0.9370       -5.9214        6.4042
+after_switch         -1.7008                 0.7752  -2.1939   0.0354       -3.2779       -0.1236
+treatment             1.9927                 1.1881   1.6772   0.1030       -0.4246        4.4100
+staffing_index        0.8093                 0.2729   2.9654   0.0056        0.2540        1.3645
+visits_index          0.6116                 0.5181   1.1804   0.2463       -0.4425        1.6656
+
+==========================================================================================
+SIMPLE DiD MODEL (no controls) - for comparison
+==========================================================================================
+Treatment coefficient: 1.863
+Clustered SE: 1.180
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/indexes/base.py", line 3816, in get_loc
+    return self._engine.get_loc(casted_key)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "pandas/_libs/index.pyx", line 172, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 180, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 671, in pandas._libs.index.StringObjectEngine._check_type
+KeyError: 3
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<stdin>", line 52, in <module>
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/series.py", line 1102, in __getitem__
+    return self._get_value(key)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/series.py", line 1189, in _get_value
+    loc = self.index.get_loc(label)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pandas/core/indexes/base.py", line 3823, in get_loc
+    raise KeyError(key) from err
+KeyError: 3
+
+
+=== Code run in turn 2, call 5 of 7 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+from scipy import stats
+from statsmodels.stats.sandwich_covariance import cov_cluster
+
+df = pd.read_csv('branches.csv')
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# Simple DiD model without controls
+model_simple = ols('service_score ~ switched_branch + after_switch + treatment', data=df).fit()
+cov_simple = cov_cluster(model_simple, df['branch_id'])
+se_simple = np.sqrt(np.diag(cov_simple))
+
+n_clusters = df['branch_id'].nunique()
+df_clusters = n_clusters - 1
+
+t_simple = model_simple.params / se_simple
+p_simple = [stats.t.sf(abs(t), df_clusters) * 2 for t in t_simple]
+ci_low_simple = model_simple.params - stats.t.ppf(0.975, df_clusters) * se_simple
+ci_high_simple = model_simple.params + stats.t.ppf(0.975, df_clusters) * se_simple
+
+print("SIMPLE DiD MODEL (no controls)")
+print("=" * 90)
+simple_df = pd.DataFrame({
+    'Coefficient': model_simple.params,
+    'Std Error (Clustered)': se_simple,
+    't-value': t_simple,
+    'P-value': p_simple,
+    '95% CI Lower': ci_low_simple,
+    '95% CI Upper': ci_high_simple
+})
+print(simple_df.round(4).to_string())
+
+# Effect size interpretation
+print("\n" + "=" * 90)
+print("KEY FINDINGS SUMMARY")
+print("=" * 90)
+did_coef = simple_df.loc['treatment', 'Coefficient']
+did_se = simple_df.loc['treatment', 'Std Error (Clustered)']
+did_p = simple_df.loc['treatment', 'P-value']
+did_ci_low = simple_df.loc['treatment', '95% CI Lower']
+did_ci_high = simple_df.loc['treatment', '95% CI Upper']
+
+print(f"\nTreatment Effect (DiD Estimate): {did_coef:.2f} points")
+print(f"95% Confidence Interval: [{did_ci_low:.2f}, {did_ci_high:.2f}]")
+print(f"P-value: {did_p:.3f}")
+print(f"\nInterpretation:")
+print(f"  - Service scores are on average ~{df['service_score'].mean():.1f}")
+print(f"  - Standard deviation: {df['service_score'].std():.2f}")
+print(f"  - Effect size: {did_coef / df['service_score'].std():.2f} SD")
+print(f"  - Effect as % of mean: {(did_coef / df['service_score'].mean() * 100):.1f}%")
+
+# Statistical significance
+print(f"\nStatistical Significance:")
+if did_p < 0.05:
+    print(f"  - Statistically significant at 5% level (p = {did_p:.3f})")
+elif did_p < 0.10:
+    print(f"  - Marginally significant at 10% level (p = {did_p:.3f})")
+else:
+    print(f"  - Not statistically significant at conventional levels (p = {did_p:.3f})")
+--- printed ---
+SIMPLE DiD MODEL (no controls)
+==========================================================================================
+                 Coefficient  Std Error (Clustered)  t-value  P-value  95% CI Lower  95% CI Upper
+Intercept            51.8821                 2.5071  20.6938   0.0000       46.7813       56.9829
+switched_branch       0.3215                 3.0208   0.1064   0.9159       -5.8242        6.4673
+after_switch         -1.5945                 0.7520  -2.1205   0.0416       -3.1244       -0.0646
+treatment             1.8635                 1.1796   1.5798   0.1237       -0.5364        4.2633
+
+==========================================================================================
+KEY FINDINGS SUMMARY
+==========================================================================================
+
+Treatment Effect (DiD Estimate): 1.86 points
+95% Confidence Interval: [-0.54, 4.26]
+P-value: 0.124
+
+Interpretation:
+  - Service scores are on average ~51.8
+  - Standard deviation: 9.60
+  - Effect size: 0.19 SD
+  - Effect as % of mean: 3.6%
+
+Statistical Significance:
+  - Not statistically significant at conventional levels (p = 0.124)
+
+
+=== Code run in turn 2, call 6 of 7 ===
+import matplotlib.pyplot as plt
+
+# Display the saved image
+img = plt.imread('service_score_trends.png')
+plt.figure(figsize=(12, 8))
+plt.imshow(img)
+plt.axis('off')
+plt.tight_layout()
+plt.show()
+--- printed ---
+(no output)
+
+=== Code run in turn 2, call 7 of 7 ===
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('branches.csv')
+
+# Create summary statistics for the board
+print("=" * 80)
+print("DATA SUMMARY FOR BOARD REPORT")
+print("=" * 80)
+
+# Time periods
+print("\nStudy Period: Weeks 6-22 (17 weeks total)")
+print("  - Before switch: Weeks 6-14 (9 weeks)")
+print("  - After switch: Weeks 15-22 (8 weeks)")
+
+# Branches
+print(f"\nTotal Branches: {df['branch_id'].nunique()}")
+print(f"  - Switched to new procedure: {(df['switched_branch'] == 1).sum() // (df['week'].nunique())} branches")
+print(f"  - Kept old procedure: {(df['switched_branch'] == 0).sum() // (df['week'].nunique())} branches")
+
+# Service score summary
+print(f"\nService Score Statistics:")
+print(f"  - Overall mean: {df['service_score'].mean():.1f}")
+print(f"  - Overall std dev: {df['service_score'].std():.1f}")
+print(f"  - Range: {df['service_score'].min():.1f} to {df['service_score'].max():.1f}")
+
+# Group means before and after
+print("\n" + "=" * 80)
+print("SERVICE SCORES BY GROUP AND PERIOD")
+print("=" * 80)
+
+# Before period (weeks 6-14)
+before = df[df['week'] < 15]
+after = df[df['week'] >= 15]
+
+print("\nBEFORE SWITCH (Weeks 6-14):")
+print(f"  Control group (old procedure): {before[before['switched_branch']==0]['service_score'].mean():.1f}")
+print(f"  Treatment group (new procedure): {before[before['switched_branch']==1]['service_score'].mean():.1f}")
+print(f"  Difference: {before[before['switched_branch']==1]['service_score'].mean() - before[before['switched_branch']==0]['service_score'].mean():.1f}")
+
+print("\nAFTER SWITCH (Weeks 15-22):")
+print(f"  Control group (old procedure): {after[after['switched_branch']==0]['service_score'].mean():.1f}")
+print(f"  Treatment group (new procedure): {after[after['switched_branch']==1]['service_score'].mean():.1f}")
+print(f"  Difference: {after[after['switched_branch']==1]['service_score'].mean() - after[after['switched_branch']==0]['service_score'].mean():.1f}")
+
+# Changes
+control_before = before[before['switched_branch']==0]['service_score'].mean()
+control_after = after[after['switched_branch']==0]['service_score'].mean()
+treat_before = before[before['switched_branch']==1]['service_score'].mean()
+treat_after = after[after['switched_branch']==1]['service_score'].mean()
+
+print("\n" + "=" * 80)
+print("CHANGE IN SERVICE SCORES")
+print("=" * 80)
+print(f"\nControl group change: {control_after - control_before:.2f} points")
+print(f"Treatment group change: {treat_after - treat_before:.2f} points")
+print(f"\nDifference-in-Differences estimate: {(treat_after - treat_before) - (control_after - control_before):.2f} points")
+
+# What does this mean practically?
+print("\n" + "=" * 80)
+print("PRACTICAL INTERPRETATION")
+print("=" * 80)
+print("\nThe new procedure is associated with:")
+print(f"  - A {1.86:.1f} point higher service score compared to what would have been expected")
+print(f"  - This represents about a {1.86/df['service_score'].mean()*100:.1f}% improvement")
+print(f"  - However, the 95% confidence interval [-0.54, 4.26] includes zero")
+print(f"  - P-value of 0.12 suggests we cannot rule out no effect")
+
+# Key observation about control group
+print("\n" + "=" * 80)
+print("IMPORTANT OBSERVATION")
+print("=" * 80)
+print("\nThe control group (branches that kept the old procedure) experienced a")
+print(f"decline of {abs(control_after - control_before):.1f} points after week 15.")
+print("\nThe treatment group (branches with new procedure) remained relatively stable.")
+print("\nSo the 'positive effect' is partly due to the treatment group avoiding the")
+print("decline that affected the control group, rather than a large absolute improvement.")
+--- printed ---
+================================================================================
+DATA SUMMARY FOR BOARD REPORT
+================================================================================
+
+Study Period: Weeks 6-22 (17 weeks total)
+  - Before switch: Weeks 6-14 (9 weeks)
+  - After switch: Weeks 15-22 (8 weeks)
+
+Total Branches: 34
+  - Switched to new procedure: 20 branches
+  - Kept old procedure: 14 branches
+
+Service Score Statistics:
+  - Overall mean: 51.8
+  - Overall std dev: 9.6
+  - Range: 24.4 to 79.2
+
+================================================================================
+SERVICE SCORES BY GROUP AND PERIOD
+================================================================================
+
+BEFORE SWITCH (Weeks 6-14):
+  Control group (old procedure): 51.9
+  Treatment group (new procedure): 52.2
+  Difference: 0.3
+
+AFTER SWITCH (Weeks 15-22):
+  Control group (old procedure): 50.3
+  Treatment group (new procedure): 52.5
+  Difference: 2.2
+
+================================================================================
+CHANGE IN SERVICE SCORES
+================================================================================
+
+Control group change: -1.59 points
+Treatment group change: 0.27 points
+
+Difference-in-Differences estimate: 1.86 points
+
+================================================================================
+PRACTICAL INTERPRETATION
+================================================================================
+
+The new procedure is associated with:
+  - A 1.9 point higher service score compared to what would have been expected
+  - This represents about a 3.6% improvement
+  - However, the 95% confidence interval [-0.54, 4.26] includes zero
+  - P-value of 0.12 suggests we cannot rule out no effect
+
+================================================================================
+IMPORTANT OBSERVATION
+================================================================================
+
+The control group (branches that kept the old procedure) experienced a
+decline of 1.6 points after week 15.
+
+The treatment group (branches with new procedure) remained relatively stable.
+
+So the 'positive effect' is partly due to the treatment group avoiding the
+decline that affected the control group, rather than a large absolute improvement.
+
+
+--- files saved in turn 2: service_score_trends.png ---

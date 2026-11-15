@@ -1,0 +1,979 @@
+Summary ID: 371cb5afc0
+
+=== Code run in turn 2, call 1 of 6 ===
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Display basic info
+print("Data shape:", df.shape)
+print("\nColumn names:", df.columns.tolist())
+print("\nFirst few rows:")
+print(df.head(10))
+print("\nData types:")
+print(df.dtypes)
+print("\nSummary statistics:")
+print(df.describe())
+print("\nValue counts for switched_branch:")
+print(df['switched_branch'].value_counts())
+print("\nValue counts for after_switch:")
+print(df['after_switch'].value_counts())
+print("\nWeek range:", df['week'].min(), "to", df['week'].max())
+--- printed ---
+Data shape: (578, 7)
+
+Column names: ['branch_id', 'week', 'switched_branch', 'after_switch', 'service_score', 'staffing_index', 'visits_index']
+
+First few rows:
+   branch_id  week  ...  staffing_index  visits_index
+0          0     6  ...       -0.560530      0.963692
+1          0     7  ...       -0.127306     -1.441501
+2          0     8  ...        0.359344     -0.726396
+3          0     9  ...       -1.084334      0.502285
+4          0    10  ...        0.941780     -1.423522
+5          0    11  ...       -0.311974      0.066851
+6          0    12  ...        1.025650     -1.259736
+7          0    13  ...       -0.661393     -1.324462
+8          0    14  ...       -0.069035     -0.019018
+9          0    15  ...        0.854134      0.378354
+
+[10 rows x 7 columns]
+
+Data types:
+branch_id            int64
+week                 int64
+switched_branch      int64
+after_switch         int64
+service_score      float64
+staffing_index     float64
+visits_index       float64
+dtype: object
+
+Summary statistics:
+        branch_id        week  ...  staffing_index  visits_index
+count  578.000000  578.000000  ...      578.000000    578.000000
+mean    16.500000   14.000000  ...        0.015754     -0.056319
+std      9.819206    4.903223  ...        0.946739      1.003878
+min      0.000000    6.000000  ...       -2.973003     -2.916325
+25%      8.000000   10.000000  ...       -0.557446     -0.718558
+50%     16.500000   14.000000  ...        0.006385     -0.002866
+75%     25.000000   18.000000  ...        0.642025      0.617291
+max     33.000000   22.000000  ...        2.640545      2.541648
+
+[8 rows x 7 columns]
+
+Value counts for switched_branch:
+switched_branch
+1    340
+0    238
+Name: count, dtype: int64
+
+Value counts for after_switch:
+after_switch
+0    306
+1    272
+Name: count, dtype: int64
+
+Week range: 6 to 22
+
+
+=== Code run in turn 2, call 2 of 6 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create the interaction term for DiD
+df['treated'] = df['switched_branch'] * df['after_switch']
+
+# Calculate means for the 4 groups
+print("=== Mean Service Scores by Group ===")
+group_means = df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std', 'count'])
+print(group_means)
+
+# Calculate DiD manually
+before_control = df[(df['switched_branch'] == 0) & (df['after_switch'] == 0)]['service_score'].mean()
+after_control = df[(df['switched_branch'] == 0) & (df['after_switch'] == 1)]['service_score'].mean()
+before_treatment = df[(df['switched_branch'] == 1) & (df['after_switch'] == 0)]['service_score'].mean()
+after_treatment = df[(df['switched_branch'] == 1) & (df['after_switch'] == 1)]['service_score'].mean()
+
+print("\n=== Difference-in-Differences Calculation ===")
+print(f"Control group (non-switched): Before={before_control:.2f}, After={after_control:.2f}, Change={after_control - before_control:.2f}")
+print(f"Treatment group (switched): Before={before_treatment:.2f}, After={after_treatment:.2f}, Change={after_treatment - before_treatment:.2f}")
+did_estimate = (after_treatment - before_treatment) - (after_control - before_control)
+print(f"\nDiD Estimate (treatment effect): {did_estimate:.2f}")
+
+# Run regression with cluster-robust standard errors
+print("\n=== Regression Analysis ===")
+
+# Basic DiD model
+model1 = ols('service_score ~ switched_branch + after_switch + treated', data=df).fit()
+print("\nModel 1: Basic DiD (no controls)")
+print(model1.summary())
+
+# DiD with controls
+model2 = ols('service_score ~ switched_branch + after_switch + treated + staffing_index + visits_index', data=df).fit()
+print("\nModel 2: DiD with staffing and visits controls")
+print(model2.summary())
+
+# Cluster-robust standard errors by branch
+model3 = ols('service_score ~ switched_branch + after_switch + treated + staffing_index + visits_index', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("\nModel 3: DiD with controls and cluster-robust SE (by branch)")
+print(model3.summary())
+--- printed ---
+=== Mean Service Scores by Group ===
+                                   mean        std  count
+switched_branch after_switch                             
+0               0             46.189747  10.743074    126
+                1             45.608158   8.899692    112
+1               0             49.566006   8.815734    180
+                1             51.030775   8.484922    160
+
+=== Difference-in-Differences Calculation ===
+Control group (non-switched): Before=46.19, After=45.61, Change=-0.58
+Treatment group (switched): Before=49.57, After=51.03, Change=1.46
+
+DiD Estimate (treatment effect): 2.05
+
+=== Regression Analysis ===
+
+Model 1: Basic DiD (no controls)
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.055
+Model:                            OLS   Adj. R-squared:                  0.050
+Method:                 Least Squares   F-statistic:                     11.18
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):           3.88e-07
+Time:                        05:33:48   Log-Likelihood:                -2100.8
+No. Observations:                 578   AIC:                             4210.
+Df Residuals:                     574   BIC:                             4227.
+Df Model:                           3                                         
+Covariance Type:            nonrobust                                         
+===================================================================================
+                      coef    std err          t      P>|t|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          46.1897      0.820     56.360      0.000      44.580      47.799
+switched_branch     3.3763      1.069      3.160      0.002       1.278       5.475
+after_switch       -0.5816      1.195     -0.487      0.627      -2.928       1.765
+treated             2.0464      1.558      1.314      0.189      -1.013       5.106
+==============================================================================
+Omnibus:                        1.033   Durbin-Watson:                   0.497
+Prob(Omnibus):                  0.597   Jarque-Bera (JB):                1.126
+Skew:                          -0.089   Prob(JB):                        0.569
+Kurtosis:                       2.878   Cond. No.                         7.36
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+
+Model 2: DiD with staffing and visits controls
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.066
+Model:                            OLS   Adj. R-squared:                  0.057
+Method:                 Least Squares   F-statistic:                     8.033
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):           2.47e-07
+Time:                        05:33:48   Log-Likelihood:                -2097.6
+No. Observations:                 578   AIC:                             4207.
+Df Residuals:                     572   BIC:                             4233.
+Df Model:                           5                                         
+Covariance Type:            nonrobust                                         
+===================================================================================
+                      coef    std err          t      P>|t|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          46.2215      0.818     56.517      0.000      44.615      47.828
+switched_branch     3.4074      1.065      3.199      0.001       1.315       5.500
+after_switch       -0.6308      1.193     -0.529      0.597      -2.974       1.712
+treated             2.1391      1.552      1.378      0.169      -0.910       5.188
+staffing_index      0.0907      0.405      0.224      0.823      -0.705       0.886
+visits_index        0.9602      0.381      2.522      0.012       0.212       1.708
+==============================================================================
+Omnibus:                        1.003   Durbin-Watson:                   0.492
+Prob(Omnibus):                  0.606   Jarque-Bera (JB):                1.084
+Skew:                          -0.094   Prob(JB):                        0.582
+Kurtosis:                       2.901   Cond. No.                         7.39
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+
+Model 3: DiD with controls and cluster-robust SE (by branch)
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.066
+Model:                            OLS   Adj. R-squared:                  0.057
+Method:                 Least Squares   F-statistic:                     2.777
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):             0.0335
+Time:                        05:33:48   Log-Likelihood:                -2097.6
+No. Observations:                 578   AIC:                             4207.
+Df Residuals:                     572   BIC:                             4233.
+Df Model:                           5                                         
+Covariance Type:              cluster                                         
+===================================================================================
+                      coef    std err          z      P>|z|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          46.2215      2.562     18.043      0.000      41.201      51.242
+switched_branch     3.4074      3.052      1.117      0.264      -2.573       9.388
+after_switch       -0.6308      0.908     -0.694      0.487      -2.411       1.150
+treated             2.1391      1.256      1.704      0.088      -0.322       4.600
+staffing_index      0.0907      0.287      0.316      0.752      -0.472       0.653
+visits_index        0.9602      0.348      2.760      0.006       0.278       1.642
+==============================================================================
+Omnibus:                        1.003   Durbin-Watson:                   0.492
+Prob(Omnibus):                  0.606   Jarque-Bera (JB):                1.084
+Skew:                          -0.094   Prob(JB):                        0.582
+Kurtosis:                       2.901   Cond. No.                         7.39
+==============================================================================
+
+Notes:
+[1] Standard Errors are robust to cluster correlation (CRV1)
+
+
+=== Code run in turn 2, call 3 of 6 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Check parallel trends - plot average service scores by week for each group
+print("=== Parallel Trends Check ===")
+weekly_means = df.groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+print(weekly_means)
+
+# Plot the trends
+plt.figure(figsize=(12, 6))
+plt.plot(weekly_means.index, weekly_means[0], 'o-', label='Non-Switched Branches', linewidth=2, markersize=8)
+plt.plot(weekly_means.index, weekly_means[1], 's-', label='Switched Branches', linewidth=2, markersize=8)
+plt.axvline(x=14.5, color='red', linestyle='--', linewidth=2, label='Switch Point (Week 15)')
+plt.xlabel('Week')
+plt.ylabel('Average Service Score')
+plt.title('Service Score Trends: Switched vs Non-Switched Branches')
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.xticks(range(6, 23))
+plt.tight_layout()
+plt.savefig('trends_plot.png', dpi=150)
+print("\nPlot saved as trends_plot.png")
+
+# Event study / dynamic DiD - estimate effect for each week after switch
+print("\n=== Event Study Analysis ===")
+df['week_relative'] = df['week'] - 15  # weeks relative to switch (negative = before, positive = after)
+
+# Create week dummies interacted with treatment
+for w in range(-9, 8):  # weeks -9 to +7 relative to switch
+    df[f'week_{w}'] = ((df['week_relative'] == w) & (df['switched_branch'] == 1)).astype(int)
+
+# Run regression with all week dummies (omitting week -1 as reference)
+week_cols = [f'week_{w}' for w in range(-9, 8) if w != -1]
+formula = 'service_score ~ switched_branch + after_switch + ' + ' + '.join(week_cols) + ' + staffing_index + visits_index'
+model_event = ols(formula, data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("Event study coefficients (relative to week -1):")
+for w in range(-9, 8):
+    if w != -1:
+        col = f'week_{w}'
+        coef = model_event.params[col]
+        se = model_event.bse[col]
+        pval = model_event.pvalues[col]
+        ci_low = coef - 1.96 * se
+        ci_high = coef + 1.96 * se
+        sig = "***" if pval < 0.01 else "**" if pval < 0.05 else "*" if pval < 0.1 else ""
+        print(f"Week {w}: coef={coef:.2f}, SE={se:.2f}, 95% CI=[{ci_low:.2f}, {ci_high:.2f}], p={pval:.3f} {sig}")
+
+# Confidence interval for the main DiD estimate
+model_main = ols('service_score ~ switched_branch + after_switch + treated + staffing_index + visits_index', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+did_coef = model_main.params['treated']
+did_se = model_main.bse['treated']
+did_ci_low = did_coef - 1.96 * did_se
+did_ci_high = did_coef + 1.96 * did_se
+print(f"\n=== Main DiD Estimate with 95% CI ===")
+print(f"Effect: {did_coef:.2f} points")
+print(f"95% Confidence Interval: [{did_ci_low:.2f}, {did_ci_high:.2f}]")
+print(f"p-value: {model_main.pvalues['treated']:.3f}")
+--- printed ---
+=== Parallel Trends Check ===
+switched_branch          0          1
+week                                 
+6                49.877076  51.037195
+7                50.414443  53.679697
+8                48.646502  52.241795
+9                44.344571  48.667605
+10               39.501451  43.652772
+11               42.049907  47.244858
+12               47.953754  52.267686
+13               45.782526  49.334668
+14               47.137491  47.967778
+15               44.988963  49.665979
+16               48.085878  53.404563
+17               44.308022  48.954235
+18               45.796119  52.287508
+19               45.284786  49.074299
+20               46.725839  52.716099
+21               43.575814  49.046329
+22               46.099846  53.097186
+
+Plot saved as trends_plot.png
+
+=== Event Study Analysis ===
+
+Traceback (most recent call last):
+  File "<stdin>", line 40, in <module>
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py", line 210, in from_formula
+    tmp = handle_formula_data(data, None, formula, depth=eval_env, missing=missing)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/formula/formulatools.py", line 70, in handle_formula_data
+    result = mgr.get_matrices(
+             ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/formula/_manager.py", line 533, in get_matrices
+    output = patsy.dmatrices(
+             ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 317, in dmatrices
+    (lhs, rhs) = _do_highlevel_design(
+                 ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 162, in _do_highlevel_design
+    design_infos = _try_incr_builders(
+                   ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 52, in _try_incr_builders
+    formula_like = ModelDesc.from_formula(formula_like)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 177, in from_formula
+    value = Evaluator().eval(tree, require_evalexpr=False)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 243, in _eval_any_tilde
+    exprs = [evaluator.eval(arg) for arg in tree.args]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 243, in <listcomp>
+    exprs = [evaluator.eval(arg) for arg in tree.args]
+             ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 285, in _eval_binary_minus
+    right_expr = evaluator.eval(tree.args[1])
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 395, in _eval_number
+    raise PatsyError("numbers besides '0' and '1' are only allowed with **", tree)
+patsy.PatsyError: numbers besides '0' and '1' are only allowed with **
+    service_score ~ switched_branch + after_switch + week_-9 + week_-8 + week_-7 + week_-6 + week_-5 + week_-4 + week_-3 + week_-2 + week_0 + week_1 + week_2 + week_3 + week_4 + week_5 + week_6 + week_7 + staffing_index + visits_index
+                                                           ^
+
+
+=== Code run in turn 2, call 4 of 6 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Check parallel trends - plot average service scores by week for each group
+print("=== Parallel Trends Check ===")
+weekly_means = df.groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+print(weekly_means)
+
+# Calculate pre-switch trend difference
+pre_switch = df[df['week'] < 15]
+pre_trend_control = pre_switch[pre_switch['switched_branch'] == 0].groupby('week')['service_score'].mean()
+pre_trend_treatment = pre_switch[pre_switch['switched_branch'] == 1].groupby('week')['service_score'].mean()
+
+# Linear trend for each group before switch
+from scipy import stats
+slope_control, intercept_control, r_control, p_control, se_control = stats.linregress(pre_trend_control.index, pre_trend_control.values)
+slope_treatment, intercept_treatment, r_treatment, p_treatment, se_treatment = stats.linregress(pre_trend_treatment.index, pre_trend_treatment.values)
+
+print(f"\nPre-switch trend (control): slope={slope_control:.3f}, p={p_control:.3f}")
+print(f"Pre-switch trend (treatment): slope={slope_treatment:.3f}, p={p_treatment:.3f}")
+print(f"Difference in slopes: {slope_treatment - slope_control:.3f}")
+
+# Event study - simpler approach using week dummies with better names
+df['week_relative'] = df['week'] - 15  # weeks relative to switch
+
+# Create week dummies with safe names
+for w in range(-9, 8):
+    col_name = f'w{abs(w)}_neg' if w < 0 else f'w{w}_pos'
+    if w == -1:
+        continue  # reference category
+    df[col_name] = ((df['week_relative'] == w) & (df['switched_branch'] == 1)).astype(int)
+
+# Build formula
+week_cols = [f'w{abs(w)}_neg' if w < 0 else f'w{w}_pos' for w in range(-9, 8) if w != -1]
+formula = 'service_score ~ switched_branch + after_switch + ' + ' + '.join(week_cols) + ' + staffing_index + visits_index'
+
+model_event = ols(formula, data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("\n=== Event Study Coefficients (relative to week -1) ===")
+results = []
+for w in range(-9, 8):
+    if w == -1:
+        continue
+    col_name = f'w{abs(w)}_neg' if w < 0 else f'w{w}_pos'
+    coef = model_event.params[col_name]
+    se = model_event.bse[col_name]
+    pval = model_event.pvalues[col_name]
+    ci_low = coef - 1.96 * se
+    ci_high = coef + 1.96 * se
+    results.append((w, coef, se, pval, ci_low, ci_high))
+    sig = "***" if pval < 0.01 else "**" if pval < 0.05 else "*" if pval < 0.1 else ""
+    print(f"Week {w:+d}: coef={coef:.2f}, SE={se:.2f}, 95% CI=[{ci_low:.2f}, {ci_high:.2f}], p={pval:.3f} {sig}")
+
+# Main DiD estimate
+model_main = ols('service_score ~ switched_branch + after_switch + treated + staffing_index + visits_index', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+did_coef = model_main.params['treated']
+did_se = model_main.bse['treated']
+did_ci_low = did_coef - 1.96 * did_se
+did_ci_high = did_coef + 1.96 * did_se
+print(f"\n=== Main DiD Estimate ===")
+print(f"Effect: {did_coef:.2f} points")
+print(f"95% CI: [{did_ci_low:.2f}, {did_ci_high:.2f}]")
+print(f"p-value: {model_main.pvalues['treated']:.3f}")
+
+# Plot event study
+plt.figure(figsize=(10, 6))
+weeks = [r[0] for r in results]
+coefs = [r[1] for r in results]
+ci_low = [r[4] for r in results]
+ci_high = [r[5] for r in results]
+
+plt.errorbar(weeks, coefs, yerr=[[-(c-l) for c,l in zip(coefs, ci_low)], [h-c for c,h in zip(coefs, ci_high)]], 
+             fmt='o', capsize=5, markersize=8, linewidth=2)
+plt.axhline(y=0, color='gray', linestyle='--')
+plt.axvline(x=-0.5, color='red', linestyle='-', linewidth=2, label='Switch Point')
+plt.xlabel('Weeks Relative to Switch')
+plt.ylabel('Service Score Effect (vs week -1)')
+plt.title('Event Study: Treatment Effect Over Time')
+plt.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig('event_study.png', dpi=150)
+print("\nEvent study plot saved as event_study.png")
+--- printed ---
+=== Parallel Trends Check ===
+switched_branch          0          1
+week                                 
+6                49.877076  51.037195
+7                50.414443  53.679697
+8                48.646502  52.241795
+9                44.344571  48.667605
+10               39.501451  43.652772
+11               42.049907  47.244858
+12               47.953754  52.267686
+13               45.782526  49.334668
+14               47.137491  47.967778
+15               44.988963  49.665979
+16               48.085878  53.404563
+17               44.308022  48.954235
+18               45.796119  52.287508
+19               45.284786  49.074299
+20               46.725839  52.716099
+21               43.575814  49.046329
+22               46.099846  53.097186
+
+Pre-switch trend (control): slope=-0.476, p=0.347
+Pre-switch trend (treatment): slope=-0.445, p=0.297
+Difference in slopes: 0.031
+
+=== Event Study Coefficients (relative to week -1) ===
+Week -9: coef=2.61, SE=1.46, 95% CI=[-0.25, 5.47], p=0.074 *
+Week -8: coef=5.41, SE=1.29, 95% CI=[2.88, 7.94], p=0.000 ***
+Week -7: coef=4.27, SE=1.46, 95% CI=[1.42, 7.12], p=0.003 ***
+Week -6: coef=0.39, SE=1.21, 95% CI=[-1.99, 2.76], p=0.750 
+Week -5: coef=-4.04, SE=1.56, 95% CI=[-7.10, -0.98], p=0.010 ***
+Week -4: coef=-0.95, SE=1.28, 95% CI=[-3.47, 1.56], p=0.458 
+Week -3: coef=4.42, SE=1.27, 95% CI=[1.92, 6.91], p=0.001 ***
+Week -2: coef=1.20, SE=0.79, 95% CI=[-0.34, 2.75], p=0.127 
+Week +0: coef=2.36, SE=1.32, 95% CI=[-0.23, 4.95], p=0.075 *
+Week +1: coef=5.94, SE=1.56, 95% CI=[2.87, 9.01], p=0.000 ***
+Week +2: coef=1.60, SE=1.71, 95% CI=[-1.75, 4.94], p=0.350 
+Week +3: coef=4.57, SE=1.76, 95% CI=[1.13, 8.02], p=0.009 ***
+Week +4: coef=1.84, SE=1.73, 95% CI=[-1.54, 5.22], p=0.287 
+Week +5: coef=5.04, SE=1.63, 95% CI=[1.84, 8.24], p=0.002 ***
+Week +6: coef=1.79, SE=1.79, 95% CI=[-1.71, 5.29], p=0.317 
+Week +7: coef=5.66, SE=1.82, 95% CI=[2.10, 9.22], p=0.002 ***
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/patsy/compat.py", line 40, in call_and_wrap_exc
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/eval.py", line 179, in eval
+    return eval(code, {}, VarLookupDict([inner_namespace] + self._namespaces))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 1, in <module>
+NameError: name 'treated' is not defined
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<stdin>", line 60, in <module>
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py", line 210, in from_formula
+    tmp = handle_formula_data(data, None, formula, depth=eval_env, missing=missing)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/formula/formulatools.py", line 70, in handle_formula_data
+    result = mgr.get_matrices(
+             ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/formula/_manager.py", line 533, in get_matrices
+    output = patsy.dmatrices(
+             ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 317, in dmatrices
+    (lhs, rhs) = _do_highlevel_design(
+                 ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 162, in _do_highlevel_design
+    design_infos = _try_incr_builders(
+                   ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 56, in _try_incr_builders
+    return design_matrix_builders(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/build.py", line 746, in design_matrix_builders
+    (num_column_counts, cat_levels_contrasts) = _examine_factor_types(
+                                                ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/build.py", line 491, in _examine_factor_types
+    value = factor.eval(factor_states[factor], data)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/eval.py", line 599, in eval
+    return self._eval(memorize_state["eval_code"], memorize_state, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/eval.py", line 582, in _eval
+    return call_and_wrap_exc(
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/compat.py", line 43, in call_and_wrap_exc
+    raise new_exc from e
+patsy.PatsyError: Error evaluating factor: NameError: name 'treated' is not defined
+    service_score ~ switched_branch + after_switch + treated + staffing_index + visits_index
+                                                     ^^^^^^^
+
+
+=== Code run in turn 2, call 5 of 6 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create the interaction term for DiD
+df['treated'] = df['switched_branch'] * df['after_switch']
+
+# Main DiD estimate
+model_main = ols('service_score ~ switched_branch + after_switch + treated + staffing_index + visits_index', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+did_coef = model_main.params['treated']
+did_se = model_main.bse['treated']
+did_ci_low = did_coef - 1.96 * did_se
+did_ci_high = did_coef + 1.96 * did_se
+print(f"=== Main DiD Estimate ===")
+print(f"Effect: {did_coef:.2f} points")
+print(f"95% CI: [{did_ci_low:.2f}, {did_ci_high:.2f}]")
+print(f"p-value: {model_main.pvalues['treated']:.3f}")
+
+# Check parallel trends more carefully
+print("\n=== Parallel Trends Assessment ===")
+pre_switch = df[df['week'] < 15].copy()
+
+# Compare average pre-switch scores
+pre_control = pre_switch[pre_switch['switched_branch'] == 0]['service_score'].mean()
+pre_treatment = pre_switch[pre_switch['switched_branch'] == 1]['service_score'].mean()
+print(f"Pre-switch average (control): {pre_control:.2f}")
+print(f"Pre-switch average (treatment): {pre_treatment:.2f}")
+print(f"Difference: {pre_treatment - pre_control:.2f}")
+
+# Test if pre-switch trends are parallel
+from scipy import stats
+pre_weekly_control = pre_switch[pre_switch['switched_branch'] == 0].groupby('week')['service_score'].mean()
+pre_weekly_treatment = pre_switch[pre_switch['switched_branch'] == 1].groupby('week')['service_score'].mean()
+
+slope_c, _, _, p_c, _ = stats.linregress(pre_weekly_control.index, pre_weekly_control.values)
+slope_t, _, _, p_t, _ = stats.linregress(pre_weekly_treatment.index, pre_weekly_treatment.values)
+print(f"\nPre-switch trend slope (control): {slope_c:.3f} (p={p_c:.3f})")
+print(f"Pre-switch trend slope (treatment): {slope_t:.3f} (p={p_t:.3f})")
+print(f"Difference in slopes: {slope_t - slope_c:.3f}")
+
+# Plot trends
+plt.figure(figsize=(12, 6))
+plt.plot(pre_weekly_control.index, pre_weekly_control.values, 'o-', label='Non-Switched (Control)', linewidth=2, markersize=8, color='blue')
+plt.plot(pre_weekly_treatment.index, pre_weekly_treatment.values, 's-', label='Switched (Treatment)', linewidth=2, markersize=8, color='green')
+
+# Post switch
+post_switch = df[df['week'] >= 15].copy()
+post_weekly_control = post_switch[post_switch['switched_branch'] == 0].groupby('week')['service_score'].mean()
+post_weekly_treatment = post_switch[post_switch['switched_branch'] == 1].groupby('week')['service_score'].mean()
+
+plt.plot(post_weekly_control.index, post_weekly_control.values, 'o--', linewidth=2, markersize=8, color='blue', alpha=0.6)
+plt.plot(post_weekly_treatment.index, post_weekly_treatment.values, 's--', linewidth=2, markersize=8, color='green', alpha=0.6)
+
+plt.axvline(x=14.5, color='red', linestyle='--', linewidth=2, label='Switch Point (Week 15)')
+plt.xlabel('Week')
+plt.ylabel('Average Service Score')
+plt.title('Service Score Trends: Switched vs Non-Switched Branches')
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.xticks(range(6, 23))
+plt.tight_layout()
+plt.savefig('trends_plot.png', dpi=150)
+print("\nTrends plot saved as trends_plot.png")
+
+# Power analysis - what effect size could we detect?
+n_treated = df[df['switched_branch'] == 1].shape[0]
+n_control = df[df['switched_branch'] == 0].shape[0]
+sd_pooled = df['service_score'].std()
+print(f"\n=== Statistical Power ===")
+print(f"N treated observations: {n_treated}")
+print(f"N control observations: {n_control}")
+print(f"Pooled SD: {sd_pooled:.2f}")
+
+# Minimum detectable effect at 80% power
+from statsmodels.stats.power import TTestIndPower
+power_analysis = TTestIndPower()
+# Effect size (Cohen's d) we can detect with 80% power
+effect_size = power_analysis.solve_power(effect_size=None, nobs1=n_treated/17, alpha=0.05, power=0.8, ratio=n_control/n_treated)
+mde = effect_size * sd_pooled
+print(f"Minimum detectable effect (80% power): {mde:.2f} points")
+--- printed ---
+=== Main DiD Estimate ===
+Effect: 2.14 points
+95% CI: [-0.32, 4.60]
+p-value: 0.088
+
+=== Parallel Trends Assessment ===
+Pre-switch average (control): 46.19
+Pre-switch average (treatment): 49.57
+Difference: 3.38
+
+Pre-switch trend slope (control): -0.476 (p=0.347)
+Pre-switch trend slope (treatment): -0.445 (p=0.297)
+Difference in slopes: 0.031
+
+Trends plot saved as trends_plot.png
+
+=== Statistical Power ===
+N treated observations: 340
+N control observations: 238
+Pooled SD: 9.44
+Minimum detectable effect (80% power): 9.50 points
+
+
+=== Code run in turn 2, call 6 of 6 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+df['treated'] = df['switched_branch'] * df['after_switch']
+
+# Summary statistics by group
+print("=== Summary Statistics by Group ===")
+summary = df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std', 'count', 'min', 'max'])
+print(summary)
+
+# Distribution of service scores
+print("\n=== Service Score Distribution ===")
+print(df['service_score'].describe())
+
+# Check if there's heterogeneity - do some branches benefit more than others?
+print("\n=== Branch-Level Effects ===")
+branch_effects = []
+for branch_id in df['branch_id'].unique():
+    branch_data = df[df['branch_id'] == branch_id]
+    switched = branch_data['switched_branch'].iloc[0]
+    if switched == 1:
+        before = branch_data[branch_data['after_switch'] == 0]['service_score'].mean()
+        after = branch_data[branch_data['after_switch'] == 1]['service_score'].mean()
+        # Simple before-after for switched branches
+        branch_effects.append({'branch_id': branch_id, 'before': before, 'after': after, 'change': after - before})
+
+branch_effects_df = pd.DataFrame(branch_effects)
+print(f"Switched branches (n={len(branch_effects_df)}):")
+print(f"  Average before-after change: {branch_effects_df['change'].mean():.2f}")
+print(f"  Std dev of changes: {branch_effects_df['change'].std():.2f}")
+print(f"  Branches with positive change: {(branch_effects_df['change'] > 0).sum()} / {len(branch_effects_df)}")
+print(f"  Min change: {branch_effects_df['change'].min():.2f}")
+print(f"  Max change: {branch_effects_df['change'].max():.2f}")
+
+# Compare to control branches
+control_changes = []
+for branch_id in df[df['switched_branch'] == 0]['branch_id'].unique():
+    branch_data = df[df['branch_id'] == branch_id]
+    before = branch_data[branch_data['after_switch'] == 0]['service_score'].mean()
+    after = branch_data[branch_data['after_switch'] == 1]['service_score'].mean()
+    control_changes.append(after - before)
+
+print(f"\nControl branches (n={len(control_changes)}):")
+print(f"  Average before-after change: {np.mean(control_changes):.2f}")
+print(f"  Std dev of changes: {np.std(control_changes):.2f}")
+
+# Effect size in practical terms
+print("\n=== Practical Significance ===")
+avg_score = df['service_score'].mean()
+did_effect = 2.14
+pct_change = (did_effect / avg_score) * 100
+print(f"Average service score across all branches: {avg_score:.1f}")
+print(f"Estimated treatment effect: {did_effect:.2f} points")
+print(f"This represents a {pct_change:.1f}% improvement relative to the average")
+--- printed ---
+=== Summary Statistics by Group ===
+                                   mean        std  count        min        max
+switched_branch after_switch                                                   
+0               0             46.189747  10.743074    126  13.592238  69.016509
+                1             45.608158   8.899692    112  22.041399  68.673431
+1               0             49.566006   8.815734    180  26.971591  73.348195
+                1             51.030775   8.484922    160  29.910331  70.414117
+
+=== Service Score Distribution ===
+count    578.000000
+mean      48.468559
+std        9.439645
+min       13.592238
+25%       42.447206
+50%       48.755206
+75%       54.642070
+max       73.348195
+Name: service_score, dtype: float64
+
+=== Branch-Level Effects ===
+Switched branches (n=20):
+  Average before-after change: 1.46
+  Std dev of changes: 3.82
+  Branches with positive change: 12 / 20
+  Min change: -4.75
+  Max change: 10.18
+
+Control branches (n=14):
+  Average before-after change: -0.58
+  Std dev of changes: 3.45
+
+=== Practical Significance ===
+Average service score across all branches: 48.5
+Estimated treatment effect: 2.14 points
+This represents a 4.4% improvement relative to the average
+
+
+--- files saved in turn 2: trends_plot.png ---
+
+=== Code run in turn 6, call 1 of 1 ===
+import pandas as pd
+import numpy as np
+from scipy import stats
+
+df = pd.read_csv('branches.csv')
+df['treated'] = df['switched_branch'] * df['after_switch']
+
+# Key statistics
+did_effect = 2.14
+ci_lower = -0.32
+ci_upper = 4.60
+p_value = 0.088
+
+# What's the probability the effect is positive?
+# Using the t-distribution from the model
+# The coefficient is 2.14, SE is approximately (4.60 - (-0.32)) / (2 * 1.96) = 4.92 / 3.92 = 1.255
+se = (ci_upper - ci_lower) / (2 * 1.96)
+t_stat = did_effect / se
+
+# Probability that true effect > 0 (one-tailed p-value)
+prob_positive = 1 - stats.t.cdf(0, df=572, loc=did_effect, scale=se)
+# Or more simply, since t = 2.14/1.255 = 1.705, one-tailed p = 0.044
+one_tailed_p = stats.t.sf(t_stat, df=572)
+
+print(f"=== Reconsidering the Evidence ===")
+print(f"Point estimate: {did_effect:.2f} points")
+print(f"Standard error: {se:.2f}")
+print(f"t-statistic: {t_stat:.2f}")
+print(f"Two-tailed p-value: {p_value:.3f}")
+print(f"One-tailed p-value (effect > 0): {one_tailed_p:.3f}")
+print(f"\nProbability the true effect is positive: ~{1-one_tailed_p:.0%}")
+
+# What portion of the CI is positive?
+ci_range = ci_upper - ci_lower
+positive_portion = ci_upper / ci_range
+print(f"\nConfidence interval: [{ci_lower:.2f}, {ci_upper:.2f}]")
+print(f"Range: {ci_range:.2f} points")
+print(f"Portion of CI that is positive: {positive_portion:.0%}")
+
+# Bayesian-style interpretation
+# If we treat the estimate as a normal distribution, what's the probability effect > 1 point?
+prob_greater_than_1 = 1 - stats.norm.cdf(1, loc=did_effect, scale=se)
+prob_greater_than_0_5 = 1 - stats.norm.cdf(0.5, loc=did_effect, scale=se)
+print(f"\nProbability effect > 0.5 points: {prob_greater_than_0_5:.0%}")
+print(f"Probability effect > 1.0 points: {prob_greater_than_1:.0%}")
+
+# Compare to control group decline
+control_before = df[(df['switched_branch'] == 0) & (df['after_switch'] == 0)]['service_score'].mean()
+control_after = df[(df['switched_branch'] == 0) & (df['after_switch'] == 1)]['service_score'].mean()
+control_change = control_after - control_before
+print(f"\nControl group change: {control_change:.2f} points (decline)")
+print(f"Treatment group would need to match this just to break even")
+--- printed ---
+=== Reconsidering the Evidence ===
+Point estimate: 2.14 points
+Standard error: 1.26
+t-statistic: 1.71
+Two-tailed p-value: 0.088
+One-tailed p-value (effect > 0): 0.044
+
+Probability the true effect is positive: ~96%
+
+Confidence interval: [-0.32, 4.60]
+Range: 4.92 points
+Portion of CI that is positive: 93%
+
+Probability effect > 0.5 points: 90%
+Probability effect > 1.0 points: 82%
+
+Control group change: -0.58 points (decline)
+Treatment group would need to match this just to break even
+

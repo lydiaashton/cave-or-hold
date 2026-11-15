@@ -1,0 +1,504 @@
+Summary ID: bf37cbd6a8
+
+=== Code run in turn 2, call 1 of 8 ===
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Basic exploration
+print("Dataset shape:", df.shape)
+print("\nColumn names:", df.columns.tolist())
+print("\nFirst few rows:")
+print(df.head(10))
+print("\nData types:")
+print(df.dtypes)
+print("\nSummary statistics:")
+print(df.describe())
+print("\nUnique values:")
+print("branch_id:", df['branch_id'].nunique())
+print("week:", sorted(df['week'].unique()))
+print("switched_branch:", df['switched_branch'].unique())
+print("after_switch:", df['after_switch'].unique())
+
+--- printed ---
+Dataset shape: (12053, 7)
+
+Column names: ['branch_id', 'week', 'switched_branch', 'after_switch', 'service_score', 'staffing_index', 'visits_index']
+
+First few rows:
+   branch_id  week  ...  staffing_index  visits_index
+0          0     6  ...        0.584758      0.548432
+1          0     7  ...        0.231560     -0.274863
+2          0     8  ...       -0.127955      0.456645
+3          0     9  ...        0.695503      2.833146
+4          0    10  ...        0.991508      0.705064
+5          0    11  ...        0.834846      1.143728
+6          0    12  ...        0.149824      1.672949
+7          0    13  ...        0.448841     -1.571775
+8          0    14  ...        1.295057     -1.531417
+9          0    15  ...        1.010820      1.049177
+
+[10 rows x 7 columns]
+
+Data types:
+branch_id            int64
+week                 int64
+switched_branch      int64
+after_switch         int64
+service_score      float64
+staffing_index     float64
+visits_index       float64
+dtype: object
+
+Summary statistics:
+          branch_id          week  ...  staffing_index  visits_index
+count  12053.000000  12053.000000  ...    12053.000000  12053.000000
+mean     354.000000     14.000000  ...       -0.013543      0.016238
+std      204.678958      4.899183  ...        0.994699      1.010584
+min        0.000000      6.000000  ...       -3.802403     -3.491340
+25%      177.000000     10.000000  ...       -0.679900     -0.669789
+50%      354.000000     14.000000  ...       -0.013691      0.012452
+75%      531.000000     18.000000  ...        0.654383      0.698984
+max      708.000000     22.000000  ...        3.639785      3.972102
+
+[8 rows x 7 columns]
+
+Unique values:
+branch_id: 709
+week: [np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14), np.int64(15), np.int64(16), np.int64(17), np.int64(18), np.int64(19), np.int64(20), np.int64(21), np.int64(22)]
+switched_branch: [0 1]
+after_switch: [0 1]
+
+
+=== Code run in turn 2, call 2 of 8 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Check treatment/control group sizes
+print("Branches by switch status:")
+print(df.groupby('switched_branch')['branch_id'].nunique())
+
+# Check balance - how many observations per group
+print("\nObservations by group:")
+print(df.groupby(['switched_branch', 'after_switch']).size())
+
+# Calculate mean service scores by group and period
+print("\nMean service scores by group and period:")
+pivot = df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std', 'count']).round(2)
+print(pivot)
+
+# Calculate the DiD estimate manually
+# Treatment group change
+treatment_pre = df[(df['switched_branch'] == 1) & (df['after_switch'] == 0)]['service_score'].mean()
+treatment_post = df[(df['switched_branch'] == 1) & (df['after_switch'] == 1)]['service_score'].mean()
+treatment_change = treatment_post - treatment_pre
+
+# Control group change
+control_pre = df[(df['switched_branch'] == 0) & (df['after_switch'] == 0)]['service_score'].mean()
+control_post = df[(df['switched_branch'] == 0) & (df['after_switch'] == 1)]['service_score'].mean()
+control_change = control_post - control_pre
+
+did_estimate = treatment_change - control_change
+
+print(f"\n--- Difference-in-Differences Calculation ---")
+print(f"Treatment group: Pre={treatment_pre:.2f}, Post={treatment_post:.2f}, Change={treatment_change:.2f}")
+print(f"Control group: Pre={control_pre:.2f}, Post={control_post:.2f}, Change={control_change:.2f}")
+print(f"DiD Estimate (Treatment - Control): {did_estimate:.2f}")
+
+--- printed ---
+Branches by switch status:
+switched_branch
+0    284
+1    425
+Name: branch_id, dtype: int64
+
+Observations by group:
+switched_branch  after_switch
+0                0               2556
+                 1               2272
+1                0               3825
+                 1               3400
+dtype: int64
+
+Mean service scores by group and period:
+                               mean    std  count
+switched_branch after_switch                     
+0               0             48.47  10.04   2556
+                1             49.24  10.22   2272
+1               0             49.47   9.73   3825
+                1             52.31  10.18   3400
+
+--- Difference-in-Differences Calculation ---
+Treatment group: Pre=49.47, Post=52.31, Change=2.84
+Control group: Pre=48.47, Post=49.24, Change=0.77
+DiD Estimate (Treatment - Control): 2.06
+
+
+=== Code run in turn 2, call 3 of 8 ===
+import pandas as pd
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Run DiD regression with standard errors clustered by branch
+# Basic DiD model
+model = ols('service_score ~ switched_branch * after_switch', data=df).fit()
+print("=== Basic DiD Regression (without clustering) ===")
+print(model.summary().tables[1])
+
+# Now with cluster-robust standard errors by branch
+model_clustered = ols('service_score ~ switched_branch * after_switch', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("\n=== DiD Regression (clustered by branch) ===")
+print(model_clustered.summary().tables[1])
+
+# Also check with controls (staffing_index, visits_index)
+model_with_controls = ols('service_score ~ switched_branch * after_switch + staffing_index + visits_index', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("\n=== DiD Regression with controls (clustered by branch) ===")
+print(model_with_controls.summary().tables[1])
+
+--- printed ---
+=== Basic DiD Regression (without clustering) ===
+================================================================================================
+                                   coef    std err          t      P>|t|      [0.025      0.975]
+------------------------------------------------------------------------------------------------
+Intercept                       48.4651      0.198    244.597      0.000      48.077      48.854
+switched_branch                  1.0053      0.256      3.928      0.000       0.504       1.507
+after_switch                     0.7713      0.289      2.670      0.008       0.205       1.337
+switched_branch:after_switch     2.0648      0.373      5.535      0.000       1.333       2.796
+================================================================================================
+
+=== DiD Regression (clustered by branch) ===
+================================================================================================
+                                   coef    std err          z      P>|z|      [0.025      0.975]
+------------------------------------------------------------------------------------------------
+Intercept                       48.4651      0.520     93.160      0.000      47.446      49.485
+switched_branch                  1.0053      0.662      1.519      0.129      -0.292       2.302
+after_switch                     0.7713      0.229      3.362      0.001       0.322       1.221
+switched_branch:after_switch     2.0648      0.291      7.087      0.000       1.494       2.636
+================================================================================================
+
+=== DiD Regression with controls (clustered by branch) ===
+================================================================================================
+                                   coef    std err          z      P>|z|      [0.025      0.975]
+------------------------------------------------------------------------------------------------
+Intercept                       48.4516      0.522     92.873      0.000      47.429      49.474
+switched_branch                  1.0236      0.662      1.546      0.122      -0.274       2.322
+after_switch                     0.7861      0.227      3.464      0.001       0.341       1.231
+switched_branch:after_switch     2.0451      0.289      7.083      0.000       1.479       2.611
+staffing_index                   0.5610      0.088      6.365      0.000       0.388       0.734
+visits_index                     0.5353      0.096      5.557      0.000       0.346       0.724
+================================================================================================
+
+
+=== Code run in turn 2, call 4 of 8 ===
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+df = pd.read_csv('branches.csv')
+
+# Check parallel trends - average service score by week for each group
+pre_period = df[df['week'] <= 14].groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+post_period = df[df['week'] >= 15].groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+
+print("=== Pre-period trends (weeks 6-14) ===")
+print(pre_period)
+print("\n=== Post-period trends (weeks 15-22) ===")
+print(post_period)
+
+# Create visualization
+fig, ax = plt.subplots(figsize=(12, 6))
+
+# Plot all weeks
+all_weeks = df.groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+all_weeks.plot(ax=ax, marker='o', linewidth=2, markersize=6)
+
+ax.axvline(x=14.5, color='red', linestyle='--', linewidth=2, label='Switch implemented')
+ax.set_xlabel('Week', fontsize=12)
+ax.set_ylabel('Average Service Score', fontsize=12)
+ax.set_title('Service Score Trends: Treatment vs Control Groups', fontsize=14, fontweight='bold')
+ax.legend(['Control (No Switch)', 'Treatment (Switched)'], loc='upper left')
+ax.grid(True, alpha=0.3)
+ax.set_xticks(range(6, 23))
+
+plt.tight_layout()
+plt.savefig('service_score_trends.png', dpi=150)
+print("\nPlot saved as 'service_score_trends.png'")
+
+# Statistical test for parallel trends (pre-period only)
+# Check if the trend (slope) is different between groups before the switch
+pre_df = df[df['week'] <= 14].copy()
+pre_df['week_centered'] = pre_df['week'] - pre_df['week'].mean()
+trend_model = ols('service_score ~ switched_branch * week_centered', data=pre_df).fit(cov_type='cluster', cov_kwds={'groups': pre_df['branch_id']})
+print("\n=== Pre-period trend test ===")
+print(trend_model.summary().tables[1])
+
+--- printed ---
+=== Pre-period trends (weeks 6-14) ===
+switched_branch          0          1
+week                                 
+6                47.478514  47.859825
+7                49.154623  49.325635
+8                44.740946  45.627908
+9                49.971935  50.769840
+10               49.485476  50.186879
+11               49.972762  50.854590
+12               49.681614  51.198388
+13               51.735653  53.134765
+14               43.964766  46.275875
+
+=== Post-period trends (weeks 15-22) ===
+switched_branch          0          1
+week                                 
+15               45.773488  48.302823
+16               46.021844  48.821463
+17               44.328663  47.050866
+18               53.311772  56.248230
+19               51.189309  54.438889
+20               48.068009  51.391542
+21               52.229204  55.841066
+22               52.969368  56.356984
+
+Plot saved as 'service_score_trends.png'
+
+Traceback (most recent call last):
+  File "<stdin>", line 39, in <module>
+NameError: name 'ols' is not defined
+
+
+=== Code run in turn 2, call 5 of 8 ===
+import pandas as pd
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Statistical test for parallel trends (pre-period only)
+# Check if the trend (slope) is different between groups before the switch
+pre_df = df[df['week'] <= 14].copy()
+pre_df['week_centered'] = pre_df['week'] - pre_df['week'].mean()
+trend_model = ols('service_score ~ switched_branch * week_centered', data=pre_df).fit(cov_type='cluster', cov_kwds={'groups': pre_df['branch_id']})
+print("=== Pre-period trend test ===")
+print(trend_model.summary().tables[1])
+
+# Also run an event study style analysis - week fixed effects interacted with treatment
+# This shows the effect for each week relative to pre-period baseline
+df['week_factor'] = df['week'].astype(str)
+event_study = ols('service_score ~ C(week_factor) * switched_branch', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+# Extract the interaction coefficients (treatment effect by week)
+print("\n=== Week-by-week treatment effects (interaction terms) ===")
+coef_df = pd.DataFrame({
+    'coef': event_study.params,
+    'pvalue': event_study.pvalues,
+    'std_err': event_study.bse
+})
+interaction_terms = coef_df[coef_df.index.str.contains('switched_branch')]
+print(interaction_terms)
+
+--- printed ---
+=== Pre-period trend test ===
+=================================================================================================
+                                    coef    std err          z      P>|z|      [0.025      0.975]
+-------------------------------------------------------------------------------------------------
+Intercept                        48.4651      0.520     93.150      0.000      47.445      49.485
+switched_branch                   1.0053      0.662      1.519      0.129      -0.292       2.303
+week_centered                     0.0595      0.049      1.210      0.226      -0.037       0.156
+switched_branch:week_centered     0.2125      0.065      3.289      0.001       0.086       0.339
+=================================================================================================
+
+=== Week-by-week treatment effects (interaction terms) ===
+                                          coef        pvalue   std_err
+switched_branch                       0.701403  3.479155e-01  0.747254
+C(week_factor)[T.11]:switched_branch  0.180425  6.451055e-01  0.391741
+C(week_factor)[T.12]:switched_branch  0.815371  8.152287e-02  0.468088
+C(week_factor)[T.13]:switched_branch  0.697709  1.735481e-01  0.512685
+C(week_factor)[T.14]:switched_branch  1.609706  2.304412e-03  0.528135
+C(week_factor)[T.15]:switched_branch  1.827932  1.180772e-03  0.563570
+C(week_factor)[T.16]:switched_branch  2.098216  1.457749e-04  0.552430
+C(week_factor)[T.17]:switched_branch  2.020800  2.623782e-04  0.553664
+C(week_factor)[T.18]:switched_branch  2.235055  2.869937e-05  0.534249
+C(week_factor)[T.19]:switched_branch  2.548177  2.527475e-06  0.541486
+C(week_factor)[T.20]:switched_branch  2.622130  2.059604e-06  0.552320
+C(week_factor)[T.21]:switched_branch  2.910459  2.021385e-07  0.559988
+C(week_factor)[T.22]:switched_branch  2.686214  5.971924e-06  0.593326
+C(week_factor)[T.6]:switched_branch  -0.320093  5.421465e-01  0.525112
+C(week_factor)[T.7]:switched_branch  -0.530390  3.090890e-01  0.521455
+C(week_factor)[T.8]:switched_branch   0.185560  7.030984e-01  0.486853
+C(week_factor)[T.9]:switched_branch   0.096502  8.010185e-01  0.382900
+
+
+=== Code run in turn 2, call 6 of 8 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Main DiD model with confidence interval
+model = ols('service_score ~ switched_branch * after_switch', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+did_coef = model.params['switched_branch:after_switch']
+did_se = model.bse['switched_branch:after_switch']
+did_pvalue = model.pvalues['switched_branch:after_switch']
+ci_lower = did_coef - 1.96 * did_se
+ci_upper = did_coef + 1.96 * did_se
+
+print("=== Main DiD Results ===")
+print(f"Point estimate: {did_coef:.2f}")
+print(f"Standard error: {did_se:.2f}")
+print(f"95% CI: [{ci_lower:.2f}, {ci_upper:.2f}]")
+print(f"P-value: {did_pvalue:.4f}")
+
+# Calculate effect size relative to baseline
+baseline_score = df[df['after_switch'] == 0]['service_score'].mean()
+effect_size_pct = (did_coef / baseline_score) * 100
+print(f"\nBaseline average score: {baseline_score:.2f}")
+print(f"Effect as % of baseline: {effect_size_pct:.1f}%")
+
+# Check robustness - exclude week 14 (potential pre-trend issue)
+df_robust = df[df['week'] != 14].copy()
+model_robust = ols('service_score ~ switched_branch * after_switch', data=df_robust).fit(cov_type='cluster', cov_kwds={'groups': df_robust['branch_id']})
+print(f"\n=== Robustness check (excluding week 14) ===")
+print(f"DiD estimate: {model_robust.params['switched_branch:after_switch']:.2f}")
+print(f"P-value: {model_robust.pvalues['switched_branch:after_switch']:.4f}")
+
+# Also check with branch fixed effects
+df['branch_id_str'] = df['branch_id'].astype(str)
+model_fe = ols('service_score ~ switched_branch * after_switch + C(branch_id_str)', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print(f"\n=== With branch fixed effects ===")
+print(f"DiD estimate: {model_fe.params['switched_branch:after_switch']:.2f}")
+print(f"P-value: {model_fe.pvalues['switched_branch:after_switch']:.4f}")
+
+--- printed ---
+=== Main DiD Results ===
+Point estimate: 2.06
+Standard error: 0.29
+95% CI: [1.49, 2.64]
+P-value: 0.0000
+
+Baseline average score: 49.07
+Effect as % of baseline: 4.2%
+
+=== Robustness check (excluding week 14) ===
+DiD estimate: 2.23
+P-value: 0.0000
+
+=== With branch fixed effects ===
+DiD estimate: 2.06
+P-value: nan
+
+<stdin>:38: SingularMatrixWarning: The design matrix is rank-deficient. The model parameters are not uniquely determined.
+
+
+=== Code run in turn 2, call 7 of 8 ===
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('branches.csv')
+
+# Check if effect varies by branch characteristics (using staffing and visits as proxies)
+# Create high/low groups based on median staffing and visits
+df['high_staffing'] = (df['staffing_index'] > df['staffing_index'].median()).astype(int)
+df['high_visits'] = (df['visits_index'] > df['visits_index'].median()).astype(int)
+
+from statsmodels.formula.api import ols
+
+# Interaction with staffing level
+model_staffing = ols('service_score ~ switched_branch * after_switch * high_staffing', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("=== Effect by staffing level ===")
+print(model_staffing.summary().tables[1].iloc[[0, 3, 4, 7]])
+
+# Interaction with visits level  
+model_visits = ols('service_score ~ switched_branch * after_switch * high_visits', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("\n=== Effect by visits level ===")
+print(model_visits.summary().tables[1].iloc[[0, 3, 4, 7]])
+
+# Summary statistics for the board
+print("\n=== Summary Statistics for Board Report ===")
+print(f"Total branches: {df['branch_id'].nunique()}")
+print(f"Branches that switched: {df[df['switched_branch']==1]['branch_id'].nunique()}")
+print(f"Branches that didn't switch: {df[df['switched_branch']==0]['branch_id'].nunique()}")
+print(f"Weeks of data: {df['week'].min()} to {df['week'].max()}")
+print(f"\nAverage service score (all): {df['service_score'].mean():.1f}")
+print(f"Average service score (switched branches, before): {df[(df['switched_branch']==1) & (df['after_switch']==0)]['service_score'].mean():.1f}")
+print(f"Average service score (switched branches, after): {df[(df['switched_branch']==1) & (df['after_switch']==1)]['service_score'].mean():.1f}")
+print(f"Average service score (non-switched branches, before): {df[(df['switched_branch']==0) & (df['after_switch']==0)]['service_score'].mean():.1f}")
+print(f"Average service score (non-switched branches, after): {df[(df['switched_branch']==0) & (df['after_switch']==1)]['service_score'].mean():.1f}")
+
+--- printed ---
+=== Effect by staffing level ===
+
+Traceback (most recent call last):
+  File "<stdin>", line 16, in <module>
+AttributeError: 'SimpleTable' object has no attribute 'iloc'
+
+
+=== Code run in turn 2, call 8 of 8 ===
+import pandas as pd
+import numpy as np
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Check if effect varies by branch characteristics (using staffing and visits as proxies)
+df['high_staffing'] = (df['staffing_index'] > df['staffing_index'].median()).astype(int)
+df['high_visits'] = (df['visits_index'] > df['visits_index'].median()).astype(int)
+
+# Interaction with staffing level
+model_staffing = ols('service_score ~ switched_branch * after_switch * high_staffing', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("=== Effect by staffing level ===")
+print(f"Main DiD effect: {model_staffing.params['switched_branch:after_switch']:.2f} (p={model_staffing.pvalues['switched_branch:after_switch']:.3f})")
+print(f"Triple interaction: {model_staffing.params['switched_branch:after_switch:high_staffing']:.2f} (p={model_staffing.pvalues['switched_branch:after_switch:high_staffing']:.3f})")
+
+# Interaction with visits level  
+model_visits = ols('service_score ~ switched_branch * after_switch * high_visits', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("\n=== Effect by visits level ===")
+print(f"Main DiD effect: {model_visits.params['switched_branch:after_switch']:.2f} (p={model_visits.pvalues['switched_branch:after_switch']:.3f})")
+print(f"Triple interaction: {model_visits.params['switched_branch:after_switch:high_visits']:.2f} (p={model_visits.pvalues['switched_branch:after_switch:high_visits']:.3f})")
+
+# Summary statistics for the board
+print("\n=== Summary Statistics for Board Report ===")
+print(f"Total branches: {df['branch_id'].nunique()}")
+print(f"Branches that switched: {df[df['switched_branch']==1]['branch_id'].nunique()}")
+print(f"Branches that didn't switch: {df[df['switched_branch']==0]['branch_id'].nunique()}")
+print(f"Weeks of data: {df['week'].min()} to {df['week'].max()}")
+print(f"\nAverage service score (all): {df['service_score'].mean():.1f}")
+print(f"Average service score (switched branches, before): {df[(df['switched_branch']==1) & (df['after_switch']==0)]['service_score'].mean():.1f}")
+print(f"Average service score (switched branches, after): {df[(df['switched_branch']==1) & (df['after_switch']==1)]['service_score'].mean():.1f}")
+print(f"Average service score (non-switched branches, before): {df[(df['switched_branch']==0) & (df['after_switch']==0)]['service_score'].mean():.1f}")
+print(f"Average service score (non-switched branches, after): {df[(df['switched_branch']==0) & (df['after_switch']==1)]['service_score'].mean():.1f}")
+
+--- printed ---
+=== Effect by staffing level ===
+Main DiD effect: 1.92 (p=0.000)
+Triple interaction: 0.28 (p=0.710)
+
+=== Effect by visits level ===
+Main DiD effect: 1.91 (p=0.000)
+Triple interaction: 0.31 (p=0.671)
+
+=== Summary Statistics for Board Report ===
+Total branches: 709
+Branches that switched: 425
+Branches that didn't switch: 284
+Weeks of data: 6 to 22
+
+Average service score (all): 50.0
+Average service score (switched branches, before): 49.5
+Average service score (switched branches, after): 52.3
+Average service score (non-switched branches, before): 48.5
+Average service score (non-switched branches, after): 49.2
+
+
+--- files saved in turn 2: service_score_trends.png ---
+
+(No code was run in turn 4.)

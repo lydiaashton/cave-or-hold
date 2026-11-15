@@ -1,0 +1,312 @@
+Summary ID: e0d5fe6af7
+
+=== Code run in turn 2, call 1 of 3 ===
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Basic overview
+print("Data shape:", df.shape)
+print("\nColumn names:", df.columns.tolist())
+print("\nFirst few rows:")
+print(df.head(10))
+print("\nData types:")
+print(df.dtypes)
+print("\nSummary statistics:")
+print(df.describe())
+print("\nUnique values:")
+print("branch_id:", df['branch_id'].nunique())
+print("week:", sorted(df['week'].unique()))
+print("switched_branch:", df['switched_branch'].value_counts())
+print("after_switch:", df['after_switch'].value_counts())
+
+--- printed ---
+Data shape: (12053, 7)
+
+Column names: ['branch_id', 'week', 'switched_branch', 'after_switch', 'service_score', 'staffing_index', 'visits_index']
+
+First few rows:
+   branch_id  week  ...  staffing_index  visits_index
+0          0     6  ...       -2.075580      0.561154
+1          0     7  ...        1.211632      0.491459
+2          0     8  ...        1.001783     -0.633629
+3          0     9  ...        0.311393      0.919206
+4          0    10  ...        0.726931     -0.923068
+5          0    11  ...       -2.681789      0.864005
+6          0    12  ...       -1.672735      0.016392
+7          0    13  ...       -0.466907      0.937878
+8          0    14  ...       -0.128405     -0.035806
+9          0    15  ...        0.807198     -1.420461
+
+[10 rows x 7 columns]
+
+Data types:
+branch_id            int64
+week                 int64
+switched_branch      int64
+after_switch         int64
+service_score      float64
+staffing_index     float64
+visits_index       float64
+dtype: object
+
+Summary statistics:
+          branch_id          week  ...  staffing_index  visits_index
+count  12053.000000  12053.000000  ...    12053.000000  12053.000000
+mean     354.000000     14.000000  ...       -0.004959     -0.020438
+std      204.678958      4.899183  ...        0.999343      1.000698
+min        0.000000      6.000000  ...       -3.536226     -3.718124
+25%      177.000000     10.000000  ...       -0.686294     -0.695268
+50%      354.000000     14.000000  ...       -0.015549     -0.024992
+75%      531.000000     18.000000  ...        0.682158      0.658338
+max      708.000000     22.000000  ...        3.520757      3.803276
+
+[8 rows x 7 columns]
+
+Unique values:
+branch_id: 709
+week: [np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14), np.int64(15), np.int64(16), np.int64(17), np.int64(18), np.int64(19), np.int64(20), np.int64(21), np.int64(22)]
+switched_branch: switched_branch
+1    7225
+0    4828
+Name: count, dtype: int64
+after_switch: after_switch
+0    6381
+1    5672
+Name: count, dtype: int64
+
+
+=== Code run in turn 2, call 2 of 3 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create the interaction term for DiD
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# Basic DiD table: average service scores by group and period
+print("=" * 60)
+print("DIFFERENCE-IN-DIFFERENCES SUMMARY TABLE")
+print("=" * 60)
+
+# Before period (weeks 6-14)
+before = df[df['after_switch'] == 0]
+# After period (weeks 15-22)
+after = df[df['after_switch'] == 1]
+
+# Control group (switched_branch = 0)
+control_before = before[before['switched_branch'] == 0]['service_score'].mean()
+control_after = after[after['switched_branch'] == 0]['service_score'].mean()
+control_diff = control_after - control_before
+
+# Treatment group (switched_branch = 1)
+treat_before = before[before['switched_branch'] == 1]['service_score'].mean()
+treat_after = after[after['switched_branch'] == 1]['service_score'].mean()
+treat_diff = treat_after - treat_before
+
+# DiD estimate
+did_estimate = treat_diff - control_diff
+
+print(f"\nControl Group (No Switch):")
+print(f"  Before (weeks 6-14):  {control_before:.2f}")
+print(f"  After (weeks 15-22):  {control_after:.2f}")
+print(f"  Change:               {control_diff:.2f}")
+
+print(f"\nTreatment Group (Switched):")
+print(f"  Before (weeks 6-14):  {treat_before:.2f}")
+print(f"  After (weeks 15-22):  {treat_after:.2f}")
+print(f"  Change:               {treat_diff:.2f}")
+
+print(f"\nDifference-in-Differences Estimate: {did_estimate:.2f}")
+print(f"  (Treatment change - Control change)")
+
+# Now run regression with standard errors
+print("\n" + "=" * 60)
+print("REGRESSION ANALYSIS")
+print("=" * 60)
+
+# Model 1: Basic DiD
+model1 = ols('service_score ~ switched_branch + after_switch + treatment', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("\nModel 1: Basic DiD (clustered SE by branch)")
+print(model1.summary().tables[1])
+
+# Model 2: DiD with controls
+model2 = ols('service_score ~ switched_branch + after_switch + treatment + staffing_index + visits_index', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("\nModel 2: DiD with staffing and visits controls (clustered SE by branch)")
+print(model2.summary().tables[1])
+
+# Check parallel trends - plot average scores by week for each group
+print("\n" + "=" * 60)
+print("PARALLEL TRENDS CHECK - Weekly Averages")
+print("=" * 60)
+
+weekly_avg = df.groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+weekly_avg.columns = ['Control (No Switch)', 'Treatment (Switched)']
+weekly_avg['Diff'] = weekly_avg['Treatment (Switched)'] - weekly_avg['Control (No Switch)']
+
+print("\nWeekly averages by group:")
+print(weekly_avg.round(2))
+
+--- printed ---
+============================================================
+DIFFERENCE-IN-DIFFERENCES SUMMARY TABLE
+============================================================
+
+Control Group (No Switch):
+  Before (weeks 6-14):  52.27
+  After (weeks 15-22):  51.94
+  Change:               -0.33
+
+Treatment Group (Switched):
+  Before (weeks 6-14):  52.15
+  After (weeks 15-22):  53.77
+  Change:               1.62
+
+Difference-in-Differences Estimate: 1.95
+  (Treatment change - Control change)
+
+============================================================
+REGRESSION ANALYSIS
+============================================================
+
+Model 1: Basic DiD (clustered SE by branch)
+===================================================================================
+                      coef    std err          z      P>|z|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          52.2726      0.509    102.644      0.000      51.274      53.271
+switched_branch    -0.1265      0.660     -0.192      0.848      -1.421       1.168
+after_switch       -0.3291      0.231     -1.424      0.154      -0.782       0.124
+treatment           1.9502      0.294      6.624      0.000       1.373       2.527
+===================================================================================
+
+Model 2: DiD with staffing and visits controls (clustered SE by branch)
+===================================================================================
+                      coef    std err          z      P>|z|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          52.2948      0.509    102.736      0.000      51.297      53.293
+switched_branch    -0.1368      0.660     -0.207      0.836      -1.430       1.157
+after_switch       -0.3530      0.229     -1.544      0.123      -0.801       0.095
+treatment           1.9790      0.291      6.792      0.000       1.408       2.550
+staffing_index      0.4656      0.092      5.049      0.000       0.285       0.646
+visits_index        0.5187      0.087      5.975      0.000       0.349       0.689
+===================================================================================
+
+============================================================
+PARALLEL TRENDS CHECK - Weekly Averages
+============================================================
+
+Weekly averages by group:
+      Control (No Switch)  Treatment (Switched)  Diff
+week                                                 
+6                   51.12                 49.55 -1.56
+7                   53.62                 52.45 -1.17
+8                   56.34                 55.84 -0.50
+9                   49.98                 49.98 -0.01
+10                  54.48                 54.72  0.24
+11                  47.57                 47.53 -0.04
+12                  50.67                 50.72  0.05
+13                  51.93                 52.37  0.44
+14                  54.74                 56.15  1.41
+15                  51.26                 52.25  0.99
+16                  47.65                 48.60  0.95
+17                  51.97                 53.60  1.63
+18                  55.19                 56.67  1.48
+19                  54.52                 56.07  1.55
+20                  53.93                 56.55  2.62
+21                  48.34                 51.08  2.74
+22                  52.69                 55.32  2.63
+
+
+=== Code run in turn 2, call 3 of 3 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Create the parallel trends plot
+plt.figure(figsize=(12, 6))
+
+weekly_avg = df.groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+
+plt.plot(weekly_avg.index, weekly_avg[0], 'o-', label='Control (No Switch)', linewidth=2, markersize=6, color='gray')
+plt.plot(weekly_avg.index, weekly_avg[1], 's-', label='Treatment (Switched)', linewidth=2, markersize=6, color='blue')
+
+# Add vertical line at switch point
+plt.axvline(x=14.5, color='red', linestyle='--', linewidth=2, label='Switch Week (15)')
+
+plt.xlabel('Week', fontsize=12)
+plt.ylabel('Average Service Score', fontsize=12)
+plt.title('Service Scores by Week: Treatment vs Control Groups', fontsize=14, fontweight='bold')
+plt.legend(fontsize=11)
+plt.grid(True, alpha=0.3)
+plt.xticks(range(6, 23))
+plt.ylim(45, 60)
+
+# Add annotation
+plt.annotate('New Procedure\nImplemented', xy=(15, 57), fontsize=10, 
+             arrowprops=dict(arrowstyle='->', color='red'))
+
+plt.tight_layout()
+plt.savefig('service_scores_trends.png', dpi=150, bbox_inches='tight')
+print("Plot saved as 'service_scores_trends.png'")
+
+# Additional analysis: effect size relative to baseline
+baseline_score = df['service_score'].mean()
+did_effect = 1.95
+percent_improvement = (did_effect / baseline_score) * 100
+
+print(f"\n" + "=" * 60)
+print("EFFECT SIZE SUMMARY")
+print("=" * 60)
+print(f"Baseline average service score: {baseline_score:.2f}")
+print(f"DiD estimated effect: +{did_effect:.2f} points")
+print(f"Percentage improvement: {percent_improvement:.1f}%")
+
+# Check robustness: any branches that switched but show negative effects?
+branch_effects = df.groupby(['branch_id', 'switched_branch']).agg({
+    'service_score': ['mean', 'std', 'count']
+}).reset_index()
+branch_effects.columns = ['branch_id', 'switched_branch', 'mean_score', 'std_score', 'n_weeks']
+
+switched_branches = branch_effects[branch_effects['switched_branch'] == 1]
+print(f"\nNumber of switched branches: {len(switched_branches)}")
+print(f"Average score for switched branches: {switched_branches['mean_score'].mean():.2f}")
+
+# Check distribution of effects
+print(f"\nScore distribution for switched branches:")
+print(f"  Min: {switched_branches['mean_score'].min():.2f}")
+print(f"  25th percentile: {switched_branches['mean_score'].quantile(0.25):.2f}")
+print(f"  Median: {switched_branches['mean_score'].median():.2f}")
+print(f"  75th percentile: {switched_branches['mean_score'].quantile(0.75):.2f}")
+print(f"  Max: {switched_branches['mean_score'].max():.2f}")
+
+--- printed ---
+Plot saved as 'service_scores_trends.png'
+
+============================================================
+EFFECT SIZE SUMMARY
+============================================================
+Baseline average service score: 52.59
+DiD estimated effect: +1.95 points
+Percentage improvement: 3.7%
+
+Number of switched branches: 425
+Average score for switched branches: 52.91
+
+Score distribution for switched branches:
+  Min: 29.05
+  25th percentile: 46.68
+  Median: 52.60
+  75th percentile: 58.12
+  Max: 84.69
+
+
+--- files saved in turn 2: service_scores_trends.png ---
+
+(No code was run in turn 4.)

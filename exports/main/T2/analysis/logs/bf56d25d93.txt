@@ -1,0 +1,1353 @@
+Summary ID: bf56d25d93
+
+=== Code run in turn 2, call 1 of 9 ===
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Basic overview
+print("Dataset shape:", df.shape)
+print("\nColumn names:", df.columns.tolist())
+print("\nFirst few rows:")
+print(df.head(10))
+print("\nData types:")
+print(df.dtypes)
+print("\nSummary statistics:")
+print(df.describe())
+--- printed ---
+Dataset shape: (2550, 7)
+
+Column names: ['branch_id', 'week', 'switched_branch', 'after_switch', 'service_score', 'staffing_index', 'visits_index']
+
+First few rows:
+   branch_id  week  ...  staffing_index  visits_index
+0          0     6  ...       -0.797930     -1.128628
+1          0     7  ...        0.712097      1.129213
+2          0     8  ...        0.015536      2.246333
+3          0     9  ...       -1.155303     -1.077677
+4          0    10  ...       -1.270503     -0.444167
+5          0    11  ...       -0.934907      1.752840
+6          0    12  ...       -0.185207      0.078150
+7          0    13  ...       -0.139316     -0.236960
+8          0    14  ...        2.528964     -1.642888
+9          0    15  ...        0.939681     -1.356405
+
+[10 rows x 7 columns]
+
+Data types:
+branch_id            int64
+week                 int64
+switched_branch      int64
+after_switch         int64
+service_score      float64
+staffing_index     float64
+visits_index       float64
+dtype: object
+
+Summary statistics:
+         branch_id        week  ...  staffing_index  visits_index
+count  2550.000000  2550.00000  ...     2550.000000   2550.000000
+mean     74.500000    14.00000  ...        0.003269      0.009370
+std      43.308801     4.89994  ...        0.987279      0.994899
+min       0.000000     6.00000  ...       -3.729415     -3.888206
+25%      37.000000    10.00000  ...       -0.674002     -0.657439
+50%      74.500000    14.00000  ...       -0.009093      0.015957
+75%     112.000000    18.00000  ...        0.661568      0.667283
+max     149.000000    22.00000  ...        3.467570      3.680506
+
+[8 rows x 7 columns]
+
+
+=== Code run in turn 2, call 2 of 9 ===
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('branches.csv')
+
+# Number of unique branches
+print("Number of unique branches:", df['branch_id'].nunique())
+
+# How many switched vs didn't switch
+print("\nSwitched branch distribution:")
+print(df['switched_branch'].value_counts())
+
+# Weeks covered
+print("\nWeeks covered:", sorted(df['week'].unique()))
+
+# Check balance - how many branches in each group
+switched_branches = df[df['switched_branch'] == 1]['branch_id'].nunique()
+control_branches = df[df['switched_branch'] == 0]['branch_id'].nunique()
+print(f"\nSwitched branches: {switched_branches}")
+print(f"Control branches: {control_branches}")
+
+# Average service scores by group and period
+print("\n=== Service Score Summary ===")
+print("\nBefore switch (weeks 6-14):")
+before = df[df['after_switch'] == 0]
+print(f"  Switched branches avg: {before[before['switched_branch']==1]['service_score'].mean():.2f}")
+print(f"  Control branches avg: {before[before['switched_branch']==0]['service_score'].mean():.2f}")
+
+print("\nAfter switch (weeks 15-22):")
+after = df[df['after_switch'] == 1]
+print(f"  Switched branches avg: {after[after['switched_branch']==1]['service_score'].mean():.2f}")
+print(f"  Control branches avg: {after[after['switched_branch']==0]['service_score'].mean():.2f}")
+
+# Calculate the difference-in-differences manually
+before_switched = before[before['switched_branch']==1]['service_score'].mean()
+before_control = before[before['switched_branch']==0]['service_score'].mean()
+after_switched = after[after['switched_branch']==1]['service_score'].mean()
+after_control = after[after['switched_branch']==0]['service_score'].mean()
+
+diff_switched = after_switched - before_switched
+diff_control = after_control - before_control
+did_estimate = diff_switched - diff_control
+
+print(f"\n=== Simple Difference-in-Differences ===")
+print(f"Change in switched branches: {diff_switched:.2f}")
+print(f"Change in control branches: {diff_control:.2f}")
+print(f"DiD estimate (effect of new procedure): {did_estimate:.2f}")
+--- printed ---
+Number of unique branches: 150
+
+Switched branch distribution:
+switched_branch
+1    1530
+0    1020
+Name: count, dtype: int64
+
+Weeks covered: [np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14), np.int64(15), np.int64(16), np.int64(17), np.int64(18), np.int64(19), np.int64(20), np.int64(21), np.int64(22)]
+
+Switched branches: 90
+Control branches: 60
+
+=== Service Score Summary ===
+
+Before switch (weeks 6-14):
+  Switched branches avg: 50.03
+  Control branches avg: 48.77
+
+After switch (weeks 15-22):
+  Switched branches avg: 51.47
+  Control branches avg: 48.43
+
+=== Simple Difference-in-Differences ===
+Change in switched branches: 1.44
+Change in control branches: -0.34
+DiD estimate (effect of new procedure): 1.77
+
+
+=== Code run in turn 2, call 3 of 9 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create the interaction term for DiD
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# Run DiD regression with clustered standard errors
+# Basic model: service_score ~ treatment + switched_branch + after_switch
+model = ols('service_score ~ treatment + switched_branch + after_switch', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("=== Basic DiD Regression ===")
+print(model.summary())
+
+# Model with controls
+model_controls = ols('service_score ~ treatment + switched_branch + after_switch + staffing_index + visits_index', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("\n=== DiD Regression with Controls ===")
+print(model_controls.summary())
+
+# Check parallel trends - compare trends before the switch
+print("\n=== Parallel Trends Check ===")
+before_data = df[df['week'] < 15]
+print("Average service scores by week before switch:")
+pivot_before = before_data.pivot_table('service_score', index='week', columns='switched_branch', aggfunc='mean')
+print(pivot_before)
+
+# Calculate week-by-week differences before switch
+before_data_copy = before_data.copy()
+before_data_copy['group_mean'] = before_data_copy.groupby(['week', 'switched_branch'])['service_score'].transform('mean')
+before_data_copy['diff_from_control'] = before_data_copy['service_score'] - before_data_copy.groupby('week')['service_score'].transform(lambda x: x[before_data_copy.loc[x.index, 'switched_branch']==0].mean() if len(x[before_data_copy.loc[x.index, 'switched_branch']==0]) > 0 else np.nan)
+
+# Actually let me do this more simply
+print("\nWeek-by-week average service scores:")
+weekly_avg = df.groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+print(weekly_avg)
+--- printed ---
+=== Basic DiD Regression ===
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.013
+Model:                            OLS   Adj. R-squared:                  0.012
+Method:                 Least Squares   F-statistic:                     4.787
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):            0.00326
+Time:                        04:41:32   Log-Likelihood:                -9504.4
+No. Observations:                2550   AIC:                         1.902e+04
+Df Residuals:                    2546   BIC:                         1.904e+04
+Df Model:                           3                                         
+Covariance Type:              cluster                                         
+===================================================================================
+                      coef    std err          z      P>|z|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          48.7663      1.083     45.048      0.000      46.645      50.888
+treatment           1.7708      0.606      2.921      0.003       0.582       2.959
+switched_branch     1.2684      1.377      0.921      0.357      -1.431       3.968
+after_switch       -0.3352      0.442     -0.759      0.448      -1.201       0.530
+==============================================================================
+Omnibus:                        5.636   Durbin-Watson:                   0.694
+Prob(Omnibus):                  0.060   Jarque-Bera (JB):                4.972
+Skew:                          -0.046   Prob(JB):                       0.0832
+Kurtosis:                       2.804   Cond. No.                         7.47
+==============================================================================
+
+Notes:
+[1] Standard Errors are robust to cluster correlation (CRV1)
+
+=== DiD Regression with Controls ===
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.020
+Model:                            OLS   Adj. R-squared:                  0.019
+Method:                 Least Squares   F-statistic:                     7.451
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):           2.89e-06
+Time:                        04:41:32   Log-Likelihood:                -9495.3
+No. Observations:                2550   AIC:                         1.900e+04
+Df Residuals:                    2544   BIC:                         1.904e+04
+Df Model:                           5                                         
+Covariance Type:              cluster                                         
+===================================================================================
+                      coef    std err          z      P>|z|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          48.6977      1.087     44.803      0.000      46.567      50.828
+treatment           1.7832      0.606      2.941      0.003       0.595       2.972
+switched_branch     1.3656      1.383      0.987      0.323      -1.345       4.076
+after_switch       -0.3373      0.444     -0.760      0.447      -1.207       0.532
+staffing_index      0.6178      0.202      3.052      0.002       0.221       1.015
+visits_index        0.6145      0.182      3.372      0.001       0.257       0.972
+==============================================================================
+Omnibus:                        5.767   Durbin-Watson:                   0.696
+Prob(Omnibus):                  0.056   Jarque-Bera (JB):                5.089
+Skew:                          -0.048   Prob(JB):                       0.0785
+Kurtosis:                       2.803   Cond. No.                         7.47
+==============================================================================
+
+Notes:
+[1] Standard Errors are robust to cluster correlation (CRV1)
+
+=== Parallel Trends Check ===
+Average service scores by week before switch:
+switched_branch          0          1
+week                                 
+6                45.794517  47.427591
+7                44.734655  47.596094
+8                55.030318  56.896296
+9                42.348488  43.399240
+10               47.448515  47.377935
+11               51.525985  52.764730
+12               49.144495  51.008049
+13               55.862816  56.104277
+14               47.007262  47.738880
+
+Week-by-week average service scores:
+switched_branch          0          1
+week                                 
+6                45.794517  47.427591
+7                44.734655  47.596094
+8                55.030318  56.896296
+9                42.348488  43.399240
+10               47.448515  47.377935
+11               51.525985  52.764730
+12               49.144495  51.008049
+13               55.862816  56.104277
+14               47.007262  47.738880
+15               44.119602  46.318585
+16               50.193975  52.942523
+17               48.966154  51.829497
+18               49.203295  51.956269
+19               54.597898  57.074325
+20               45.215943  50.212887
+21               46.129131  49.404116
+22               49.022839  52.024403
+
+
+=== Code run in turn 2, call 4 of 9 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Create a plot showing trends for both groups over time
+weekly_avg = df.groupby(['week', 'switched_branch'])['service_score'].mean().reset_index()
+weekly_avg['switched_branch'] = weekly_avg['switched_branch'].map({0: 'Control (Old Procedure)', 1: 'Treatment (New Procedure)'})
+
+plt.figure(figsize=(12, 6))
+for group in weekly_avg['switched_branch'].unique():
+    subset = weekly_avg[weekly_avg['switched_branch'] == group]
+    plt.plot(subset['week'], subset['service_score'], marker='o', label=group, linewidth=2)
+
+plt.axvline(x=14.5, color='red', linestyle='--', label='Switch occurred (week 15)')
+plt.xlabel('Week')
+plt.ylabel('Average Service Score')
+plt.title('Service Score Trends: Treatment vs Control Groups')
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.xticks(range(6, 23))
+plt.tight_layout()
+plt.savefig('trends_plot.png', dpi=150)
+print("Plot saved as trends_plot.png")
+
+# Calculate the pre-trend differences
+print("\n=== Pre-Treatment Trend Analysis ===")
+before_data = df[df['week'] < 15]
+# Calculate average difference between groups in pre-period
+pre_diff = before_data.groupby('week').apply(
+    lambda x: x[x['switched_branch']==1]['service_score'].mean() - x[x['switched_branch']==0]['service_score'].mean()
+)
+print("Week-by-week difference (Treatment - Control) before switch:")
+print(pre_diff)
+print(f"\nAverage pre-treatment difference: {pre_diff.mean():.2f}")
+print(f"Std dev of pre-treatment differences: {pre_diff.std():.2f}")
+
+# Post-treatment differences
+after_data = df[df['week'] >= 15]
+post_diff = after_data.groupby('week').apply(
+    lambda x: x[x['switched_branch']==1]['service_score'].mean() - x[x['switched_branch']==0]['service_score'].mean()
+)
+print("\nWeek-by-week difference (Treatment - Control) after switch:")
+print(post_diff)
+print(f"\nAverage post-treatment difference: {post_diff.mean():.2f}")
+
+# Event study style - difference in differences by week relative to switch
+print("\n=== Event Study Analysis ===")
+df['weeks_relative'] = df['week'] - 15  # week 15 is period 0
+# Use week 14 as reference (period -1)
+event_study = df.groupby('weeks_relative').apply(
+    lambda x: (x[x['switched_branch']==1]['service_score'].mean() - x[x['switched_branch']==0]['service_score'].mean())
+)
+print("Difference (Treatment - Control) by week relative to switch:")
+print(event_study.sort_index())
+--- printed ---
+Plot saved as trends_plot.png
+
+=== Pre-Treatment Trend Analysis ===
+Week-by-week difference (Treatment - Control) before switch:
+week
+6     1.633074
+7     2.861439
+8     1.865978
+9     1.050752
+10   -0.070580
+11    1.238745
+12    1.863554
+13    0.241461
+14    0.731618
+dtype: float64
+
+Average pre-treatment difference: 1.27
+Std dev of pre-treatment differences: 0.91
+
+Week-by-week difference (Treatment - Control) after switch:
+week
+15    2.198982
+16    2.748548
+17    2.863343
+18    2.752973
+19    2.476427
+20    4.996945
+21    3.274986
+22    3.001564
+dtype: float64
+
+Average post-treatment difference: 3.04
+
+=== Event Study Analysis ===
+Difference (Treatment - Control) by week relative to switch:
+weeks_relative
+-9    1.633074
+-8    2.861439
+-7    1.865978
+-6    1.050752
+-5   -0.070580
+-4    1.238745
+-3    1.863554
+-2    0.241461
+-1    0.731618
+ 0    2.198982
+ 1    2.748548
+ 2    2.863343
+ 3    2.752973
+ 4    2.476427
+ 5    4.996945
+ 6    3.274986
+ 7    3.001564
+dtype: float64
+
+
+=== Code run in turn 2, call 5 of 9 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Event study regression with week fixed effects
+# Create dummies for each week relative to treatment, excluding week -1 as reference
+df['weeks_relative'] = df['week'] - 15
+
+# Create indicators for each relative week
+for wr in range(-9, 8):  # -9 to 7
+    df[f'rel_week_{wr}'] = ((df['weeks_relative'] == wr) & (df['switched_branch'] == 1)).astype(int)
+
+# Run event study regression (excluding rel_week_-1 as reference)
+rel_weeks = [f'rel_week_{wr}' for wr in range(-9, 8) if wr != -1]
+formula = f"service_score ~ switched_branch + after_switch + {' + '.join(rel_weeks)}"
+event_model = ols(formula, data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("=== Event Study Regression ===")
+print("Reference period: week -1 (week 14)")
+print("\nCoefficients for treatment group by relative week:")
+for wr in range(-9, 8):
+    if wr != -1:
+        coef = event_model.params[f'rel_week_{wr}']
+        se = event_model.bse[f'rel_week_{wr}']
+        pval = event_model.pvalues[f'rel_week_{wr}']
+        sig = "***" if pval < 0.01 else "**" if pval < 0.05 else "*" if pval < 0.1 else ""
+        print(f"Week {wr:+d}: {coef:6.2f} (SE: {se:.2f}, p={pval:.3f}) {sig}")
+
+# Test for pre-trend (joint significance of pre-period coefficients)
+pre_period_coeffs = [f'rel_week_{wr}' for wr in range(-9, -1)]
+from statsmodels.stats.contrast import ContrastResults
+# Simple F-test for pre-trends
+pre_test = event_model.f_test(pre_period_coeffs)
+print(f"\nJoint test for pre-treatment trends (all pre-period coeffs = 0):")
+print(f"F-statistic: {pre_test.fvalue:.2f}, p-value: {pre_test.pvalue:.3f}")
+
+# Also check the post-period average effect
+post_period_coeffs = [f'rel_week_{wr}' for wr in range(0, 8)]
+post_test = event_model.f_test(post_period_coeffs)
+print(f"\nJoint test for post-treatment effects (all post-period coeffs = 0):")
+print(f"F-statistic: {post_test.fvalue:.2f}, p-value: {post_test.pvalue:.3f}")
+
+# Average post-treatment effect
+post_coefs = [event_model.params[f'rel_week_{wr}'] for wr in range(0, 8)]
+print(f"\nAverage post-treatment effect: {np.mean(post_coefs):.2f}")
+--- printed ---
+Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py", line 210, in from_formula
+    tmp = handle_formula_data(data, None, formula, depth=eval_env, missing=missing)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/formula/formulatools.py", line 70, in handle_formula_data
+    result = mgr.get_matrices(
+             ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/statsmodels/formula/_manager.py", line 533, in get_matrices
+    output = patsy.dmatrices(
+             ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 317, in dmatrices
+    (lhs, rhs) = _do_highlevel_design(
+                 ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 162, in _do_highlevel_design
+    design_infos = _try_incr_builders(
+                   ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/highlevel.py", line 52, in _try_incr_builders
+    formula_like = ModelDesc.from_formula(formula_like)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 177, in from_formula
+    value = Evaluator().eval(tree, require_evalexpr=False)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 243, in _eval_any_tilde
+    exprs = [evaluator.eval(arg) for arg in tree.args]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 243, in <listcomp>
+    exprs = [evaluator.eval(arg) for arg in tree.args]
+             ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 279, in _eval_binary_minus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 257, in _eval_binary_plus
+    left_expr = evaluator.eval(tree.args[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 285, in _eval_binary_minus
+    right_expr = evaluator.eval(tree.args[1])
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 443, in eval
+    result = self._evaluators[key](self, tree)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/patsy/desc.py", line 395, in _eval_number
+    raise PatsyError("numbers besides '0' and '1' are only allowed with **", tree)
+patsy.PatsyError: numbers besides '0' and '1' are only allowed with **
+    service_score ~ switched_branch + after_switch + rel_week_-9 + rel_week_-8 + rel_week_-7 + rel_week_-6 + rel_week_-5 + rel_week_-4 + rel_week_-3 + rel_week_-2 + rel_week_0 + rel_week_1 + rel_week_2 + rel_week_3 + rel_week_4 + rel_week_5 + rel_week_6 + rel_week_7
+                                                               ^
+
+
+=== Code run in turn 2, call 6 of 9 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Event study regression with week fixed effects
+df['weeks_relative'] = df['week'] - 15
+
+# Create indicators for each relative week with cleaner names
+for wr in range(-9, 8):  # -9 to 7
+    col_name = f'rel_wk_{abs(wr)}_{"neg" if wr < 0 else "pos"}' if wr != 0 else 'rel_wk_0'
+    df[col_name] = ((df['weeks_relative'] == wr) & (df['switched_branch'] == 1)).astype(int)
+
+# Run event study regression (excluding week -1 as reference)
+# Reference: rel_wk_1_neg (week -1)
+rel_weeks = []
+for wr in range(-9, 8):
+    if wr == -1:
+        continue  # skip reference
+    elif wr < 0:
+        rel_weeks.append(f'rel_wk_{abs(wr)}_neg')
+    elif wr == 0:
+        rel_weeks.append('rel_wk_0')
+    else:
+        rel_weeks.append(f'rel_wk_{wr}_pos')
+
+formula = f"service_score ~ switched_branch + after_switch + {' + '.join(rel_weeks)}"
+event_model = ols(formula, data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("=== Event Study Regression ===")
+print("Reference period: week -1 (week 14)")
+print("\nCoefficients for treatment group by relative week:")
+
+# Map back to original week numbers for display
+week_mapping = {}
+for wr in range(-9, 8):
+    if wr == -1:
+        continue
+    elif wr < 0:
+        week_mapping[f'rel_wk_{abs(wr)}_neg'] = wr
+    elif wr == 0:
+        week_mapping['rel_wk_0'] = wr
+    else:
+        week_mapping[f'rel_wk_{wr}_pos'] = wr
+
+for col in rel_weeks:
+    coef = event_model.params[col]
+    se = event_model.bse[col]
+    pval = event_model.pvalues[col]
+    wr = week_mapping[col]
+    sig = "***" if pval < 0.01 else "**" if pval < 0.05 else "*" if pval < 0.1 else ""
+    print(f"Week {wr:+d}: {coef:6.2f} (SE: {se:.2f}, p={pval:.3f}) {sig}")
+
+# Test for pre-trend (joint significance of pre-period coefficients)
+pre_period_coeffs = [col for col in rel_weeks if week_mapping[col] < -1]
+pre_test = event_model.f_test(pre_period_coeffs)
+print(f"\nJoint test for pre-treatment trends (weeks -9 to -2 = 0):")
+print(f"F-statistic: {pre_test.fvalue:.2f}, p-value: {pre_test.pvalue:.3f}")
+
+# Test for post-treatment effects
+post_period_coeffs = [col for col in rel_weeks if week_mapping[col] >= 0]
+post_test = event_model.f_test(post_period_coeffs)
+print(f"\nJoint test for post-treatment effects (weeks 0 to 7 = 0):")
+print(f"F-statistic: {post_test.fvalue:.2f}, p-value: {post_test.pvalue:.3f}")
+
+# Average post-treatment effect
+post_coefs = [event_model.params[col] for col in rel_weeks if week_mapping[col] >= 0]
+print(f"\nAverage post-treatment effect: {np.mean(post_coefs):.2f}")
+--- printed ---
+=== Event Study Regression ===
+Reference period: week -1 (week 14)
+
+Coefficients for treatment group by relative week:
+Week -9:  -0.31 (SE: 0.81, p=0.700) 
+Week -8:  -0.14 (SE: 0.80, p=0.859) 
+Week -7:   9.16 (SE: 0.75, p=0.000) ***
+Week -6:  -4.34 (SE: 0.77, p=0.000) ***
+Week -5:  -0.36 (SE: 0.73, p=0.622) 
+Week -4:   5.03 (SE: 0.60, p=0.000) ***
+Week -3:   3.27 (SE: 0.64, p=0.000) ***
+Week -2:   8.37 (SE: 0.52, p=0.000) ***
+Week +0:  -1.09 (SE: 0.66, p=0.099) *
+Week +1:   5.54 (SE: 0.80, p=0.000) ***
+Week +2:   4.43 (SE: 0.79, p=0.000) ***
+Week +3:   4.55 (SE: 0.80, p=0.000) ***
+Week +4:   9.67 (SE: 0.84, p=0.000) ***
+Week +5:   2.81 (SE: 0.90, p=0.002) ***
+Week +6:   2.00 (SE: 0.85, p=0.019) **
+Week +7:   4.62 (SE: 0.85, p=0.000) ***
+
+Joint test for pre-treatment trends (weeks -9 to -2 = 0):
+F-statistic: 182.52, p-value: 0.000
+
+Joint test for post-treatment effects (weeks 0 to 7 = 0):
+F-statistic: 63.55, p-value: 0.000
+
+Average post-treatment effect: 4.07
+
+
+=== Code run in turn 2, call 7 of 9 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create relative week
+df['weeks_relative'] = df['week'] - 15
+
+# Create treatment interaction dummies for each relative week
+for wr in range(-9, 8):
+    col_name = f'treatXrel_{abs(wr)}_{"neg" if wr < 0 else "pos"}' if wr != 0 else 'treatXrel_0'
+    df[col_name] = ((df['weeks_relative'] == wr) & (df['switched_branch'] == 1)).astype(int)
+
+# Run regression with branch and week fixed effects
+# Using C() for categorical variables
+treat_cols = []
+for wr in range(-9, 8):
+    if wr == -1:
+        continue  # reference period
+    elif wr < 0:
+        treat_cols.append(f'treatXrel_{abs(wr)}_neg')
+    elif wr == 0:
+        treat_cols.append('treatXrel_0')
+    else:
+        treat_cols.append(f'treatXrel_{wr}_pos')
+
+formula = f"service_score ~ {' + '.join(treat_cols)} + C(branch_id) + C(week)"
+event_model_fe = ols(formula, data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("=== Event Study with Branch and Week Fixed Effects ===")
+print("Reference period: week -1 (week 14)")
+print("\nTreatment effect by relative week (vs control branches in same week):")
+
+week_mapping = {}
+for wr in range(-9, 8):
+    if wr == -1:
+        continue
+    elif wr < 0:
+        week_mapping[f'treatXrel_{abs(wr)}_neg'] = wr
+    elif wr == 0:
+        week_mapping['treatXrel_0'] = wr
+    else:
+        week_mapping[f'treatXrel_{wr}_pos'] = wr
+
+for col in treat_cols:
+    coef = event_model_fe.params[col]
+    se = event_model_fe.bse[col]
+    pval = event_model_fe.pvalues[col]
+    wr = week_mapping[col]
+    sig = "***" if pval < 0.01 else "**" if pval < 0.05 else "*" if pval < 0.1 else ""
+    print(f"Week {wr:+d}: {coef:6.2f} (SE: {se:.2f}, p={pval:.3f}) {sig}")
+
+# Test for pre-trend
+pre_period_coeffs = [col for col in treat_cols if week_mapping[col] < -1]
+pre_test = event_model_fe.f_test(pre_period_coeffs)
+print(f"\nJoint test for pre-treatment trends (weeks -9 to -2 = 0):")
+print(f"F-statistic: {pre_test.fvalue:.2f}, p-value: {pre_test.pvalue:.3f}")
+
+# Test for post-treatment effects
+post_period_coeffs = [col for col in treat_cols if week_mapping[col] >= 0]
+post_test = event_model_fe.f_test(post_period_coeffs)
+print(f"\nJoint test for post-treatment effects (weeks 0 to 7 = 0):")
+print(f"F-statistic: {post_test.fvalue:.2f}, p-value: {post_test.pvalue:.3f}")
+
+# Average post-treatment effect
+post_coefs = [event_model_fe.params[col] for col in treat_cols if week_mapping[col] >= 0]
+print(f"\nAverage post-treatment effect: {np.mean(post_coefs):.2f}")
+--- printed ---
+=== Event Study with Branch and Week Fixed Effects ===
+Reference period: week -1 (week 14)
+
+Treatment effect by relative week (vs control branches in same week):
+Week -9:   0.90 (SE: 1.32, p=0.495) 
+Week -8:   2.13 (SE: 1.30, p=0.101) 
+Week -7:   1.13 (SE: 1.24, p=0.360) 
+Week -6:   0.32 (SE: 1.23, p=0.796) 
+Week -5:  -0.80 (SE: 1.25, p=0.520) 
+Week -4:   0.51 (SE: 1.23, p=0.680) 
+Week -3:   1.13 (SE: 1.09, p=0.297) 
+Week -2:  -0.49 (SE: 0.87, p=0.575) 
+Week +0:   1.47 (SE: 0.84, p=0.079) *
+Week +1:   2.02 (SE: 0.99, p=0.043) **
+Week +2:   2.13 (SE: 1.09, p=0.050) **
+Week +3:   2.02 (SE: 1.14, p=0.076) *
+Week +4:   1.74 (SE: 1.13, p=0.122) 
+Week +5:   4.27 (SE: 1.18, p=0.000) ***
+Week +6:   2.54 (SE: 1.16, p=0.029) **
+Week +7:   2.27 (SE: 1.21, p=0.060) *
+
+Joint test for pre-treatment trends (weeks -9 to -2 = 0):
+F-statistic: 1.32, p-value: 0.237
+
+Joint test for post-treatment effects (weeks 0 to 7 = 0):
+F-statistic: 2.55, p-value: 0.012
+
+Average post-treatment effect: 2.31
+
+
+=== Code run in turn 2, call 8 of 9 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create treatment indicator
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# DiD with branch and week fixed effects
+model_fe = ols('service_score ~ treatment + C(branch_id) + C(week)', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("=== DiD with Branch and Week Fixed Effects ===")
+print(model_fe.summary())
+
+# DiD with controls
+model_fe_controls = ols('service_score ~ treatment + staffing_index + visits_index + C(branch_id) + C(week)', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("\n=== DiD with Branch/Week FE and Controls ===")
+print(model_fe_controls.summary())
+
+# Get the treatment effect
+treatment_effect = model_fe.params['treatment']
+treatment_se = model_fe.bse['treatment']
+treatment_pval = model_fe.pvalues['treatment']
+treatment_ci_low = model_fe.conf_int().loc['treatment'][0]
+treatment_ci_high = model_fe.conf_int().loc['treatment'][1]
+
+print(f"\n=== Summary of Treatment Effect ===")
+print(f"Point estimate: {treatment_effect:.2f}")
+print(f"Standard error: {treatment_se:.2f}")
+print(f"95% CI: [{treatment_ci_low:.2f}, {treatment_ci_high:.2f}]")
+print(f"P-value: {treatment_pval:.3f}")
+
+# Effect size relative to mean
+mean_score = df['service_score'].mean()
+print(f"\nMean service score: {mean_score:.2f}")
+print(f"Effect as % of mean: {treatment_effect/mean_score*100:.1f}%")
+--- printed ---
+=== DiD with Branch and Week Fixed Effects ===
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.780
+Model:                            OLS   Adj. R-squared:                  0.765
+Method:                 Least Squares   F-statistic:                     359.7
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):          1.07e-111
+Time:                        04:46:41   Log-Likelihood:                -7590.0
+No. Observations:                2550   AIC:                         1.551e+04
+Df Residuals:                    2383   BIC:                         1.649e+04
+Df Model:                         166                                         
+Covariance Type:              cluster                                         
+=======================================================================================
+                          coef    std err          z      P>|z|      [0.025      0.975]
+---------------------------------------------------------------------------------------
+Intercept              54.1460      0.438    123.485      0.000      53.287      55.005
+C(branch_id)[T.1]       1.1905      0.295      4.037      0.000       0.612       1.769
+C(branch_id)[T.2]      -7.5179   4.41e-13   -1.7e+13      0.000      -7.518      -7.518
+C(branch_id)[T.3]     -14.0417   3.39e-13  -4.14e+13      0.000     -14.042     -14.042
+C(branch_id)[T.4]      -8.1763   3.14e-13   -2.6e+13      0.000      -8.176      -8.176
+C(branch_id)[T.5]     -11.3092   5.41e-13  -2.09e+13      0.000     -11.309     -11.309
+C(branch_id)[T.6]       0.5292   2.93e-13    1.8e+12      0.000       0.529       0.529
+C(branch_id)[T.7]      -5.3773   2.84e-13  -1.89e+13      0.000      -5.377      -5.377
+C(branch_id)[T.8]      -9.1352      0.295    -30.976      0.000      -9.713      -8.557
+C(branch_id)[T.9]       0.4697      0.295      1.593      0.111      -0.108       1.048
+C(branch_id)[T.10]    -10.9326      0.295    -37.070      0.000     -11.511     -10.355
+C(branch_id)[T.11]     -7.2108      0.295    -24.450      0.000      -7.789      -6.633
+C(branch_id)[T.12]    -13.8188   6.23e-13  -2.22e+13      0.000     -13.819     -13.819
+C(branch_id)[T.13]    -12.3557      0.295    -41.896      0.000     -12.934     -11.778
+C(branch_id)[T.14]     -9.8256   3.22e-13  -3.05e+13      0.000      -9.826      -9.826
+C(branch_id)[T.15]    -19.9690   3.64e-13  -5.49e+13      0.000     -19.969     -19.969
+C(branch_id)[T.16]      0.4133      0.295      1.402      0.161      -0.165       0.991
+C(branch_id)[T.17]    -17.7765      0.295    -60.277      0.000     -18.355     -17.198
+C(branch_id)[T.18]     -6.8733      0.295    -23.306      0.000      -7.451      -6.295
+C(branch_id)[T.19]     -3.5666      0.295    -12.094      0.000      -4.145      -2.989
+C(branch_id)[T.20]     -9.8238      3e-13  -3.28e+13      0.000      -9.824      -9.824
+C(branch_id)[T.21]     -3.9068   4.44e-13   -8.8e+12      0.000      -3.907      -3.907
+C(branch_id)[T.22]    -12.8130   3.94e-13  -3.25e+13      0.000     -12.813     -12.813
+C(branch_id)[T.23]     -0.5538      0.295     -1.878      0.060      -1.132       0.024
+C(branch_id)[T.24]    -14.4634   2.72e-13  -5.31e+13      0.000     -14.463     -14.463
+C(branch_id)[T.25]     -4.8848   2.74e-13  -1.78e+13      0.000      -4.885      -4.885
+C(branch_id)[T.26]    -14.5217   4.11e-13  -3.53e+13      0.000     -14.522     -14.522
+C(branch_id)[T.27]     -2.4260   4.41e-13   -5.5e+12      0.000      -2.426      -2.426
+C(branch_id)[T.28]     -8.5675   5.64e-13  -1.52e+13      0.000      -8.568      -8.568
+C(branch_id)[T.29]    -26.6035      0.295    -90.207      0.000     -27.181     -26.025
+C(branch_id)[T.30]      6.9890   2.72e-13   2.57e+13      0.000       6.989       6.989
+C(branch_id)[T.31]     -2.7279   2.88e-13  -9.46e+12      0.000      -2.728      -2.728
+C(branch_id)[T.32]     -5.4209      0.295    -18.381      0.000      -5.999      -4.843
+C(branch_id)[T.33]    -11.2935   8.15e-13  -1.39e+13      0.000     -11.293     -11.293
+C(branch_id)[T.34]      1.5118   7.16e-13   2.11e+12      0.000       1.512       1.512
+C(branch_id)[T.35]    -12.5433   2.94e-13  -4.27e+13      0.000     -12.543     -12.543
+C(branch_id)[T.36]    -15.0550      0.295    -51.048      0.000     -15.633     -14.477
+C(branch_id)[T.37]      3.1158   3.27e-13   9.54e+12      0.000       3.116       3.116
+C(branch_id)[T.38]     -6.1434      0.295    -20.831      0.000      -6.721      -5.565
+C(branch_id)[T.39]    -11.4000   3.39e-13  -3.36e+13      0.000     -11.400     -11.400
+C(branch_id)[T.40]     -4.9308   3.13e-13  -1.57e+13      0.000      -4.931      -4.931
+C(branch_id)[T.41]    -10.8964      0.295    -36.948      0.000     -11.474     -10.318
+C(branch_id)[T.42]    -10.1035   2.89e-13   -3.5e+13      0.000     -10.103     -10.103
+C(branch_id)[T.43]     -9.0794   2.86e-13  -3.17e+13      0.000      -9.079      -9.079
+C(branch_id)[T.44]     -4.4482   2.86e-13  -1.55e+13      0.000      -4.448      -4.448
+C(branch_id)[T.45]    -13.6895      0.295    -46.418      0.000     -14.268     -13.112
+C(branch_id)[T.46]    -10.2259      0.295    -34.674      0.000     -10.804      -9.648
+C(branch_id)[T.47]      1.4220   8.03e-13   1.77e+12      0.000       1.422       1.422
+C(branch_id)[T.48]     -7.6131      0.295    -25.814      0.000      -8.191      -7.035
+C(branch_id)[T.49]    -11.3989   7.45e-13  -1.53e+13      0.000     -11.399     -11.399
+C(branch_id)[T.50]    -15.8850   2.81e-13  -5.65e+13      0.000     -15.885     -15.885
+C(branch_id)[T.51]     -5.4522    7.6e-13  -7.17e+12      0.000      -5.452      -5.452
+C(branch_id)[T.52]      5.6277      0.295     19.083      0.000       5.050       6.206
+C(branch_id)[T.53]    -17.6245   4.52e-13   -3.9e+13      0.000     -17.624     -17.624
+C(branch_id)[T.54]     -6.0764   3.93e-13  -1.55e+13      0.000      -6.076      -6.076
+C(branch_id)[T.55]     -7.3284      0.295    -24.849      0.000      -7.906      -6.750
+C(branch_id)[T.56]     -2.3175      0.295     -7.858      0.000      -2.895      -1.739
+C(branch_id)[T.57]     -6.2375      0.295    -21.150      0.000      -6.815      -5.659
+C(branch_id)[T.58]    -16.8551   3.01e-13  -5.59e+13      0.000     -16.855     -16.855
+C(branch_id)[T.59]    -10.7578      0.295    -36.478      0.000     -11.336     -10.180
+C(branch_id)[T.60]     -3.4061      0.295    -11.549      0.000      -3.984      -2.828
+C(branch_id)[T.61]    -10.5019      0.295    -35.610      0.000     -11.080      -9.924
+C(branch_id)[T.62]    -24.4099   3.59e-13   -6.8e+13      0.000     -24.410     -24.410
+C(branch_id)[T.63]    -19.1341      0.295    -64.880      0.000     -19.712     -18.556
+C(branch_id)[T.64]      0.3434      0.295      1.164      0.244      -0.235       0.921
+C(branch_id)[T.65]    -17.1272   5.69e-13  -3.01e+13      0.000     -17.127     -17.127
+C(branch_id)[T.66]     -7.2567      0.295    -24.606      0.000      -7.835      -6.679
+C(branch_id)[T.67]     -5.8203      0.295    -19.736      0.000      -6.398      -5.242
+C(branch_id)[T.68]     -7.2314   3.65e-13  -1.98e+13      0.000      -7.231      -7.231
+C(branch_id)[T.69]    -13.5382   2.81e-13  -4.81e+13      0.000     -13.538     -13.538
+C(branch_id)[T.70]      5.2759   2.73e-13   1.93e+13      0.000       5.276       5.276
+C(branch_id)[T.71]    -10.3533   3.18e-13  -3.26e+13      0.000     -10.353     -10.353
+C(branch_id)[T.72]      0.0134   3.72e-13   3.61e+10      0.000       0.013       0.013
+C(branch_id)[T.73]     -5.9213   4.74e-13  -1.25e+13      0.000      -5.921      -5.921
+C(branch_id)[T.74]     -1.4796      6e-13  -2.47e+12      0.000      -1.480      -1.480
+C(branch_id)[T.75]    -11.6332   4.75e-13  -2.45e+13      0.000     -11.633     -11.633
+C(branch_id)[T.76]     -4.2670      0.295    -14.468      0.000      -4.845      -3.689
+C(branch_id)[T.77]     -3.6658      0.295    -12.430      0.000      -4.244      -3.088
+C(branch_id)[T.78]     -6.4382      1e-12  -6.43e+12      0.000      -6.438      -6.438
+C(branch_id)[T.79]      2.6452      0.295      8.969      0.000       2.067       3.223
+C(branch_id)[T.80]      9.2837   7.84e-13   1.18e+13      0.000       9.284       9.284
+C(branch_id)[T.81]    -16.5968      0.295    -56.276      0.000     -17.175     -16.019
+C(branch_id)[T.82]     -5.3218      0.295    -18.045      0.000      -5.900      -4.744
+C(branch_id)[T.83]      6.5551   2.75e-13   2.39e+13      0.000       6.555       6.555
+C(branch_id)[T.84]    -17.4483   3.41e-13  -5.11e+13      0.000     -17.448     -17.448
+C(branch_id)[T.85]    -11.8394      0.295    -40.145      0.000     -12.417     -11.261
+C(branch_id)[T.86]      3.2749   3.18e-13   1.03e+13      0.000       3.275       3.275
+C(branch_id)[T.87]     -6.2912   2.74e-13   -2.3e+13      0.000      -6.291      -6.291
+C(branch_id)[T.88]    -22.0126      0.295    -74.640      0.000     -22.591     -21.435
+C(branch_id)[T.89]      4.1397   3.31e-13   1.25e+13      0.000       4.140       4.140
+C(branch_id)[T.90]     -1.5509   2.73e-13  -5.69e+12      0.000      -1.551      -1.551
+C(branch_id)[T.91]     -6.4473   3.46e-13  -1.86e+13      0.000      -6.447      -6.447
+C(branch_id)[T.92]    -20.5137   4.08e-13  -5.03e+13      0.000     -20.514     -20.514
+C(branch_id)[T.93]     -7.8463      0.295    -26.605      0.000      -8.424      -7.268
+C(branch_id)[T.94]    -21.5674   1.01e-12  -2.15e+13      0.000     -21.567     -21.567
+C(branch_id)[T.95]    -12.7211      0.295    -43.135      0.000     -13.299     -12.143
+C(branch_id)[T.96]     -1.1805    6.4e-13  -1.84e+12      0.000      -1.181      -1.181
+C(branch_id)[T.97]    -10.3226   7.33e-13  -1.41e+13      0.000     -10.323     -10.323
+C(branch_id)[T.98]     -1.9000   2.78e-13  -6.84e+12      0.000      -1.900      -1.900
+C(branch_id)[T.99]     -4.9111   6.81e-13  -7.21e+12      0.000      -4.911      -4.911
+C(branch_id)[T.100]     0.1291   6.26e-13   2.06e+11      0.000       0.129       0.129
+C(branch_id)[T.101]    -3.8899      0.295    -13.190      0.000      -4.468      -3.312
+C(branch_id)[T.102]   -11.5978      0.295    -39.326      0.000     -12.176     -11.020
+C(branch_id)[T.103]    -9.1740   4.96e-13  -1.85e+13      0.000      -9.174      -9.174
+C(branch_id)[T.104]   -22.1767   3.15e-13  -7.04e+13      0.000     -22.177     -22.177
+C(branch_id)[T.105]   -16.8116   3.21e-13  -5.24e+13      0.000     -16.812     -16.812
+C(branch_id)[T.106]    -9.8901    4.8e-13  -2.06e+13      0.000      -9.890      -9.890
+C(branch_id)[T.107]     8.3771      0.295     28.405      0.000       7.799       8.955
+C(branch_id)[T.108]   -19.5228      0.295    -66.198      0.000     -20.101     -18.945
+C(branch_id)[T.109]    11.8370    4.7e-13   2.52e+13      0.000      11.837      11.837
+C(branch_id)[T.110]    -0.8528   6.56e-13   -1.3e+12      0.000      -0.853      -0.853
+C(branch_id)[T.111]    -1.9440    5.4e-13   -3.6e+12      0.000      -1.944      -1.944
+C(branch_id)[T.112]   -13.8422   3.07e-13   -4.5e+13      0.000     -13.842     -13.842
+C(branch_id)[T.113]     5.2775   2.83e-13   1.87e+13      0.000       5.277       5.277
+C(branch_id)[T.114]   -24.2577      0.295    -82.253      0.000     -24.836     -23.680
+C(branch_id)[T.115]    -0.4964      0.295     -1.683      0.092      -1.074       0.082
+C(branch_id)[T.116]   -20.3505      0.295    -69.005      0.000     -20.929     -19.773
+C(branch_id)[T.117]   -10.8250   3.63e-13  -2.98e+13      0.000     -10.825     -10.825
+C(branch_id)[T.118]    -6.2029   2.74e-13  -2.27e+13      0.000      -6.203      -6.203
+C(branch_id)[T.119]    -8.5172   3.45e-13  -2.47e+13      0.000      -8.517      -8.517
+C(branch_id)[T.120]    -2.4092   3.64e-13  -6.63e+12      0.000      -2.409      -2.409
+C(branch_id)[T.121]     6.1960   4.01e-13   1.54e+13      0.000       6.196       6.196
+C(branch_id)[T.122]   -30.2996      0.295   -102.740      0.000     -30.878     -29.722
+C(branch_id)[T.123]   -12.2851      0.295    -41.656      0.000     -12.863     -11.707
+C(branch_id)[T.124]   -16.8192   5.13e-13  -3.28e+13      0.000     -16.819     -16.819
+C(branch_id)[T.125]    -3.5749   3.77e-13  -9.48e+12      0.000      -3.575      -3.575
+C(branch_id)[T.126]    -5.1734      0.295    -17.542      0.000      -5.751      -4.595
+C(branch_id)[T.127]     4.2205   3.68e-13   1.15e+13      0.000       4.221       4.221
+C(branch_id)[T.128]   -22.6863      0.295    -76.925      0.000     -23.264     -22.108
+C(branch_id)[T.129]    -4.8173      0.295    -16.334      0.000      -5.395      -4.239
+C(branch_id)[T.130]    -9.8873      0.295    -33.526      0.000     -10.465      -9.309
+C(branch_id)[T.131]    -1.2968   5.01e-13  -2.59e+12      0.000      -1.297      -1.297
+C(branch_id)[T.132]   -14.8662   2.73e-13  -5.45e+13      0.000     -14.866     -14.866
+C(branch_id)[T.133]   -11.8504      0.295    -40.182      0.000     -12.428     -11.272
+C(branch_id)[T.134]     1.6023      0.295      5.433      0.000       1.024       2.180
+C(branch_id)[T.135]     1.8044      0.295      6.118      0.000       1.226       2.382
+C(branch_id)[T.136]   -23.3768   2.75e-13   -8.5e+13      0.000     -23.377     -23.377
+C(branch_id)[T.137]    -6.5765   3.21e-13  -2.05e+13      0.000      -6.576      -6.576
+C(branch_id)[T.138]     3.8609   2.76e-13    1.4e+13      0.000       3.861       3.861
+C(branch_id)[T.139]    -2.1089      0.295     -7.151      0.000      -2.687      -1.531
+C(branch_id)[T.140]   -10.4903   2.84e-13   -3.7e+13      0.000     -10.490     -10.490
+C(branch_id)[T.141]    -3.5096      0.295    -11.900      0.000      -4.088      -2.932
+C(branch_id)[T.142]     6.8857   2.72e-13   2.53e+13      0.000       6.886       6.886
+C(branch_id)[T.143]    -2.5482   3.33e-13  -7.64e+12      0.000      -2.548      -2.548
+C(branch_id)[T.144]   -14.8021   3.18e-13  -4.66e+13      0.000     -14.802     -14.802
+C(branch_id)[T.145]     1.2809      0.295      4.343      0.000       0.703       1.859
+C(branch_id)[T.146]     2.5846      0.295      8.764      0.000       2.007       3.163
+C(branch_id)[T.147]   -10.4884      0.295    -35.564      0.000     -11.066      -9.910
+C(branch_id)[T.148]     3.6219    5.3e-13   6.84e+12      0.000       3.622       3.622
+C(branch_id)[T.149]   -13.4031   3.51e-13  -3.82e+13      0.000     -13.403     -13.403
+C(week)[T.7]           -0.3228      0.431     -0.749      0.454      -1.167       0.522
+C(week)[T.8]            9.3755      0.500     18.739      0.000       8.395      10.356
+C(week)[T.9]           -3.7954      0.531     -7.153      0.000      -4.835      -2.755
+C(week)[T.10]           0.6318      0.622      1.016      0.310      -0.588       1.851
+C(week)[T.11]           5.4949      0.607      9.055      0.000       4.305       6.684
+C(week)[T.12]           3.4883      0.627      5.560      0.000       2.259       4.718
+C(week)[T.13]           9.2333      0.671     13.765      0.000       7.919      10.548
+C(week)[T.14]           0.6719      0.646      1.040      0.298      -0.594       1.938
+C(week)[T.15]          -2.3978      0.769     -3.117      0.002      -3.905      -0.890
+C(week)[T.16]           4.0063      0.686      5.836      0.000       2.661       5.352
+C(week)[T.17]           2.8473      0.739      3.855      0.000       1.400       4.295
+C(week)[T.18]           3.0183      0.690      4.372      0.000       1.665       4.371
+C(week)[T.19]           8.2469      0.685     12.039      0.000       6.904       9.590
+C(week)[T.20]           0.3773      0.757      0.499      0.618      -1.105       1.860
+C(week)[T.21]           0.2573      0.683      0.377      0.706      -1.081       1.595
+C(week)[T.22]           2.9870      0.746      4.002      0.000       1.524       4.450
+treatment               1.7708      0.627      2.826      0.005       0.542       2.999
+==============================================================================
+Omnibus:                        2.059   Durbin-Watson:                   1.214
+Prob(Omnibus):                  0.357   Jarque-Bera (JB):                2.096
+Skew:                           0.068   Prob(JB):                        0.351
+Kurtosis:                       2.964   Cond. No.                         162.
+==============================================================================
+
+Notes:
+[1] Standard Errors are robust to cluster correlation (CRV1)
+
+=== DiD with Branch/Week FE and Controls ===
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.783
+Model:                            OLS   Adj. R-squared:                  0.767
+Method:                 Least Squares   F-statistic:                     1397.
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):          1.51e-157
+Time:                        04:46:41   Log-Likelihood:                -7574.9
+No. Observations:                2550   AIC:                         1.549e+04
+Df Residuals:                    2381   BIC:                         1.648e+04
+Df Model:                         168                                         
+Covariance Type:              cluster                                         
+=======================================================================================
+                          coef    std err          z      P>|z|      [0.025      0.975]
+---------------------------------------------------------------------------------------
+Intercept              54.1294      0.436    124.096      0.000      53.275      54.984
+C(branch_id)[T.1]       1.0795      0.296      3.642      0.000       0.499       1.660
+C(branch_id)[T.2]      -7.3768      0.025   -293.756      0.000      -7.426      -7.328
+C(branch_id)[T.3]     -14.0054      0.008  -1707.920      0.000     -14.022     -13.989
+C(branch_id)[T.4]      -7.9427      0.042   -189.031      0.000      -8.025      -7.860
+C(branch_id)[T.5]     -11.1042      0.037   -301.325      0.000     -11.176     -11.032
+C(branch_id)[T.6]       0.5121      0.017     29.535      0.000       0.478       0.546
+C(branch_id)[T.7]      -5.1423      0.043   -120.422      0.000      -5.226      -5.059
+C(branch_id)[T.8]      -9.0142      0.294    -30.661      0.000      -9.590      -8.438
+C(branch_id)[T.9]       0.4501      0.296      1.522      0.128      -0.130       1.030
+C(branch_id)[T.10]    -10.8907      0.294    -37.039      0.000     -11.467     -10.314
+C(branch_id)[T.11]     -7.2905      0.296    -24.662      0.000      -7.870      -6.711
+C(branch_id)[T.12]    -13.6628      0.031   -447.664      0.000     -13.723     -13.603
+C(branch_id)[T.13]    -12.1839      0.293    -41.571      0.000     -12.758     -11.609
+C(branch_id)[T.14]     -9.7533      0.014   -691.334      0.000      -9.781      -9.726
+C(branch_id)[T.15]    -19.8904      0.036   -557.241      0.000     -19.960     -19.820
+C(branch_id)[T.16]      0.4055      0.296      1.368      0.171      -0.176       0.987
+C(branch_id)[T.17]    -17.7299      0.296    -59.838      0.000     -18.311     -17.149
+C(branch_id)[T.18]     -6.9812      0.296    -23.584      0.000      -7.561      -6.401
+C(branch_id)[T.19]     -3.3741      0.293    -11.506      0.000      -3.949      -2.799
+C(branch_id)[T.20]     -9.6222      0.039   -246.238      0.000      -9.699      -9.546
+C(branch_id)[T.21]     -3.9375      0.027   -143.695      0.000      -3.991      -3.884
+C(branch_id)[T.22]    -12.9903      0.032   -401.767      0.000     -13.054     -12.927
+C(branch_id)[T.23]     -0.4879      0.295     -1.656      0.098      -1.066       0.090
+C(branch_id)[T.24]    -14.3508      0.020   -716.377      0.000     -14.390     -14.312
+C(branch_id)[T.25]     -4.8509      0.006   -758.268      0.000      -4.863      -4.838
+C(branch_id)[T.26]    -14.2833      0.043   -329.123      0.000     -14.368     -14.198
+C(branch_id)[T.27]     -2.2590      0.033    -68.210      0.000      -2.324      -2.194
+C(branch_id)[T.28]     -8.3104      0.046   -180.930      0.000      -8.400      -8.220
+C(branch_id)[T.29]    -26.3452      0.294    -89.552      0.000     -26.922     -25.769
+C(branch_id)[T.30]      7.2141      0.047    155.104      0.000       7.123       7.305
+C(branch_id)[T.31]     -2.6799      0.016   -170.629      0.000      -2.711      -2.649
+C(branch_id)[T.32]     -5.4791      0.295    -18.564      0.000      -6.058      -4.901
+C(branch_id)[T.33]    -11.4123      0.041   -277.132      0.000     -11.493     -11.332
+C(branch_id)[T.34]      1.8193      0.055     33.231      0.000       1.712       1.927
+C(branch_id)[T.35]    -12.4006      0.072   -171.168      0.000     -12.543     -12.259
+C(branch_id)[T.36]    -15.2063      0.298    -51.072      0.000     -15.790     -14.623
+C(branch_id)[T.37]      2.8351      0.053     53.736      0.000       2.732       2.939
+C(branch_id)[T.38]     -6.2134      0.295    -21.055      0.000      -6.792      -5.635
+C(branch_id)[T.39]    -11.1992      0.038   -293.948      0.000     -11.274     -11.125
+C(branch_id)[T.40]     -5.0403      0.022   -228.532      0.000      -5.084      -4.997
+C(branch_id)[T.41]    -11.1759      0.302    -36.949      0.000     -11.769     -10.583
+C(branch_id)[T.42]    -10.1737      0.041   -247.539      0.000     -10.254     -10.093
+C(branch_id)[T.43]     -8.8751      0.055   -161.704      0.000      -8.983      -8.768
+C(branch_id)[T.44]     -4.6018      0.030   -154.524      0.000      -4.660      -4.543
+C(branch_id)[T.45]    -13.6270      0.293    -46.442      0.000     -14.202     -13.052
+C(branch_id)[T.46]    -10.1463      0.294    -34.517      0.000     -10.722      -9.570
+C(branch_id)[T.47]      1.6482      0.069     23.941      0.000       1.513       1.783
+C(branch_id)[T.48]     -7.7081      0.298    -25.830      0.000      -8.293      -7.123
+C(branch_id)[T.49]    -11.2409      0.030   -368.603      0.000     -11.301     -11.181
+C(branch_id)[T.50]    -15.6678      0.084   -186.610      0.000     -15.832     -15.503
+C(branch_id)[T.51]     -5.2258      0.054    -97.194      0.000      -5.331      -5.120
+C(branch_id)[T.52]      5.6695      0.296     19.157      0.000       5.089       6.250
+C(branch_id)[T.53]    -17.4715      0.028   -620.309      0.000     -17.527     -17.416
+C(branch_id)[T.54]     -6.0428      0.018   -341.698      0.000      -6.077      -6.008
+C(branch_id)[T.55]     -7.3006      0.294    -24.872      0.000      -7.876      -6.725
+C(branch_id)[T.56]     -2.2117      0.293     -7.539      0.000      -2.787      -1.637
+C(branch_id)[T.57]     -6.2515      0.294    -21.237      0.000      -6.828      -5.675
+C(branch_id)[T.58]    -16.8388      0.003  -5492.608      0.000     -16.845     -16.833
+C(branch_id)[T.59]    -10.9436      0.301    -36.312      0.000     -11.534     -10.353
+C(branch_id)[T.60]     -3.5319      0.297    -11.911      0.000      -4.113      -2.951
+C(branch_id)[T.61]    -10.6629      0.300    -35.553      0.000     -11.251     -10.075
+C(branch_id)[T.62]    -24.4452      0.033   -745.669      0.000     -24.509     -24.381
+C(branch_id)[T.63]    -18.9310      0.294    -64.314      0.000     -19.508     -18.354
+C(branch_id)[T.64]      0.3352      0.294      1.140      0.254      -0.241       0.911
+C(branch_id)[T.65]    -17.0230      0.020   -858.466      0.000     -17.062     -16.984
+C(branch_id)[T.66]     -7.2412      0.294    -24.615      0.000      -7.818      -6.665
+C(branch_id)[T.67]     -5.7942      0.295    -19.674      0.000      -6.371      -5.217
+C(branch_id)[T.68]     -7.1205      0.039   -183.683      0.000      -7.196      -7.045
+C(branch_id)[T.69]    -13.7052      0.064   -212.906      0.000     -13.831     -13.579
+C(branch_id)[T.70]      5.2395      0.045    116.570      0.000       5.151       5.328
+C(branch_id)[T.71]    -10.0521      0.063   -160.092      0.000     -10.175      -9.929
+C(branch_id)[T.72]      0.1048      0.019      5.467      0.000       0.067       0.142
+C(branch_id)[T.73]     -5.7849      0.030   -191.630      0.000      -5.844      -5.726
+C(branch_id)[T.74]     -1.4649      0.005   -290.283      0.000      -1.475      -1.455
+C(branch_id)[T.75]    -11.2760      0.070   -160.324      0.000     -11.414     -11.138
+C(branch_id)[T.76]     -4.3569      0.296    -14.731      0.000      -4.937      -3.777
+C(branch_id)[T.77]     -3.4448      0.294    -11.732      0.000      -4.020      -2.869
+C(branch_id)[T.78]     -6.3144      0.028   -223.789      0.000      -6.370      -6.259
+C(branch_id)[T.79]      2.5909      0.296      8.749      0.000       2.011       3.171
+C(branch_id)[T.80]      9.2042      0.014    650.689      0.000       9.177       9.232
+C(branch_id)[T.81]    -16.7252      0.297    -56.396      0.000     -17.306     -16.144
+C(branch_id)[T.82]     -5.2780      0.295    -17.866      0.000      -5.857      -4.699
+C(branch_id)[T.83]      6.7224      0.031    215.685      0.000       6.661       6.783
+C(branch_id)[T.84]    -17.5151      0.033   -530.624      0.000     -17.580     -17.450
+C(branch_id)[T.85]    -11.6690      0.293    -39.847      0.000     -12.243     -11.095
+C(branch_id)[T.86]      3.4359      0.033    105.361      0.000       3.372       3.500
+C(branch_id)[T.87]     -6.2772      0.017   -365.834      0.000      -6.311      -6.244
+C(branch_id)[T.88]    -22.0575      0.300    -73.476      0.000     -22.646     -21.469
+C(branch_id)[T.89]      4.2012      0.011    383.878      0.000       4.180       4.223
+C(branch_id)[T.90]     -1.5824      0.019    -84.745      0.000      -1.619      -1.546
+C(branch_id)[T.91]     -6.3584      0.031   -205.455      0.000      -6.419      -6.298
+C(branch_id)[T.92]    -20.3290      0.036   -557.229      0.000     -20.400     -20.257
+C(branch_id)[T.93]     -7.8451      0.297    -26.443      0.000      -8.427      -7.264
+C(branch_id)[T.94]    -21.4114      0.035   -609.467      0.000     -21.480     -21.343
+C(branch_id)[T.95]    -12.7208      0.295    -43.140      0.000     -13.299     -12.143
+C(branch_id)[T.96]     -1.0435      0.064    -16.374      0.000      -1.168      -0.919
+C(branch_id)[T.97]    -10.2890      0.013   -775.263      0.000     -10.315     -10.263
+C(branch_id)[T.98]     -1.8801      0.065    -29.086      0.000      -2.007      -1.753
+C(branch_id)[T.99]     -4.7315      0.037   -128.817      0.000      -4.803      -4.659
+C(branch_id)[T.100]     0.2380      0.022     10.849      0.000       0.195       0.281
+C(branch_id)[T.101]    -3.9838      0.297    -13.420      0.000      -4.566      -3.402
+C(branch_id)[T.102]   -11.6207      0.297    -39.074      0.000     -12.204     -11.038
+C(branch_id)[T.103]    -9.1491      0.004  -2039.688      0.000      -9.158      -9.140
+C(branch_id)[T.104]   -21.8323      0.062   -353.448      0.000     -21.953     -21.711
+C(branch_id)[T.105]   -16.7702      0.008  -2083.360      0.000     -16.786     -16.754
+C(branch_id)[T.106]    -9.7560      0.041   -238.196      0.000      -9.836      -9.676
+C(branch_id)[T.107]     8.4065      0.294     28.642      0.000       7.831       8.982
+C(branch_id)[T.108]   -19.5161      0.297    -65.803      0.000     -20.097     -18.935
+C(branch_id)[T.109]    11.8005      0.060    195.999      0.000      11.682      11.919
+C(branch_id)[T.110]    -0.9907      0.027    -36.140      0.000      -1.044      -0.937
+C(branch_id)[T.111]    -1.7165      0.045    -38.362      0.000      -1.804      -1.629
+C(branch_id)[T.112]   -13.7778      0.020   -696.321      0.000     -13.817     -13.739
+C(branch_id)[T.113]     5.3808      0.034    157.153      0.000       5.314       5.448
+C(branch_id)[T.114]   -24.2295      0.295    -82.266      0.000     -24.807     -23.652
+C(branch_id)[T.115]    -0.5775      0.296     -1.954      0.051      -1.157       0.002
+C(branch_id)[T.116]   -20.4020      0.295    -69.117      0.000     -20.981     -19.823
+C(branch_id)[T.117]   -10.7635      0.011   -965.272      0.000     -10.785     -10.742
+C(branch_id)[T.118]    -5.9674      0.051   -116.622      0.000      -6.068      -5.867
+C(branch_id)[T.119]    -8.5219      0.030   -279.811      0.000      -8.582      -8.462
+C(branch_id)[T.120]    -2.4594      0.016   -158.084      0.000      -2.490      -2.429
+C(branch_id)[T.121]     6.1471      0.015    416.098      0.000       6.118       6.176
+C(branch_id)[T.122]   -30.2693      0.294   -102.990      0.000     -30.845     -29.693
+C(branch_id)[T.123]   -12.1166      0.294    -41.265      0.000     -12.692     -11.541
+C(branch_id)[T.124]   -16.5751      0.045   -372.379      0.000     -16.662     -16.488
+C(branch_id)[T.125]    -3.6174      0.035   -102.239      0.000      -3.687      -3.548
+C(branch_id)[T.126]    -5.0765      0.293    -17.333      0.000      -5.650      -4.502
+C(branch_id)[T.127]     4.1156      0.021    197.518      0.000       4.075       4.156
+C(branch_id)[T.128]   -22.5850      0.294    -76.766      0.000     -23.162     -22.008
+C(branch_id)[T.129]    -4.7213      0.293    -16.119      0.000      -5.295      -4.147
+C(branch_id)[T.130]    -9.9438      0.298    -33.376      0.000     -10.528      -9.360
+C(branch_id)[T.131]    -1.2064      0.081    -14.876      0.000      -1.365      -1.047
+C(branch_id)[T.132]   -14.7938      0.024   -617.791      0.000     -14.841     -14.747
+C(branch_id)[T.133]   -11.7813      0.299    -39.344      0.000     -12.368     -11.194
+C(branch_id)[T.134]     1.5235      0.295      5.159      0.000       0.945       2.102
+C(branch_id)[T.135]     1.8268      0.295      6.184      0.000       1.248       2.406
+C(branch_id)[T.136]   -23.1335      0.043   -533.889      0.000     -23.218     -23.049
+C(branch_id)[T.137]    -6.5530      0.021   -307.912      0.000      -6.595      -6.511
+C(branch_id)[T.138]     3.8298      0.027    141.131      0.000       3.777       3.883
+C(branch_id)[T.139]    -2.1323      0.294     -7.242      0.000      -2.709      -1.555
+C(branch_id)[T.140]   -10.5967      0.026   -408.639      0.000     -10.648     -10.546
+C(branch_id)[T.141]    -3.5241      0.295    -11.943      0.000      -4.102      -2.946
+C(branch_id)[T.142]     6.9555      0.021    336.941      0.000       6.915       6.996
+C(branch_id)[T.143]    -2.5208      0.039    -64.304      0.000      -2.598      -2.444
+C(branch_id)[T.144]   -15.0192      0.046   -326.613      0.000     -15.109     -14.929
+C(branch_id)[T.145]     1.3981      0.293      4.774      0.000       0.824       1.972
+C(branch_id)[T.146]     2.4495      0.297      8.243      0.000       1.867       3.032
+C(branch_id)[T.147]   -10.1125      0.297    -34.053      0.000     -10.695      -9.530
+C(branch_id)[T.148]     3.7647      0.026    147.162      0.000       3.715       3.815
+C(branch_id)[T.149]   -13.4892      0.017   -810.472      0.000     -13.522     -13.457
+C(week)[T.7]           -0.3659      0.427     -0.857      0.391      -1.202       0.470
+C(week)[T.8]            9.3982      0.488     19.248      0.000       8.441      10.355
+C(week)[T.9]           -3.8495      0.526     -7.323      0.000      -4.880      -2.819
+C(week)[T.10]           0.5488      0.627      0.875      0.381      -0.680       1.778
+C(week)[T.11]           5.4579      0.599      9.107      0.000       4.283       6.633
+C(week)[T.12]           3.4071      0.626      5.446      0.000       2.181       4.633
+C(week)[T.13]           9.1619      0.667     13.734      0.000       7.854      10.469
+C(week)[T.14]           0.6632      0.641      1.034      0.301      -0.594       1.920
+C(week)[T.15]          -2.4536      0.758     -3.235      0.001      -3.940      -0.967
+C(week)[T.16]           3.9858      0.678      5.881      0.000       2.658       5.314
+C(week)[T.17]           2.8223      0.733      3.851      0.000       1.386       4.259
+C(week)[T.18]           3.0793      0.680      4.525      0.000       1.746       4.413
+C(week)[T.19]           8.1094      0.687     11.812      0.000       6.764       9.455
+C(week)[T.20]           0.3453      0.746      0.463      0.643      -1.116       1.807
+C(week)[T.21]           0.1762      0.676      0.261      0.794      -1.148       1.500
+C(week)[T.22]           2.9584      0.731      4.048      0.000       1.526       4.391
+treatment               1.7757      0.626      2.835      0.005       0.548       3.003
+staffing_index          0.3475      0.098      3.551      0.000       0.156       0.539
+visits_index            0.4195      0.094      4.475      0.000       0.236       0.603
+==============================================================================
+Omnibus:                        1.212   Durbin-Watson:                   1.202
+Prob(Omnibus):                  0.545   Jarque-Bera (JB):                1.256
+Skew:                           0.050   Prob(JB):                        0.534
+Kurtosis:                       2.959   Cond. No.                         162.
+==============================================================================
+
+Notes:
+[1] Standard Errors are robust to cluster correlation (CRV1)
+
+=== Summary of Treatment Effect ===
+Point estimate: 1.77
+Standard error: 0.63
+95% CI: [0.54, 3.00]
+P-value: 0.005
+
+Mean service score: 49.87
+Effect as % of mean: 3.6%
+
+/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py:1988: ValueWarning: covariance of constraints does not have full rank. The number of constraints is 166, but rank is 17
+  res = self.wald_test(
+/usr/local/lib/python3.11/site-packages/statsmodels/base/model.py:1988: ValueWarning: covariance of constraints does not have full rank. The number of constraints is 168, but rank is 19
+  res = self.wald_test(
+
+
+=== Code run in turn 2, call 9 of 9 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create treatment indicator
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# Main DiD model with fixed effects
+model_fe = ols('service_score ~ treatment + C(branch_id) + C(week)', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+# Get key statistics
+treatment_effect = model_fe.params['treatment']
+treatment_se = model_fe.bse['treatment']
+treatment_pval = model_fe.pvalues['treatment']
+treatment_ci = model_fe.conf_int().loc['treatment']
+
+# Summary stats
+n_branches = df['branch_id'].nunique()
+n_switched = df[df['switched_branch']==1]['branch_id'].nunique()
+n_control = df[df['switched_branch']==0]['branch_id'].nunique()
+n_observations = len(df)
+
+mean_score = df['service_score'].mean()
+sd_score = df['service_score'].std()
+
+# Pre and post means by group
+before = df[df['after_switch'] == 0]
+after = df[df['after_switch'] == 1]
+
+print("=== DATA SUMMARY ===")
+print(f"Total observations: {n_observations}")
+print(f"Total branches: {n_branches}")
+print(f"  - Switched (treatment): {n_switched}")
+print(f"  - Control (old procedure): {n_control}")
+print(f"\nService score overall mean: {mean_score:.2f} (SD: {sd_score:.2f})")
+
+print(f"\nBefore switch (weeks 6-14):")
+print(f"  Treatment group mean: {before[before['switched_branch']==1]['service_score'].mean():.2f}")
+print(f"  Control group mean: {before[before['switched_branch']==0]['service_score'].mean():.2f}")
+
+print(f"\nAfter switch (weeks 15-22):")
+print(f"  Treatment group mean: {after[after['switched_branch']==1]['service_score'].mean():.2f}")
+print(f"  Control group mean: {after[after['switched_branch']==0]['service_score'].mean():.2f}")
+
+print(f"\n=== TREATMENT EFFECT ESTIMATE ===")
+print(f"Point estimate: {treatment_effect:.2f} points")
+print(f"Standard error: {treatment_se:.2f}")
+print(f"95% Confidence interval: [{treatment_ci[0]:.2f}, {treatment_ci[1]:.2f}]")
+print(f"P-value: {treatment_pval:.3f}")
+print(f"Effect as % of mean score: {treatment_effect/mean_score*100:.1f}%")
+
+# Check if effect is practically significant
+print(f"\n=== PRACTICAL SIGNIFICANCE ===")
+print(f"The treatment effect of {treatment_effect:.2f} points represents approximately a {treatment_effect/mean_score*100:.1f}% increase in service score.")
+--- printed ---
+=== DATA SUMMARY ===
+Total observations: 2550
+Total branches: 150
+  - Switched (treatment): 90
+  - Control (old procedure): 60
+
+Service score overall mean: 49.87 (SD: 10.13)
+
+Before switch (weeks 6-14):
+  Treatment group mean: 50.03
+  Control group mean: 48.77
+
+After switch (weeks 15-22):
+  Treatment group mean: 51.47
+  Control group mean: 48.43
+
+=== TREATMENT EFFECT ESTIMATE ===
+Point estimate: 1.77 points
+Standard error: 0.63
+95% Confidence interval: [0.54, 3.00]
+P-value: 0.005
+Effect as % of mean score: 3.6%
+
+=== PRACTICAL SIGNIFICANCE ===
+The treatment effect of 1.77 points represents approximately a 3.6% increase in service score.
+
+
+--- files saved in turn 2: trends_plot.png ---

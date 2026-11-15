@@ -1,0 +1,576 @@
+Summary ID: fc7be07e38
+
+=== Code run in turn 2, call 1 of 7 ===
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Display basic info
+print("Data shape:", df.shape)
+print("\nColumn names:", df.columns.tolist())
+print("\nFirst few rows:")
+print(df.head(10))
+print("\nData types:")
+print(df.dtypes)
+print("\nSummary statistics:")
+print(df.describe())
+print("\nUnique values:")
+print("branch_id:", df['branch_id'].nunique())
+print("switched_branch:", df['switched_branch'].unique())
+print("after_switch:", df['after_switch'].unique())
+print("week range:", df['week'].min(), "to", df['week'].max())
+--- printed ---
+Data shape: (12053, 7)
+
+Column names: ['branch_id', 'week', 'switched_branch', 'after_switch', 'service_score', 'staffing_index', 'visits_index']
+
+First few rows:
+   branch_id  week  ...  staffing_index  visits_index
+0          0     6  ...        0.584758      0.548432
+1          0     7  ...        0.231560     -0.274863
+2          0     8  ...       -0.127955      0.456645
+3          0     9  ...        0.695503      2.833146
+4          0    10  ...        0.991508      0.705064
+5          0    11  ...        0.834846      1.143728
+6          0    12  ...        0.149824      1.672949
+7          0    13  ...        0.448841     -1.571775
+8          0    14  ...        1.295057     -1.531417
+9          0    15  ...        1.010820      1.049177
+
+[10 rows x 7 columns]
+
+Data types:
+branch_id            int64
+week                 int64
+switched_branch      int64
+after_switch         int64
+service_score      float64
+staffing_index     float64
+visits_index       float64
+dtype: object
+
+Summary statistics:
+          branch_id          week  ...  staffing_index  visits_index
+count  12053.000000  12053.000000  ...    12053.000000  12053.000000
+mean     354.000000     14.000000  ...       -0.013543      0.016238
+std      204.678958      4.899183  ...        0.994699      1.010584
+min        0.000000      6.000000  ...       -3.802403     -3.491340
+25%      177.000000     10.000000  ...       -0.679900     -0.669789
+50%      354.000000     14.000000  ...       -0.013691      0.012452
+75%      531.000000     18.000000  ...        0.654383      0.698984
+max      708.000000     22.000000  ...        3.639785      3.972102
+
+[8 rows x 7 columns]
+
+Unique values:
+branch_id: 709
+switched_branch: [0 1]
+after_switch: [0 1]
+week range: 6 to 22
+
+
+=== Code run in turn 2, call 2 of 7 ===
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import stats
+
+df = pd.read_csv('branches.csv')
+
+# Count branches by switch status
+switch_counts = df.groupby('branch_id')['switched_branch'].first().value_counts()
+print("Branches by switch status:")
+print(switch_counts)
+print(f"\nTotal branches: {df['branch_id'].nunique()}")
+print(f"Switched branches: {switch_counts.get(1, 0)}")
+print(f"Non-switched branches: {switch_counts.get(0, 0)}")
+
+# Check data balance
+print("\nObservations per branch (should be 17 weeks each):")
+obs_per_branch = df.groupby('branch_id').size()
+print(obs_per_branch.describe())
+
+# Create a summary table of service scores by group and period
+df['period'] = np.where(df['after_switch'] == 0, 'Before', 'After')
+summary = df.groupby(['switched_branch', 'period'])['service_score'].agg(['mean', 'std', 'count'])
+print("\nService Score Summary by Group and Period:")
+print(summary)
+
+# Calculate the difference-in-differences manually
+before_switched = df[(df['switched_branch'] == 1) & (df['after_switch'] == 0)]['service_score'].mean()
+after_switched = df[(df['switched_branch'] == 1) & (df['after_switch'] == 1)]['service_score'].mean()
+before_control = df[(df['switched_branch'] == 0) & (df['after_switch'] == 0)]['service_score'].mean()
+after_control = df[(df['switched_branch'] == 0) & (df['after_switch'] == 1)]['service_score'].mean()
+
+print(f"\nBefore - Switched branches: {before_switched:.3f}")
+print(f"After - Switched branches: {after_switched:.3f}")
+print(f"Change in switched: {after_switched - before_switched:.3f}")
+print(f"\nBefore - Control branches: {before_control:.3f}")
+print(f"After - Control branches: {after_control:.3f}")
+print(f"Change in control: {after_control - before_control:.3f}")
+
+did_effect = (after_switched - before_switched) - (after_control - before_control)
+print(f"\nDifference-in-Differences estimate: {did_effect:.3f}")
+--- printed ---
+Branches by switch status:
+switched_branch
+1    425
+0    284
+Name: count, dtype: int64
+
+Total branches: 709
+Switched branches: 425
+Non-switched branches: 284
+
+Observations per branch (should be 17 weeks each):
+count    709.0
+mean      17.0
+std        0.0
+min       17.0
+25%       17.0
+50%       17.0
+75%       17.0
+max       17.0
+dtype: float64
+
+Service Score Summary by Group and Period:
+                             mean        std  count
+switched_branch period                             
+0               After   49.236457  10.216710   2272
+                Before  48.465143  10.042680   2556
+1               After   52.306483  10.180503   3400
+                Before  49.470412   9.730911   3825
+
+Before - Switched branches: 49.470
+After - Switched branches: 52.306
+Change in switched: 2.836
+
+Before - Control branches: 48.465
+After - Control branches: 49.236
+Change in control: 0.771
+
+Difference-in-Differences estimate: 2.065
+
+
+=== Code run in turn 2, call 3 of 7 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Run difference-in-differences regression
+# Basic DiD: service_score ~ switched_branch * after_switch
+model_basic = ols('service_score ~ switched_branch * after_switch', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("Basic DiD Regression (with clustered standard errors):")
+print(model_basic.summary())
+
+# DiD with controls
+model_controls = ols('service_score ~ switched_branch * after_switch + staffing_index + visits_index', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print("\n\nDiD Regression with Controls:")
+print(model_controls.summary())
+
+# Check parallel trends - look at weekly trends for both groups before the switch
+weekly_avg = df.groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+print("\n\nWeekly Average Service Scores:")
+print(weekly_avg)
+
+# Calculate pre-switch trends
+pre_switch = df[df['week'] < 15].copy()
+pre_weekly = pre_switch.groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+print("\n\nPre-Switch Weekly Averages:")
+print(pre_weekly)
+--- printed ---
+Basic DiD Regression (with clustered standard errors):
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.021
+Model:                            OLS   Adj. R-squared:                  0.021
+Method:                 Least Squares   F-statistic:                     89.77
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):           3.10e-49
+Time:                        04:39:12   Log-Likelihood:                -44875.
+No. Observations:               12053   AIC:                         8.976e+04
+Df Residuals:                   12049   BIC:                         8.979e+04
+Df Model:                           3                                         
+Covariance Type:              cluster                                         
+================================================================================================
+                                   coef    std err          z      P>|z|      [0.025      0.975]
+------------------------------------------------------------------------------------------------
+Intercept                       48.4651      0.520     93.160      0.000      47.446      49.485
+switched_branch                  1.0053      0.662      1.519      0.129      -0.292       2.302
+after_switch                     0.7713      0.229      3.362      0.001       0.322       1.221
+switched_branch:after_switch     2.0648      0.291      7.087      0.000       1.494       2.636
+==============================================================================
+Omnibus:                       20.885   Durbin-Watson:                   0.494
+Prob(Omnibus):                  0.000   Jarque-Bera (JB):               20.875
+Skew:                           0.096   Prob(JB):                     2.93e-05
+Kurtosis:                       2.931   Cond. No.                         7.46
+==============================================================================
+
+Notes:
+[1] Standard Errors are robust to cluster correlation (CRV1)
+
+
+DiD Regression with Controls:
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.027
+Model:                            OLS   Adj. R-squared:                  0.027
+Method:                 Least Squares   F-statistic:                     66.25
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):           9.04e-57
+Time:                        04:39:12   Log-Likelihood:                -44838.
+No. Observations:               12053   AIC:                         8.969e+04
+Df Residuals:                   12047   BIC:                         8.973e+04
+Df Model:                           5                                         
+Covariance Type:              cluster                                         
+================================================================================================
+                                   coef    std err          z      P>|z|      [0.025      0.975]
+------------------------------------------------------------------------------------------------
+Intercept                       48.4516      0.522     92.873      0.000      47.429      49.474
+switched_branch                  1.0236      0.662      1.546      0.122      -0.274       2.322
+after_switch                     0.7861      0.227      3.464      0.001       0.341       1.231
+switched_branch:after_switch     2.0451      0.289      7.083      0.000       1.479       2.611
+staffing_index                   0.5610      0.088      6.365      0.000       0.388       0.734
+visits_index                     0.5353      0.096      5.557      0.000       0.346       0.724
+==============================================================================
+Omnibus:                       22.542   Durbin-Watson:                   0.487
+Prob(Omnibus):                  0.000   Jarque-Bera (JB):               22.486
+Skew:                           0.099   Prob(JB):                     1.31e-05
+Kurtosis:                       2.924   Cond. No.                         7.47
+==============================================================================
+
+Notes:
+[1] Standard Errors are robust to cluster correlation (CRV1)
+
+
+Weekly Average Service Scores:
+switched_branch          0          1
+week                                 
+6                47.478514  47.859825
+7                49.154623  49.325635
+8                44.740946  45.627908
+9                49.971935  50.769840
+10               49.485476  50.186879
+11               49.972762  50.854590
+12               49.681614  51.198388
+13               51.735653  53.134765
+14               43.964766  46.275875
+15               45.773488  48.302823
+16               46.021844  48.821463
+17               44.328663  47.050866
+18               53.311772  56.248230
+19               51.189309  54.438889
+20               48.068009  51.391542
+21               52.229204  55.841066
+22               52.969368  56.356984
+
+
+Pre-Switch Weekly Averages:
+switched_branch          0          1
+week                                 
+6                47.478514  47.859825
+7                49.154623  49.325635
+8                44.740946  45.627908
+9                49.971935  50.769840
+10               49.485476  50.186879
+11               49.972762  50.854590
+12               49.681614  51.198388
+13               51.735653  53.134765
+14               43.964766  46.275875
+
+
+=== Code run in turn 2, call 4 of 7 ===
+import matplotlib.pyplot as plt
+import pandas as pd
+
+df = pd.read_csv('branches.csv')
+
+# Create the visualization
+fig, ax = plt.subplots(figsize=(12, 6))
+
+# Weekly averages by group
+weekly_avg = df.groupby(['week', 'switched_branch'])['service_score'].mean().unstack()
+
+# Plot before/after line
+ax.axvline(x=14.5, color='red', linestyle='--', linewidth=2, label='Switch implemented (Week 15)')
+
+# Plot the two groups
+ax.plot(weekly_avg.index, weekly_avg[0], 'o-', label='Control Branches (Old Procedure)', linewidth=2, markersize=6, color='blue')
+ax.plot(weekly_avg.index, weekly_avg[1], 's-', label='Switched Branches (New Procedure)', linewidth=2, markersize=6, color='green')
+
+# Add labels and title
+ax.set_xlabel('Week', fontsize=12)
+ax.set_ylabel('Average Service Score', fontsize=12)
+ax.set_title('Service Score Trends: Switched vs Control Branches', fontsize=14, fontweight='bold')
+ax.legend(loc='best', fontsize=10)
+ax.grid(True, alpha=0.3)
+
+# Add annotation for the effect
+ax.annotate('New Procedure Effect:\n+2.0 points', xy=(18, 54), fontsize=11, 
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+plt.tight_layout()
+plt.savefig('service_score_trends.png', dpi=150)
+print("Chart saved as 'service_score_trends.png'")
+
+# Calculate confidence interval for the effect
+from scipy import stats
+effect = 2.0451
+se = 0.289
+ci_lower = effect - 1.96 * se
+ci_upper = effect + 1.96 * se
+print(f"\nEffect estimate: {effect:.2f} points")
+print(f"95% Confidence Interval: [{ci_lower:.2f}, {ci_upper:.2f}]")
+
+# Calculate percentage improvement relative to baseline
+baseline_control = df[(df['switched_branch'] == 0) & (df['after_switch'] == 0)]['service_score'].mean()
+pct_improvement = (effect / baseline_control) * 100
+print(f"Baseline control group average: {baseline_control:.2f}")
+print(f"Percentage improvement: {pct_improvement:.1f}%")
+--- printed ---
+Chart saved as 'service_score_trends.png'
+
+Effect estimate: 2.05 points
+95% Confidence Interval: [1.48, 2.61]
+Baseline control group average: 48.47
+Percentage improvement: 4.2%
+
+
+=== Code run in turn 2, call 5 of 7 ===
+import pandas as pd
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Test parallel trends: interact switched_branch with week dummies for pre-period only
+# This checks if the trends were different before the switch
+pre_df = df[df['week'] < 15].copy()
+pre_df['week_centered'] = pre_df['week'] - pre_df['week'].mean()
+
+# Regress service_score on switched_branch, week, and their interaction for pre-period
+# If parallel trends hold, the interaction should not be significant
+model_trends = ols('service_score ~ switched_branch * week_centered', data=pre_df).fit(cov_type='cluster', cov_kwds={'groups': pre_df['branch_id']})
+print("Parallel Trends Test (Pre-Period Only):")
+print(model_trends.summary())
+
+# Also check if there's any differential trend
+print("\n\nKey coefficient for parallel trends test:")
+print(f"Interaction term (switched_branch:week_centered): {model_trends.params['switched_branch:week_centered']:.4f}")
+print(f"P-value: {model_trends.pvalues['switched_branch:week_centered']:.4f}")
+
+# Additional robustness: event study style - check each week relative to switch
+print("\n\nWeekly differences (Switched - Control):")
+weekly_diff = df.groupby('week').apply(lambda x: x[x['switched_branch']==1]['service_score'].mean() - x[x['switched_branch']==0]['service_score'].mean())
+print(weekly_diff)
+--- printed ---
+Parallel Trends Test (Pre-Period Only):
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.006
+Model:                            OLS   Adj. R-squared:                  0.005
+Method:                 Least Squares   F-statistic:                     15.44
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):           9.71e-10
+Time:                        04:41:48   Log-Likelihood:                -23644.
+No. Observations:                6381   AIC:                         4.730e+04
+Df Residuals:                    6377   BIC:                         4.732e+04
+Df Model:                           3                                         
+Covariance Type:              cluster                                         
+=================================================================================================
+                                    coef    std err          z      P>|z|      [0.025      0.975]
+-------------------------------------------------------------------------------------------------
+Intercept                        48.4651      0.520     93.150      0.000      47.445      49.485
+switched_branch                   1.0053      0.662      1.519      0.129      -0.292       2.303
+week_centered                     0.0595      0.049      1.210      0.226      -0.037       0.156
+switched_branch:week_centered     0.2125      0.065      3.289      0.001       0.086       0.339
+==============================================================================
+Omnibus:                        9.858   Durbin-Watson:                   0.573
+Prob(Omnibus):                  0.007   Jarque-Bera (JB):                9.897
+Skew:                           0.091   Prob(JB):                      0.00709
+Kurtosis:                       2.938   Cond. No.                         7.54
+==============================================================================
+
+Notes:
+[1] Standard Errors are robust to cluster correlation (CRV1)
+
+
+Key coefficient for parallel trends test:
+Interaction term (switched_branch:week_centered): 0.2125
+P-value: 0.0010
+
+
+Weekly differences (Switched - Control):
+week
+6     0.381310
+7     0.171013
+8     0.886963
+9     0.797905
+10    0.701403
+11    0.881828
+12    1.516774
+13    1.399112
+14    2.311109
+15    2.529335
+16    2.799619
+17    2.722203
+18    2.936458
+19    3.249580
+20    3.323533
+21    3.611862
+22    3.387617
+dtype: float64
+
+
+=== Code run in turn 2, call 6 of 7 ===
+import pandas as pd
+
+df = pd.read_csv('branches.csv')
+
+# Calculate average gap before and after
+weekly_diff = df.groupby('week').apply(lambda x: x[x['switched_branch']==1]['service_score'].mean() - x[x['switched_branch']==0]['service_score'].mean())
+
+pre_avg_gap = weekly_diff[weekly_diff.index < 15].mean()
+post_avg_gap = weekly_diff[weekly_diff.index >= 15].mean()
+
+print(f"Average gap (Switched - Control) before week 15: {pre_avg_gap:.3f}")
+print(f"Average gap (Switched - Control) after week 14: {post_avg_gap:.3f}")
+print(f"Change in gap: {post_avg_gap - pre_avg_gap:.3f}")
+
+# Look at the gap in the weeks immediately before vs after
+print("\nGap in weeks 12-14 (immediately before):")
+print(weekly_diff[12:15])
+print(f"Average: {weekly_diff[12:15].mean():.3f}")
+
+print("\nGap in weeks 15-17 (immediately after):")
+print(weekly_diff[15:18])
+print(f"Average: {weekly_diff[15:18].mean():.3f}")
+
+# Also check if the effect is consistent across the post period
+print("\nPost-switch weekly gaps:")
+print(weekly_diff[15:])
+print(f"Post-switch average: {weekly_diff[15:].mean():.3f}")
+print(f"Post-switch std: {weekly_diff[15:].std():.3f}")
+--- printed ---
+Average gap (Switched - Control) before week 15: 1.005
+Average gap (Switched - Control) after week 14: 3.070
+Change in gap: 2.065
+
+Gap in weeks 12-14 (immediately before):
+week
+18    2.936458
+19    3.249580
+20    3.323533
+dtype: float64
+Average: 3.170
+
+Gap in weeks 15-17 (immediately after):
+week
+21    3.611862
+22    3.387617
+dtype: float64
+Average: 3.500
+
+Post-switch weekly gaps:
+week
+21    3.611862
+22    3.387617
+dtype: float64
+Post-switch average: 3.500
+Post-switch std: 0.159
+
+
+=== Code run in turn 2, call 7 of 7 ===
+import pandas as pd
+
+df = pd.read_csv('branches.csv')
+
+# Calculate average gap before and after
+weekly_diff = df.groupby('week').apply(lambda x: x[x['switched_branch']==1]['service_score'].mean() - x[x['switched_branch']==0]['service_score'].mean())
+
+print("Weekly differences (Switched - Control):")
+for week in range(6, 23):
+    print(f"Week {week}: {weekly_diff[week]:.3f}")
+
+pre_avg_gap = weekly_diff[weekly_diff.index < 15].mean()
+post_avg_gap = weekly_diff[weekly_diff.index >= 15].mean()
+
+print(f"\nAverage gap (Switched - Control) before week 15: {pre_avg_gap:.3f}")
+print(f"Average gap (Switched - Control) after week 14: {post_avg_gap:.3f}")
+print(f"Change in gap: {post_avg_gap - pre_avg_gap:.3f}")
+
+# Look at the gap in the weeks immediately before vs after
+print("\nGap in weeks 12-14 (immediately before):")
+print(weekly_diff.loc[12:14])
+print(f"Average: {weekly_diff.loc[12:14].mean():.3f}")
+
+print("\nGap in weeks 15-17 (immediately after):")
+print(weekly_diff.loc[15:17])
+print(f"Average: {weekly_diff.loc[15:17].mean():.3f}")
+
+# Also check if the effect is consistent across the post period
+print("\nAll post-switch weekly gaps:")
+print(weekly_diff.loc[15:22])
+print(f"Post-switch average: {weekly_diff.loc[15:22].mean():.3f}")
+print(f"Post-switch std: {weekly_diff.loc[15:22].std():.3f}")
+--- printed ---
+Weekly differences (Switched - Control):
+Week 6: 0.381
+Week 7: 0.171
+Week 8: 0.887
+Week 9: 0.798
+Week 10: 0.701
+Week 11: 0.882
+Week 12: 1.517
+Week 13: 1.399
+Week 14: 2.311
+Week 15: 2.529
+Week 16: 2.800
+Week 17: 2.722
+Week 18: 2.936
+Week 19: 3.250
+Week 20: 3.324
+Week 21: 3.612
+Week 22: 3.388
+
+Average gap (Switched - Control) before week 15: 1.005
+Average gap (Switched - Control) after week 14: 3.070
+Change in gap: 2.065
+
+Gap in weeks 12-14 (immediately before):
+week
+12    1.516774
+13    1.399112
+14    2.311109
+dtype: float64
+Average: 1.742
+
+Gap in weeks 15-17 (immediately after):
+week
+15    2.529335
+16    2.799619
+17    2.722203
+dtype: float64
+Average: 2.684
+
+All post-switch weekly gaps:
+week
+15    2.529335
+16    2.799619
+17    2.722203
+18    2.936458
+19    3.249580
+20    3.323533
+21    3.611862
+22    3.387617
+dtype: float64
+Post-switch average: 3.070
+Post-switch std: 0.377
+
+
+--- files saved in turn 2: service_score_trends.png ---
+
+(No code was run in turn 4.)

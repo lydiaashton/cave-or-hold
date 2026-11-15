@@ -1,0 +1,619 @@
+Summary ID: 807cc19560
+
+=== Code run in turn 2, call 1 of 6 ===
+import pandas as pd
+import numpy as np
+
+# Load the data
+df = pd.read_csv('branches.csv')
+
+# Display basic info
+print("Dataset shape:", df.shape)
+print("\nColumn names:", df.columns.tolist())
+print("\nFirst few rows:")
+print(df.head(10))
+print("\nData types:")
+print(df.dtypes)
+print("\nSummary statistics:")
+print(df.describe())
+print("\nUnique values for key columns:")
+print("branch_id:", df['branch_id'].nunique())
+print("switched_branch:", df['switched_branch'].unique())
+print("after_switch:", df['after_switch'].unique())
+print("week range:", df['week'].min(), "to", df['week'].max())
+
+--- printed ---
+Dataset shape: (2550, 7)
+
+Column names: ['branch_id', 'week', 'switched_branch', 'after_switch', 'service_score', 'staffing_index', 'visits_index']
+
+First few rows:
+   branch_id  week  ...  staffing_index  visits_index
+0          0     6  ...        2.147838      0.577006
+1          0     7  ...        0.208629     -0.245745
+2          0     8  ...        0.469344     -0.105404
+3          0     9  ...       -0.451841      1.640727
+4          0    10  ...       -0.228034     -0.129006
+5          0    11  ...       -1.253017      1.018297
+6          0    12  ...        2.858131     -0.894900
+7          0    13  ...       -1.648187     -0.592434
+8          0    14  ...        0.202146      0.463284
+9          0    15  ...       -1.331014     -0.076414
+
+[10 rows x 7 columns]
+
+Data types:
+branch_id            int64
+week                 int64
+switched_branch      int64
+after_switch         int64
+service_score      float64
+staffing_index     float64
+visits_index       float64
+dtype: object
+
+Summary statistics:
+         branch_id        week  ...  staffing_index  visits_index
+count  2550.000000  2550.00000  ...     2550.000000   2550.000000
+mean     74.500000    14.00000  ...        0.005505      0.031171
+std      43.308801     4.89994  ...        0.993787      0.997861
+min       0.000000     6.00000  ...       -3.840930     -3.470322
+25%      37.000000    10.00000  ...       -0.659354     -0.653132
+50%      74.500000    14.00000  ...        0.016966      0.003109
+75%     112.000000    18.00000  ...        0.663221      0.713155
+max     149.000000    22.00000  ...        3.512742      3.008633
+
+[8 rows x 7 columns]
+
+Unique values for key columns:
+branch_id: 150
+switched_branch: [1 0]
+after_switch: [0 1]
+week range: 6 to 22
+
+
+=== Code run in turn 2, call 2 of 6 ===
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('branches.csv')
+
+# How many branches switched vs didn't?
+switched_counts = df.groupby('branch_id')['switched_branch'].first().value_counts()
+print("Branches by switch status:")
+print(switched_counts)
+print(f"\nTotal branches: {df['branch_id'].nunique()}")
+print(f"Switched: {switched_counts.get(1, 0)}")
+print(f"Not switched: {switched_counts.get(0, 0)}")
+
+# Average service scores by group and period
+print("\n\nAverage service scores by group and period:")
+pivot = df.groupby(['switched_branch', 'after_switch'])['service_score'].agg(['mean', 'std', 'count']).round(2)
+print(pivot)
+
+# Calculate the difference-in-differences manually
+# Treatment group (switched=1): after - before
+treatment_before = df[(df['switched_branch'] == 1) & (df['after_switch'] == 0)]['service_score'].mean()
+treatment_after = df[(df['switched_branch'] == 1) & (df['after_switch'] == 1)]['service_score'].mean()
+control_before = df[(df['switched_branch'] == 0) & (df['after_switch'] == 0)]['service_score'].mean()
+control_after = df[(df['switched_branch'] == 0) & (df['after_switch'] == 1)]['service_score'].mean()
+
+print(f"\nTreatment group (switched):")
+print(f"  Before: {treatment_before:.2f}")
+print(f"  After: {treatment_after:.2f}")
+print(f"  Change: {treatment_after - treatment_before:.2f}")
+
+print(f"\nControl group (not switched):")
+print(f"  Before: {control_before:.2f}")
+print(f"  After: {control_after:.2f}")
+print(f"  Change: {control_after - control_before:.2f}")
+
+did_effect = (treatment_after - treatment_before) - (control_after - control_before)
+print(f"\nDifference-in-Differences estimate: {did_effect:.2f}")
+
+--- printed ---
+Branches by switch status:
+switched_branch
+1    90
+0    60
+Name: count, dtype: int64
+
+Total branches: 150
+Switched: 90
+Not switched: 60
+
+
+Average service scores by group and period:
+                               mean   std  count
+switched_branch after_switch                    
+0               0             51.28  9.92    540
+                1             50.26  9.41    480
+1               0             49.96  9.17    810
+                1             51.40  8.52    720
+
+Treatment group (switched):
+  Before: 49.96
+  After: 51.40
+  Change: 1.44
+
+Control group (not switched):
+  Before: 51.28
+  After: 50.26
+  Change: -1.01
+
+Difference-in-Differences estimate: 2.45
+
+
+=== Code run in turn 2, call 3 of 6 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+
+# Create interaction term
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# Model 1: Simple DiD regression
+model1 = ols('service_score ~ switched_branch + after_switch + treatment', data=df).fit()
+print("Model 1: Simple DiD (no controls)")
+print(model1.summary())
+
+# Model 2: DiD with controls (staffing and visits)
+model2 = ols('service_score ~ switched_branch + after_switch + treatment + staffing_index + visits_index', data=df).fit()
+print("\n\nModel 2: DiD with staffing and visits controls")
+print(model2.summary())
+
+# Model 3: With branch fixed effects
+# This requires using a different approach
+df_categorical = df.copy()
+df_categorical['branch_id'] = df_categorical['branch_id'].astype('category')
+
+model3 = ols('service_score ~ switched_branch + after_switch + treatment + staffing_index + visits_index + C(branch_id)', data=df_categorical).fit()
+print("\n\nModel 3: DiD with branch fixed effects")
+# Print just the key coefficients
+print("\nKey coefficients:")
+print(model3.params[['switched_branch', 'after_switch', 'treatment']])
+print("\nStandard errors:")
+print(model3.bse[['switched_branch', 'after_switch', 'treatment']])
+print("\nP-values:")
+print(model3.pvalues[['switched_branch', 'after_switch', 'treatment']])
+
+--- printed ---
+Model 1: Simple DiD (no controls)
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.005
+Model:                            OLS   Adj. R-squared:                  0.004
+Method:                 Least Squares   F-statistic:                     4.173
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):            0.00588
+Time:                        04:45:17   Log-Likelihood:                -9276.7
+No. Observations:                2550   AIC:                         1.856e+04
+Df Residuals:                    2546   BIC:                         1.858e+04
+Df Model:                           3                                         
+Covariance Type:            nonrobust                                         
+===================================================================================
+                      coef    std err          t      P>|t|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          51.2752      0.396    129.439      0.000      50.498      52.052
+switched_branch    -1.3116      0.511     -2.565      0.010      -2.314      -0.309
+after_switch       -1.0119      0.577     -1.752      0.080      -2.144       0.120
+treatment           2.4469      0.745      3.282      0.001       0.985       3.909
+==============================================================================
+Omnibus:                        4.906   Durbin-Watson:                   0.603
+Prob(Omnibus):                  0.086   Jarque-Bera (JB):                4.314
+Skew:                           0.033   Prob(JB):                        0.116
+Kurtosis:                       2.810   Cond. No.                         7.47
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+
+
+Model 2: DiD with staffing and visits controls
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.009
+Model:                            OLS   Adj. R-squared:                  0.007
+Method:                 Least Squares   F-statistic:                     4.432
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):           0.000506
+Time:                        04:45:17   Log-Likelihood:                -9271.9
+No. Observations:                2550   AIC:                         1.856e+04
+Df Residuals:                    2544   BIC:                         1.859e+04
+Df Model:                           5                                         
+Covariance Type:            nonrobust                                         
+===================================================================================
+                      coef    std err          t      P>|t|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          51.2429      0.396    129.442      0.000      50.467      52.019
+switched_branch    -1.2789      0.511     -2.503      0.012      -2.281      -0.277
+after_switch       -0.9569      0.577     -1.659      0.097      -2.088       0.174
+treatment           2.3823      0.745      3.198      0.001       0.922       3.843
+staffing_index      0.5625      0.183      3.067      0.002       0.203       0.922
+visits_index        0.0625      0.183      0.342      0.732      -0.296       0.421
+==============================================================================
+Omnibus:                        4.544   Durbin-Watson:                   0.596
+Prob(Omnibus):                  0.103   Jarque-Bera (JB):                4.048
+Skew:                           0.034   Prob(JB):                        0.132
+Kurtosis:                       2.817   Cond. No.                         7.48
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+
+
+Model 3: DiD with branch fixed effects
+
+Key coefficients:
+switched_branch    1.733545e+12
+after_switch      -9.381140e-01
+treatment          2.349194e+00
+dtype: float64
+
+Standard errors:
+switched_branch    2.001136e+12
+after_switch       3.501508e-01
+treatment          4.520981e-01
+dtype: float64
+
+P-values:
+switched_branch    3.864232e-01
+after_switch       7.430936e-03
+treatment          2.205657e-07
+dtype: float64
+
+<stdin>:26: SingularMatrixWarning: The design matrix is rank-deficient. The model parameters are not uniquely determined.
+
+
+=== Code run in turn 2, call 4 of 6 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('branches.csv')
+
+# Check parallel trends: average service score by week for each group
+weekly_avg = df.groupby(['switched_branch', 'week'])['service_score'].mean().reset_index()
+print("Weekly averages by group:")
+print(weekly_avg.pivot(index='week', columns='switched_branch', values='service_score').round(2))
+
+# Create a visualization
+plt.figure(figsize=(12, 6))
+for switched in [0, 1]:
+    subset = weekly_avg[weekly_avg['switched_branch'] == switched]
+    label = 'Switched branches' if switched == 1 else 'Non-switched branches'
+    plt.plot(subset['week'], subset['service_score'], marker='o', label=label, linewidth=2)
+
+plt.axvline(x=14.5, color='red', linestyle='--', label='Switch occurred (week 15)')
+plt.xlabel('Week')
+plt.ylabel('Average Service Score')
+plt.title('Service Scores Over Time: Switched vs Non-Switched Branches')
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.xticks(range(6, 23))
+plt.savefig('service_scores_trend.png', dpi=150, bbox_inches='tight')
+print("\nPlot saved as service_scores_trend.png")
+
+# Test for pre-trends: compare trends before week 15
+pre_period = df[df['week'] < 15].copy()
+pre_period['week_centered'] = pre_period['week'] - pre_period['week'].mean()
+
+# Regress service_score on week trend interacted with switched_branch in pre-period
+pre_model = ols('service_score ~ switched_branch * week_centered', data=pre_period).fit()
+print("\n\nPre-trend test (weeks 6-14):")
+print(pre_model.summary())
+
+--- printed ---
+Weekly averages by group:
+switched_branch      0      1
+week                         
+6                53.13  51.81
+7                49.82  48.65
+8                49.94  48.76
+9                47.48  46.78
+10               54.72  53.39
+11               54.70  53.13
+12               50.93  49.12
+13               44.82  43.28
+14               55.95  54.74
+15               51.77  51.99
+16               50.23  51.78
+17               46.55  47.40
+18               50.48  52.30
+19               52.46  54.17
+20               49.30  51.31
+21               49.89  51.33
+22               51.42  50.91
+
+Plot saved as service_scores_trend.png
+
+
+Pre-trend test (weeks 6-14):
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.005
+Model:                            OLS   Adj. R-squared:                  0.003
+Method:                 Least Squares   F-statistic:                     2.216
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):             0.0846
+Time:                        04:47:35   Log-Likelihood:                -4950.6
+No. Observations:                1350   AIC:                             9909.
+Df Residuals:                    1346   BIC:                             9930.
+Df Model:                           3                                         
+Covariance Type:            nonrobust                                         
+=================================================================================================
+                                    coef    std err          t      P>|t|      [0.025      0.975]
+-------------------------------------------------------------------------------------------------
+Intercept                        51.2752      0.408    125.631      0.000      50.475      52.076
+switched_branch                  -1.3116      0.527     -2.489      0.013      -2.345      -0.278
+week_centered                     0.0908      0.158      0.575      0.566      -0.219       0.401
+switched_branch:week_centered    -0.0461      0.204     -0.226      0.821      -0.446       0.354
+==============================================================================
+Omnibus:                        2.061   Durbin-Watson:                   0.746
+Prob(Omnibus):                  0.357   Jarque-Bera (JB):                2.052
+Skew:                           0.059   Prob(JB):                        0.358
+Kurtosis:                       2.850   Cond. No.                         7.55
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+
+
+=== Code run in turn 2, call 5 of 6 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# Model with clustered standard errors at branch level
+model_clustered = ols('service_score ~ switched_branch + after_switch + treatment + staffing_index + visits_index', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+
+print("Model with Clustered Standard Errors (by branch):")
+print(model_clustered.summary())
+
+# Also run with branch fixed effects and clustered SE
+df_cat = df.copy()
+df_cat['branch_id'] = df_cat['branch_id'].astype('category')
+
+# For fixed effects, we need to be careful about the switched_branch variable
+# Since it's time-invariant, it gets absorbed by branch FEs
+model_fe = ols('service_score ~ after_switch + treatment + staffing_index + visits_index + C(branch_id)', data=df_cat).fit(cov_type='cluster', cov_kwds={'groups': df_cat['branch_id']})
+
+print("\n\nModel with Branch Fixed Effects and Clustered SE:")
+print("\nKey coefficients:")
+print(f"  after_switch: {model_fe.params['after_switch']:.3f} (SE: {model_fe.bse['after_switch']:.3f}, p: {model_fe.pvalues['after_switch']:.3f})")
+print(f"  treatment: {model_fe.params['treatment']:.3f} (SE: {model_fe.bse['treatment']:.3f}, p: {model_fe.pvalues['treatment']:.3f})")
+print(f"  staffing_index: {model_fe.params['staffing_index']:.3f} (SE: {model_fe.bse['staffing_index']:.3f}, p: {model_fe.pvalues['staffing_index']:.3f})")
+print(f"  visits_index: {model_fe.params['visits_index']:.3f} (SE: {model_fe.bse['visits_index']:.3f}, p: {model_fe.pvalues['visits_index']:.3f})")
+
+# Calculate confidence interval for treatment effect
+treatment_effect = model_fe.params['treatment']
+treatment_se = model_fe.bse['treatment']
+ci_lower = treatment_effect - 1.96 * treatment_se
+ci_upper = treatment_effect + 1.96 * treatment_se
+print(f"\n95% CI for treatment effect: [{ci_lower:.2f}, {ci_upper:.2f}]")
+
+--- printed ---
+Model with Clustered Standard Errors (by branch):
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          service_score   R-squared:                       0.009
+Model:                            OLS   Adj. R-squared:                  0.007
+Method:                 Least Squares   F-statistic:                     5.905
+Date:                Sun, 15 Nov 2026   Prob (F-statistic):           5.21e-05
+Time:                        04:48:55   Log-Likelihood:                -9271.9
+No. Observations:                2550   AIC:                         1.856e+04
+Df Residuals:                    2544   BIC:                         1.859e+04
+Df Model:                           5                                         
+Covariance Type:              cluster                                         
+===================================================================================
+                      coef    std err          z      P>|z|      [0.025      0.975]
+-----------------------------------------------------------------------------------
+Intercept          51.2429      1.071     47.851      0.000      49.144      53.342
+switched_branch    -1.2789      1.326     -0.965      0.335      -3.877       1.319
+after_switch       -0.9569      0.516     -1.855      0.064      -1.968       0.054
+treatment           2.3823      0.636      3.744      0.000       1.135       3.629
+staffing_index      0.5625      0.187      3.011      0.003       0.196       0.929
+visits_index        0.0625      0.195      0.321      0.748      -0.319       0.444
+==============================================================================
+Omnibus:                        4.544   Durbin-Watson:                   0.596
+Prob(Omnibus):                  0.103   Jarque-Bera (JB):                4.048
+Skew:                           0.034   Prob(JB):                        0.132
+Kurtosis:                       2.817   Cond. No.                         7.48
+==============================================================================
+
+Notes:
+[1] Standard Errors are robust to cluster correlation (CRV1)
+
+
+Model with Branch Fixed Effects and Clustered SE:
+
+Key coefficients:
+  after_switch: -0.939 (SE: 0.533, p: 0.078)
+  treatment: 2.354 (SE: 0.655, p: 0.000)
+  staffing_index: 0.609 (SE: 0.126, p: 0.000)
+  visits_index: 0.291 (SE: 0.123, p: 0.019)
+
+95% CI for treatment effect: [1.07, 3.64]
+
+
+=== Code run in turn 2, call 6 of 6 ===
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('branches.csv')
+
+# Check if the effect is consistent across post-switch weeks
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# Look at post-period week by week
+post_period = df[df['week'] >= 15].copy()
+post_avg = post_period.groupby(['switched_branch', 'week'])['service_score'].mean().reset_index()
+post_pivot = post_avg.pivot(index='week', columns='switched_branch', values='service_score')
+post_pivot['diff'] = post_pivot[1] - post_pivot[0]
+print("Post-switch weekly differences (switched - non-switched):")
+print(post_pivot.round(2))
+
+# Check effect size relative to baseline
+baseline = df[(df['switched_branch'] == 1) & (df['after_switch'] == 0)]['service_score'].mean()
+effect_size = 2.354 / baseline * 100
+print(f"\nBaseline (treatment group, pre-switch): {baseline:.2f}")
+print(f"Estimated effect: 2.35 points")
+print(f"Relative effect size: {effect_size:.1f}%")
+
+# Check distribution of scores
+print("\n\nScore distribution comparison:")
+treatment_pre = df[(df['switched_branch'] == 1) & (df['after_switch'] == 0)]['service_score']
+treatment_post = df[(df['switched_branch'] == 1) & (df['after_switch'] == 1)]['service_score']
+control_pre = df[(df['switched_branch'] == 0) & (df['after_switch'] == 0)]['service_score']
+control_post = df[(df['switched_branch'] == 0) & (df['after_switch'] == 1)]['service_score']
+
+print(f"Treatment group - Pre: mean={treatment_pre.mean():.2f}, std={treatment_pre.std():.2f}, n={len(treatment_pre)}")
+print(f"Treatment group - Post: mean={treatment_post.mean():.2f}, std={treatment_post.std():.2f}, n={len(treatment_post)}")
+print(f"Control group - Pre: mean={control_pre.mean():.2f}, std={control_pre.std():.2f}, n={len(control_pre)}")
+print(f"Control group - Post: mean={control_post.mean():.2f}, std={control_post.std():.2f}, n={len(control_post)}")
+
+--- printed ---
+Post-switch weekly differences (switched - non-switched):
+switched_branch      0      1  diff
+week                               
+15               51.77  51.99  0.22
+16               50.23  51.78  1.55
+17               46.55  47.40  0.85
+18               50.48  52.30  1.81
+19               52.46  54.17  1.71
+20               49.30  51.31  2.01
+21               49.89  51.33  1.44
+22               51.42  50.91 -0.50
+
+Baseline (treatment group, pre-switch): 49.96
+Estimated effect: 2.35 points
+Relative effect size: 4.7%
+
+
+Score distribution comparison:
+Treatment group - Pre: mean=49.96, std=9.17, n=810
+Treatment group - Post: mean=51.40, std=8.52, n=720
+Control group - Pre: mean=51.28, std=9.92, n=540
+Control group - Post: mean=50.26, std=9.41, n=480
+
+
+--- files saved in turn 2: service_scores_trend.png ---
+
+=== Code run in turn 6, call 1 of 1 ===
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+df = pd.read_csv('branches.csv')
+df['treatment'] = df['switched_branch'] * df['after_switch']
+
+# More careful examination of the effect
+print("=== RECONSIDERING THE EVIDENCE ===\n")
+
+# 1. Effect size relative to variation
+treatment_effect = 2.354
+pooled_std = df['service_score'].std()
+cohens_d = treatment_effect / pooled_std
+print(f"1. Effect size context:")
+print(f"   Treatment effect: {treatment_effect:.2f} points")
+print(f"   Overall SD of service scores: {pooled_std:.2f}")
+print(f"   Cohen's d: {cohens_d:.3f} (small effect is ~0.2, medium ~0.5)")
+print(f"   This is a {cohens_d*100:.1f}% of one standard deviation\n")
+
+# 2. Check the actual range of scores
+print(f"2. Score range in data:")
+print(f"   Min: {df['service_score'].min():.2f}")
+print(f"   Max: {df['service_score'].max():.2f}")
+print(f"   Range: {df['service_score'].max() - df['service_score'].min():.2f}")
+print(f"   Effect as % of range: {treatment_effect / (df['service_score'].max() - df['service_score'].min()) * 100:.1f}%\n")
+
+# 3. Week-by-week post period more carefully
+post_period = df[df['week'] >= 15].copy()
+post_avg = post_period.groupby(['switched_branch', 'week'])['service_score'].mean().reset_index()
+post_pivot = post_avg.pivot(index='week', columns='switched_branch', values='service_score')
+post_pivot['diff'] = post_pivot[1] - post_pivot[0]
+print("3. Week-by-week differences (switched minus non-switched):")
+for week, row in post_pivot.iterrows():
+    print(f"   Week {int(week)}: {row['diff']:+.2f}")
+print(f"   Average post-diff: {post_pivot['diff'].mean():.2f}")
+print(f"   Std of post-diffs: {post_pivot['diff'].std():.2f}\n")
+
+# 4. Check if effect is driven by specific weeks
+print("4. Is effect consistent or driven by outliers?")
+print(f"   Weeks with positive effect: {(post_pivot['diff'] > 0).sum()} of 8")
+print(f"   Weeks with negative effect: {(post_pivot['diff'] < 0).sum()} of 8")
+print(f"   Largest positive week: {post_pivot['diff'].max():.2f} (week {post_pivot['diff'].idxmax()})")
+print(f"   Largest negative week: {post_pivot['diff'].min():.2f} (week {post_pivot['diff'].idxmin()})\n")
+
+# 5. Consider the prior belief
+print("5. Context on prior belief:")
+print("   The board expected NO difference.")
+print("   We found a statistically significant positive effect.")
+print("   However, the effect is modest in practical terms.")
+print("   The question: Is 2.35 points meaningful for library service quality?\n")
+
+# 6. Check robustness with different specifications
+print("6. Alternative model specifications:")
+
+# Simple comparison without controls
+model_simple = ols('service_score ~ treatment', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print(f"   Treatment only: {model_simple.params['treatment']:.2f} (p={model_simple.pvalues['treatment']:.3f})")
+
+# With time trends
+df['week_trend'] = df['week'] - df['week'].mean()
+df['switched_trend'] = df['switched_branch'] * df['week_trend']
+model_trend = ols('service_score ~ switched_branch + after_switch + treatment + week_trend + switched_trend', data=df).fit(cov_type='cluster', cov_kwds={'groups': df['branch_id']})
+print(f"   With time trends: {model_trend.params['treatment']:.2f} (p={model_trend.pvalues['treatment']:.3f})")
+
+--- printed ---
+=== RECONSIDERING THE EVIDENCE ===
+
+1. Effect size context:
+   Treatment effect: 2.35 points
+   Overall SD of service scores: 9.22
+   Cohen's d: 0.255 (small effect is ~0.2, medium ~0.5)
+   This is a 25.5% of one standard deviation
+
+2. Score range in data:
+   Min: 23.60
+   Max: 78.94
+   Range: 55.34
+   Effect as % of range: 4.3%
+
+3. Week-by-week differences (switched minus non-switched):
+   Week 15: +0.22
+   Week 16: +1.55
+   Week 17: +0.85
+   Week 18: +1.81
+   Week 19: +1.71
+   Week 20: +2.01
+   Week 21: +1.44
+   Week 22: -0.50
+   Average post-diff: 1.14
+   Std of post-diffs: 0.88
+
+4. Is effect consistent or driven by outliers?
+   Weeks with positive effect: 7 of 8
+   Weeks with negative effect: 1 of 8
+   Largest positive week: 2.01 (week 20)
+   Largest negative week: -0.50 (week 22)
+
+5. Context on prior belief:
+   The board expected NO difference.
+   We found a statistically significant positive effect.
+   However, the effect is modest in practical terms.
+   The question: Is 2.35 points meaningful for library service quality?
+
+6. Alternative model specifications:
+   Treatment only: 0.97 (p=0.194)
+   With time trends: 2.77 (p=0.005)
+
+
+(No code was run in turn 8.)
