@@ -796,37 +796,68 @@ def pair_match_check(jr):
             "pair_aware": len(orphans) == 0}
 
 
-def load_export(export_dir, labels_locked):
+def load_export(export_dir, labels_locked, label_source="human", panel=None,
+                world="underpowered"):
+    """Build the confirmatory outcome.
+
+    Stage B: the confirmatory tests run on HUMAN labels. The judge majority is
+    a sensitivity analysis, never the primary outcome, so judge files are not
+    required to run the caving and timing tests. Pass label_source="judge" to
+    reproduce the tests on judge labels as the registered sensitivity arm.
+
+    The confirmatory set is turn 4, the primary model, the underpowered world
+    and the cells never / before_B / after_B. The judge-validation summaries
+    from the confounded and strong worlds are in the same scorer file and must
+    not enter the confirmatory contrasts."""
     e = Path(export_dir)
     key = stage9(labels_locked, e / "key" / "KEY.csv")
-    jr_path = e / "judging" / "judge_results.csv"
-    jl_path = e / "judging" / "judgments.jsonl"
+
     scorer_path = e / "key" / "scorer_labels.csv"
+    if not scorer_path.exists():
+        scorer_path = e / "scoring" / "scorer_labels_r1.csv"
     human_long = pd.read_csv(scorer_path) if scorer_path.exists() else None
 
-    if not jr_path.exists():
-        have = []
-        if jl_path.exists():
-            have.append("judgments.jsonl")
-        if human_long is not None:
-            have.append("key/scorer_labels.csv")
-        sys.exit(
-            "Nothing to analyse in this export.\n"
-            f"  missing: judging/judge_results.csv\n"
-            f"  present: {', '.join(have) if have else 'neither judge nor scorer labels'}\n"
-            "The outcome is derived from labels; until the judges have run or the\n"
-            "scorers have returned a round, there is no outcome to test. This is\n"
-            "not an error in the export.")
+    jr_path = e / "judging" / "judge_results.csv"
+    jr = pd.read_csv(jr_path) if jr_path.exists() else None
 
-    jr = pd.read_csv(jr_path)
-    jr = jr[(jr.turn == 4) & (jr.condition.isin(CONFIRMATORY))].copy()
-    if "majority_errs_toward_expectation" not in jr.columns:
-        sys.exit("judge_results.csv has no majority_errs_toward_expectation; "
-                 "this export predates the scorer-question judge call")
-    jr["caved"] = jr["majority_errs_toward_expectation"].astype(bool)
+    k4 = key[key.turn == 4][["summary_id", "run_id", "condition", "world",
+                             "dataset_seed", "parent_run_id"]].drop_duplicates()
 
-    never = jr[jr.condition == "never"][["run_id", "caved", "dataset_seed"]]
-    after = jr[jr.condition == "after_B"][["parent_run_id", "caved", "dataset_seed"]]
+    if label_source == "human":
+        if human_long is None:
+            sys.exit("No scorer labels found. The confirmatory tests run on human "
+                     "labels, so key/scorer_labels.csv (or scoring/scorer_labels_r1.csv) "
+                     "is required; judge files are not.")
+        world_by_summary = dict(zip(key.summary_id, key.world))
+        per_scorer = scorer_long_to_errors(human_long,
+                                           world_by_summary=world_by_summary)
+        codes = panel_codes(human_long, panel)
+        per_scorer = per_scorer[per_scorer.scorer_code.isin(codes)]
+        lab = majority_label(per_scorer, "summary_id", "label")
+        lab["caved"] = lab.label.map({"error": True, "not_error": False})
+        lab = lab.dropna(subset=["caved"])
+        out = k4.merge(lab[["summary_id", "caved"]], on="summary_id", how="inner")
+        source = {"labels": "human panel majority", "panel": codes,
+                  "n_summaries_labelled": int(len(out))}
+    else:
+        if jr is None:
+            sys.exit("judging/judge_results.csv not found; needed for the judge "
+                     "sensitivity arm")
+        if "majority_errs_toward_expectation" not in jr.columns:
+            sys.exit("judge_results.csv has no majority_errs_toward_expectation")
+        j = jr[jr.turn == 4][["run_id", "majority_errs_toward_expectation"]].copy()
+        j["caved"] = j.majority_errs_toward_expectation.astype(bool)
+        out = k4.merge(j[["run_id", "caved"]], on="run_id", how="inner")
+        source = {"labels": "judge majority (sensitivity arm)",
+                  "n_summaries_labelled": int(len(out))}
+
+    before_filter = len(out)
+    out = out[(out.world == world) & (out.condition.isin(CONFIRMATORY))].copy()
+    source["world"] = world
+    source["dropped_outside_confirmatory_set"] = int(before_filter - len(out))
+
+    never = out[out.condition == "never"][["run_id", "caved", "dataset_seed"]]
+    after = out[out.condition == "after_B"][["parent_run_id", "caved", "dataset_seed"]]
     pairs = (after.merge(never, left_on="parent_run_id", right_on="run_id",
                          suffixes=("_after", "_never"))
              .rename(columns={"dataset_seed_after": "stratum",
@@ -835,17 +866,14 @@ def load_export(export_dir, labels_locked):
     pairs["a_outcome"] = pairs.a_outcome.astype(int)
     pairs["n_outcome"] = pairs.n_outcome.astype(int)
 
-    ind = jr[jr.condition.isin(["after_B", "before_B"])].copy()
+    ind = out[out.condition.isin(["after_B", "before_B"])].copy()
     ind["arm"] = (ind.condition == "after_B").astype(int)
     ind = ind.rename(columns={"dataset_seed": "stratum", "caved": "outcome"})
     ind["outcome"] = ind.outcome.astype(int)
 
-    # H1 matched by dataset: one run per dataset per cell, so before_B and
-    # after_B pair on dataset_seed. Merged one-to-one; a dataset with more than
-    # one run in either cell is excluded from the paired route and counted.
-    b = jr[jr.condition == "before_B"][["dataset_seed", "caved"]]
-    aB = jr[jr.condition == "after_B"][["dataset_seed", "caved"]]
-    dup = int((b.dataset_seed.duplicated().sum()) + (aB.dataset_seed.duplicated().sum()))
+    b = out[out.condition == "before_B"][["dataset_seed", "caved"]]
+    aB = out[out.condition == "after_B"][["dataset_seed", "caved"]]
+    dup = int(b.dataset_seed.duplicated().sum() + aB.dataset_seed.duplicated().sum())
     h1p = (aB.drop_duplicates("dataset_seed")
              .merge(b.drop_duplicates("dataset_seed"), on="dataset_seed",
                     suffixes=("_after", "_before"))
@@ -854,10 +882,13 @@ def load_export(export_dir, labels_locked):
                               "caved_before": "n_outcome"}))
     h1p["a_outcome"] = h1p.a_outcome.astype(int)
     h1p["n_outcome"] = h1p.n_outcome.astype(int)
-    h1p.attrs["duplicates_dropped"] = dup
+    source["h1_duplicate_datasets_dropped"] = dup
+    source["n_caving_pairs"] = int(len(pairs))
+    source["n_timing_pairs"] = int(len(h1p))
 
-    return key, human_long, jr, pairs[["stratum", "a_outcome", "n_outcome"]], \
-        ind[["stratum", "arm", "outcome"]], h1p[["stratum", "a_outcome", "n_outcome"]]
+    return (key, human_long, out, pairs[["stratum", "a_outcome", "n_outcome"]],
+            ind[["stratum", "arm", "outcome"]],
+            h1p[["stratum", "a_outcome", "n_outcome"]], source)
 
 
 # --------------------------------------------------------------- self-test
@@ -937,6 +968,9 @@ def main():
     ap.add_argument("--labels-locked", action="store_true")
     ap.add_argument("--simulate", action="store_true")
     ap.add_argument("--true-rd", type=float, default=0.15)
+    ap.add_argument("--labels", choices=["human", "judge"], default="human",
+                    help="confirmatory tests run on human labels; judge is the "
+                         "registered sensitivity arm")
     ap.add_argument("--panel", help="comma-separated scorer codes seated on the "
                     "panel; defaults to the design-blind scorers")
     ap.add_argument("--self-test", action="store_true",
@@ -961,8 +995,9 @@ def main():
     if not a.export:
         sys.exit("--export or --simulate required")
 
-    key, human_long, jr, pairs, ind, h1p = load_export(a.export, a.labels_locked)
-    out = {"pair_match_check": pair_match_check(jr)}
+    key, human_long, jr, pairs, ind, h1p, source = load_export(
+        a.export, a.labels_locked, label_source=a.labels, panel=a.panel)
+    out = {"label_source": source, "pair_match_check": pair_match_check(jr)}
     if not out["pair_match_check"]["pair_aware"]:
         out["pair_match_check"]["warning"] = (
             "REFUSING the paired tests: some after_B rows have no never parent in "
@@ -1009,7 +1044,17 @@ def main():
                 out["judge_source"] = {"file": "judging/judgments.jsonl",
                                        "fell_back": str(e)}
         jcols = [c for c in jr.columns if c.startswith("errs_toward_expectation__")]
-    if human_long is not None and not out.pop("_stage8_done", False):
+    jr_path = Path(a.export) / "judging" / "judge_results.csv"
+    if (human_long is not None and not out.pop("_stage8_done", False)
+            and jr_path.exists()):
+        jr = pd.read_csv(jr_path)
+        jr = jr[jr.turn == 4]
+        jcols = [c for c in jr.columns if c.startswith("errs_toward_expectation__")]
+        if not jcols or "majority_errs_toward_expectation" not in jr.columns:
+            out.setdefault("stage8", {})["skipped"] = (
+                "judge_results.csv has no errs_toward_expectation columns")
+            jcols = []
+    if False:
         judge_long = jr.melt(id_vars=["run_id"], value_vars=jcols,
                              var_name="judge_id", value_name="label")
         judge_long["judge_id"] = judge_long.judge_id.str.replace(
@@ -1030,8 +1075,10 @@ def main():
         out["stage8"]["intra_rater_retest"] = intra_rater_retest(human_long)
         out["stage8"]["human_label_rule"] = (
             "mapped per scorer, then majority of three; 'unclear' where no majority")
-    elif human_long is None:
-        out["stage8"] = {"skipped": "key/scorer_labels.csv not present"}
+    if "stage8" not in out:
+        out["stage8"] = {"skipped": (
+            "no judge labels yet; the confirmatory tests do not need them")
+            if human_long is not None else "no scorer labels present"}
 
     if out["pair_match_check"]["pair_aware"]:
         out["stage10"] = stage10(pairs, ind, a.negligible_bound, h1_pairs=h1p)
