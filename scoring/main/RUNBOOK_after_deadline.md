@@ -5,9 +5,9 @@ Order matters: nothing that uses the key runs before step 5. Rehearsed on page 1
 
 1. **Save the final Sheet** (20:06 UTC, scheduled): rounds 1-3 as CSV in
    `exports/main/scoring/sheet_final_2026-11-15/`, with SHA-256 and row counts. Raw and append-only.
-2. **Combine**, from the repo root:
+2. **Combine**, from the repo root (from `in_window/`: answers received after 20:00 UTC removed, lock rule 1):
 
-       python3 scoring/combine_scorer_files.py exports/main/scoring/sheet_final_2026-11-15 \
+       python3 scoring/combine_scorer_files.py exports/main/scoring/sheet_final_2026-11-15/in_window \
            scoring/main/scorers.csv exports/main/scoring/scorer_labels_all.csv --ignore-codes TEST \
            --order exports/main/scoring/round1/order.csv --order exports/main/scoring/round2/order.csv \
            --order exports/main/scoring/round3/order.csv --skip-unfinished
@@ -31,3 +31,5 @@ Order matters: nothing that uses the key runs before step 5. Rehearsed on page 1
    `analysis/cave_analysis.py --labels-locked` (H2 caving test first, then H1).
 7. After the judges from all machines are merged into `exports/main/judging/judgments.jsonl`,
    rebuild the judge results with `--report-only`.
+
+**Done 15 Nov, 20:10 UTC:** steps 1-4 run. `scorer_labels_all.csv` (1,036 scorer x summary rows; one ID repaired; S2's page-2 summary e091352b64 left out as unfinished) and `scorer_labels_r1.csv` (80 of 80 page-1 blocks) are in `exports/main/scoring/`.
