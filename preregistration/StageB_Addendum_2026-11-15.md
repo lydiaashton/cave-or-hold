@@ -1,6 +1,6 @@
 # Stage B addendum (15 Nov 2026)
 
-Five changes were made on 15 Nov 2026, after Stage B was filed (sections 1 to 4, and 6); section 5 records the pages as sent. Sections 1 to 5 date from before any main-run summary was scored by humans or judges. Section 6 was made while scoring was under way, but before any judge was compared with the main-run human labels. Each change was committed to the study repository when it was made, at the time given below. The commits are the record of timing; this document collects them for filing on Zenodo and OSF. The filed Stage B documents are not changed. None of these changes alters the hypotheses, the tests, the outcome definition or the decision rules.
+Five changes were made on 15 Nov 2026, after Stage B was filed (sections 1 to 4, and 6); sections 5 and 7 are records (the pages as sent; summary IDs the Sheet stored as numbers). Sections 1 to 5 date from before any main-run summary was scored by humans or judges. Section 6 was made while scoring was under way, but before any judge was compared with the main-run human labels. Each change was committed to the study repository when it was made, at the time given below. The commits are the record of timing; this document collects them for filing on Zenodo and OSF. The filed Stage B documents are not changed. None of these changes alters the hypotheses, the tests, the outcome definition or the decision rules.
 
 ## 1. Analysis script corrected (07:29 UTC)
 
@@ -80,5 +80,15 @@ The pages are not in the repository, because they contain the Sheet's web addres
 **Why.** Read strictly, a judge that failed the pass rule is still "available" and could supply labels through the fallback. If no judge passes, leaving the summaries without a judge majority unlabelled would drop the hardest summaries (those the judges disagree on) while still using the failed judges' majority labels, so the same rule is kept for all summaries.
 
 **Timing.** Raised by Krish at about 10:35 UTC; decided by the study lead. Made before any judge was compared with the main-run human labels, which are not locked until after 20:00 UTC.
+
+## 7. Record: summary IDs stored as numbers by the Sheet (18:33 UTC)
+
+Not a change to the plan; a record of how one data-handling problem is handled.
+
+**What happened.** The scoring pages send each answer to the study's Google Sheet with the summary's ID as text. Google Sheets stores an ID that looks like a number as a number. Of the 381 IDs on the three pages, one comes out of a CSV export changed: `0259488e19` (round 1, block 72, a judge-validation block) is read as scientific notation and exported as `2.59488E+24`. Two others (`1668273415` in round 1; `4223943522` in round 3) are stored as numbers but export unchanged. No main-test block (1 to 60) is affected. The answers themselves are unaffected; only the ID column is.
+
+**How it is handled.** The combiner (`scoring/combine_scorer_files.py`, option `--order`, pull request #32, merged 51175a7 before the deadline) checks every ID against the rounds' `order.csv`. An ID not found is mapped back to the one known ID with the same numeric value; it is never mapped when two IDs share a value, and an ID that cannot be placed stops the script. Each repair is listed in the combiner's output. The raw Sheet is saved unchanged; the repair happens only in the combined file.
+
+**Timing.** The fix was made and tested during scoring (on the round-1 tab as of 15:41 UTC: one repair, `2.59488e+24` to `0259488e19`), before the labels were locked and without reference to any condition.
 
 *Filed by Lydia Ashton, study lead, 15 Nov 2026.*
