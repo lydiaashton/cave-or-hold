@@ -1,24 +1,44 @@
-# Pre-registration, Stage A
+# Pre-registration: Cave or hold?
 
-**Committed:** 2026-11-14 14:40 UTC (14 Nov 2026), before any calibration agreement was computed and before any main run.
+Two stages, filed in this folder, on Zenodo and on OSF. Every file here is byte-identical to the
+Zenodo copy.
 
-`StageA_ScoringProtocol_2026-11-14.md` is the Stage A registration ("Scoring protocol" tab of the study's Master doc, rev 90), exported unchanged.
+| | Stage A: scoring protocol | Stage B: pre-analysis plan |
+| --- | --- | --- |
+| Fixed | Committed 2026-11-14 08:40 CT (14:40 UTC), commit `f1689e9`, tag `stage-a-2026-11-14`; merged to main 08:56 CT (PR #19) | Filed 2026-11-14, before the main runs |
+| Zenodo | v1, [10.5281/zenodo.24222927](https://doi.org/10.5281/zenodo.24222927) (14 Nov) | v2, [10.5281/zenodo.24237291](https://doi.org/10.5281/zenodo.24237291) (15 Nov UTC), with the Stage A files |
+| OSF | Filed with Stage B: the OSF site was down on 14 Nov (Stage B, deviation 6) | Filed with Stage A |
 
-## Attachments
+All versions: [10.5281/zenodo.24222926](https://doi.org/10.5281/zenodo.24222926).
 
-The registration cites five tabs of the Master doc. They are filed on OSF with this text, at these revisions:
+Timing: three scorers started the practice page, which is not counted, at 08:25 CT; check 1, the set that
+decides the agreement bar, was first coded at 09:19 CT, after Stage A was committed.
 
-| Tab | Master doc revision |
-| --- | --- |
-| Design: expectation timing | 986 |
-| Prompt (prompt v4; the harness file is `harness/prompts/turns.toml`) | 54 |
-| Codebook | 27 |
-| Scoring | 4 |
-| Analysis plan | 371 |
+## Files (SHA-256)
+
+```
+bcb9eb4f30917d47c323cd8315d56f2e6778a0fab7ceeb52f63dc46d129d7542  StageA_ScoringProtocol_2026-11-14.md
+ded15364604a21182cbe87bcf8948d34682e0b647d405ef19e73ed99d1e2869c  StageA_Attachment_Prompt_v4_rev54.pdf
+c76dd0cda3c3da2a0eec006bdaa94994b35fa6e0ad1f24dc9297fe1d1a754856  StageA_Attachment_Codebook_rev27.pdf
+c6df8b354de0cf2aedebcdcf587b26ee9e3eb896c63e20382c4a0f7e0959bc77  StageB_PreAnalysisPlan_2026-11-14.md
+ef13510e53b1ed9b8fc4283ac425964e5347681c45b29686b6fe626383500558  StageB_Attachment_AnalysisScript_3bbbb99.py
+8fb721635879eb6d9d4d0a9933555b78910549ade3c2e77f4c678e1cf965c55f  StageB_Attachment_JudgePrompts_frozen.toml
+42f04d94d4ee9d4f4ea822fea1f9cbaec2d745f49db10d676e675286febdf26c  StageB_Attachment_ScoringPageTemplate_17630fb.html
+1b131ece70b76b79feb882097375fffbc0e5d067a6fc62fc884561d704019de7  StageB_Attachment_Codebook_rev36.pdf
+6d8718df426f7d9702e64fc1fc65a34f690b3118d11e324691f6a4756463404e  StageB_Attachment_StageBChecks.py
+```
+
+- `StageA_ScoringProtocol_2026-11-14.md`: the "Scoring protocol" tab of the Master doc at rev 90, exported
+  unchanged. Its attachments are the Prompt (rev 54) and Codebook (rev 27) tabs as PDF. The other tabs at the
+  time, for the record: Design: expectation timing 986; Scoring 4; Analysis plan 371.
+- Stage B's attachments are copies of files in this repository: `analysis/cave_analysis.py` at `3bbbb99`,
+  `harness/prompts/judges.toml` at `6ec484b` (PR #27, frozen), `scoring/template.html` at `17630fb`,
+  `scoring/stageb_checks.py`, and the Codebook tab at rev 36 as PDF.
 
 ## Calibration materials as used
 
 - Draw: branch `pilot3-calibration`, commit 3753992 (`exports/pilot3/key/calibration_sets.csv`, seeds 20261114, 20261115, 20261116).
+- Result: `exports/pilot3/calibration/results/RESULTS.md` on that branch.
 - Scoring pages sent to scorers (SHA-256):
 
 ```
@@ -28,5 +48,3 @@ a7bec232e0ada6bd48cf7a8519b8daa016d14a3159cfad8edf0daff2607706a0  2_WholeSummary
 068dc2e7ebb941d2444ae24e6a251f9c8659546ebc1a98e43e4312a5c9fe5191  4_Check1.html
 af1e11a6bf18acc12be67cb03ea09b408a0f5ca83ceca0313d11a101f57c78ca  5_Check2_only_if_asked.html
 ```
-
-Stage B (N, the negligible difference, the frozen judge prompts, the analysis script, deviations) follows before the main runs.
