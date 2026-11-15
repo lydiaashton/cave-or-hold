@@ -41,6 +41,6 @@ Commit f689be4 (PR #29, Krish) makes the script mirror the harness mapping. The 
 
 **Timing.** Before page 1 was sent to any scorer. The pages built earlier that night with the template at 5b0b14e were rebuilt and were not sent.
 
-**Template used for main-run scoring from this point:** `scoring/template.html` at TEMPLATE_COMMIT (PR #31).
+**Template used for main-run scoring from this point:** `scoring/template.html` at 86b654a (PR #31, merged as 745d051).
 
 *Filed by Lydia Ashton, study lead, 15 Nov 2026.*

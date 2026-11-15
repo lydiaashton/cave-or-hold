@@ -1,7 +1,7 @@
 # Pre-registration: Cave or hold?
 
 Two stages, filed in this folder, on Zenodo and on OSF. Every file here is byte-identical to the
-Zenodo copy (addenda: see the Addenda section for upload status).
+Zenodo copy (the addendum: see the Addenda section for upload status).
 
 | | Stage A: scoring protocol | Stage B: pre-analysis plan |
 | --- | --- | --- |
@@ -37,33 +37,24 @@ ef13510e53b1ed9b8fc4283ac425964e5347681c45b29686b6fe626383500558  StageB_Attachm
 
 ## Addenda
 
-Dated corrections made after filing. The filed files above are not changed.
+Changes made after filing, collected in one dated addendum. The filed files above are not changed. Each change
+was committed when it was made; the commits are the record of timing. All three were made before any main-run
+summary was scored.
 
-1. **15 Nov 2026, 07:29 UTC: analysis script corrected (`3bbbb99` → `f689be4`).** The script's
-   reimplementation of the Codebook mapping differed from the harness's in four edge cases; it now mirrors
-   `caveharness.judge.errs_toward_expectation`. Made before any main-run summary was scored. Merged as
-   `ea457b5` (PR #29). Zenodo and OSF copies to follow.
+1. **07:29 UTC: analysis script corrected (`3bbbb99` → `f689be4`).** Its reimplementation of the Codebook
+   mapping differed from the harness's in four edge cases; it now mirrors
+   `caveharness.judge.errs_toward_expectation`. PR #29, merged as `ea457b5`.
+2. **08:01 UTC: scoring page layout, display only (`17630fb` → `5b0b14e`).** More space between answers,
+   glosses on their own line, the codebook column grouped by question, a thicker progress bar. PR #30.
+3. **08:20 UTC: save status and backup download (`5b0b14e` → `86b654a`).** "All answers received" became
+   "Saved: k of N"; a backup download appears while an answer is waiting to save and on the end screen;
+   Back kept, revisions recorded. PR #31, merged as `745d051`. Before page 1 was sent.
 
-```
-06d694dbda377323a0e564b365a2e26b41553a9fc3e7c38f292a84af226ef519  StageB_Addendum_01_2026-11-15.md
-7571a2244ac5feadcf448a8c3d709414eaedded1ee3d4e310faa1a54a3f018b4  StageB_Addendum01_Attachment_AnalysisScript_f689be4.py
-```
-
-2. **15 Nov 2026, 08:01 UTC: scoring page layout (display only).** More space between answers, glosses on
-   their own line, the codebook column grouped by question, a thicker progress bar. Questions, answer values,
-   codebook text and block order unchanged. Template `17630fb` → `5b0b14e` (PR #30). Made before the
-   main-run pages were built. Zenodo and OSF copies to follow.
+Zenodo and OSF copies to follow.
 
 ```
-d8f18f114a999740c9a067c0ee17d280d30a4f949936c4c40a50a08b76b036f6  StageB_Addendum_02_2026-11-15.md
-```
-
-3. **15 Nov 2026, 08:20 UTC: save status on the scoring page.** The header read "All answers received", which
-   could look like "finished"; it now reads "Saved: k of N". Backup download shown while an answer is waiting to save and on the end screen; Back kept, revisions recorded. Template `5b0b14e` → `8257195` (PR #31). Made
-   before page 1 was sent. Zenodo and OSF copies to follow.
-
-```
-b2c7d0d00b21a2ed7e111319875fb320a2e685d2bd8e11aabf0226fab0b91c14  StageB_Addendum_03_2026-11-15.md
+56284faeea4f72ba95274508ae74fddc52d02cf28f92be3f1ce02f5c15ceb89c  StageB_Addendum_2026-11-15.md
+7571a2244ac5feadcf448a8c3d709414eaedded1ee3d4e310faa1a54a3f018b4  StageB_Addendum_Attachment_AnalysisScript_f689be4.py
 ```
 
 ## Calibration materials as used
