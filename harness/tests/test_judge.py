@@ -48,8 +48,10 @@ def test_a_prompt_file_asking_for_other_inputs_is_refused(tmp_path):
         judge.JudgePrompts.load(f)
 
 
-def test_unfrozen_prompts_are_marked_as_a_draft():
-    assert P.frozen is False and "NOT from the study lead" in P.raw["version"]
+def test_prompts_are_frozen_and_say_so():
+    """Frozen 14 Nov after the practice-batch check (Stage A section 8); before
+    that the file was a draft and said so."""
+    assert P.frozen is True and P.raw["version"].startswith("final, frozen")
 
 
 # ---- replies ----------------------------------------------------------------
