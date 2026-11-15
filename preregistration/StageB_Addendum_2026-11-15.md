@@ -1,6 +1,6 @@
 # Stage B addendum (15 Nov 2026)
 
-Six changes were made on 15 Nov 2026, after Stage B was filed (sections 1 to 4, 6 and 7); section 5 records the pages as sent. Sections 1 to 5 date from before any main-run summary was scored by humans or judges. Section 6 was made while scoring was under way, but before any judge was compared with the main-run human labels. Section 7 was made after the labels were locked and before the key was released, so before any test was run. Each change was committed to the study repository when it was made, at the time given below. The commits are the record of timing; this document collects them for filing on Zenodo and OSF. The filed Stage B documents are not changed. None of these changes alters the hypotheses, the tests, the outcome definition or the decision rules.
+This addendum collects what changed or was decided on 15 Nov 2026 after Stage B was filed. Sections 1 to 4, 6 and 7 are changes or clarifications; section 5 records the scoring pages as sent; section 8 records the label lock and the rules fixed at it. Sections 1 to 5 date from before any main-run summary was scored by humans or judges. Section 6 was made while scoring was under way, before any judge was compared with the main-run human labels. Section 8 was made at the scoring deadline, and section 7 after it; both come before the key was released, so before any test was run on main-run data. Each item was committed to the study repository when it was made, at the time given; the commits are the record of timing, and this document collects them for filing on Zenodo and OSF. The filed Stage B documents are not changed. None of these items alters the hypotheses, the tests, the outcome definition or the decision rules.
 
 ## 1. Analysis script corrected (07:29 UTC)
 
@@ -95,5 +95,15 @@ The registered hypotheses, tests, outcome definition and decision rules are unch
 **Timing.** Pull request #33 (commits 26306fc and 6f7c9fe), merged as 7388722 at 21:03 UTC on 15 Nov 2026: after the labels were locked (20:00 UTC) and before the key was released, so before any test was run on main-run data.
 
 **Registered analysis script from this point:** `analysis/cave_analysis.py` at 6f7c9fe (merge 7388722), attached as `StageB_Addendum_Attachment_AnalysisScript_6f7c9fe.py`. This replaces the script named in section 1.
+
+## 8. Record: labels locked (20:00 UTC)
+
+The study lead declared the human labels locked at 20:00 UTC on 15 Nov 2026, the scoring deadline, before the key was released. The lock note is `scoring/main/LOCK_2026-11-15.md` (commit 8945197). Rules fixed at the lock:
+
+1. **Scoring window.** Answers received by the Sheet after 20:00:00 UTC are excluded; the raw Sheet is saved unchanged (`exports/main/scoring/sheet_final_2026-11-15/`, with the excluded rows removed in `in_window/`). Six rows were excluded, all from one scorer on page 3.
+2. **Complete blocks, counted by question.** A block counts for an analysis when every panel scorer answered the question or questions that analysis uses, for every summary in the block. Page 1's primary outcome uses questions 1 and 2 together, as registered; the other page-1 questions and pages 2 and 3 are counted per question (page 3's bottom-line outcome uses its questions 1 and 2 together); the within-rater retest on page 2 uses each scorer's own finished blocks. This clarifies the registered rule ("the analysis keeps the blocks every panel scorer finished"), which does not say which questions define a finished block on pages 2 and 3.
+3. **Reserve rule (section 4): not triggered.** Each panel scorer finished all 80 page-1 blocks, so the reserve did not take a seat. The reserve stopped at 62 page-1 summaries.
+
+**At the lock.** Page 1: 80 of 80 blocks complete for the panel, so all 60 main-test blocks. Page 2: 6 of 7 blocks with every question answered by all three. Page 3: 2 of 20.
 
 *Filed by Lydia Ashton, study lead, 15 Nov 2026.*

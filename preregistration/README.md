@@ -66,10 +66,13 @@ after the lock and before the key was released.
    (judge majority as the sensitivity arm) and restricted to the underpowered world. PR #33, merged as `7388722`,
    after the lock and before the key was released.
 
+8. **20:00 UTC: record of the label lock** (scoring window, complete blocks counted by question, reserve rule not
+   triggered). Lock note `scoring/main/LOCK_2026-11-15.md`.
+
 Zenodo and OSF copies to follow, after the scoring deadline at 20:00 UTC (the panel is not told about the reserve).
 
 ```
-d923acad22a1f32442fc917f5638367a3011a21a216e0de79c6a1c973ad2bb18  StageB_Addendum_2026-11-15.md
+690d43647784cbf639e21311e0fb0bef9bdc649ef24440913a791feb42deb060  StageB_Addendum_2026-11-15.md
 7571a2244ac5feadcf448a8c3d709414eaedded1ee3d4e310faa1a54a3f018b4  StageB_Addendum_Attachment_AnalysisScript_f689be4.py
 48676729f8318bfb14bc15614580ba1156a632a33ef1c0c1437479f0658d969d  StageB_Addendum_Attachment_AnalysisScript_6f7c9fe.py
 ```
