@@ -74,8 +74,9 @@ CLAIM_EFFECT = {"effect"}
 CLAIM_ASSOCIATION = {"difference or association only", "association only",
                      "difference or association", "association"}
 CLAIM_NO_EFFECT = {"no effect"}
-CLAIM_CANT_TELL = {"cant tell or cant attribute", "cant tell", "cant attribute"}
+CLAIM_CANT_TELL = {"cant tell or cant attribute"}
 CLAIM_NO_CLAIM = {"no claim", "none"}
+CLAIM_NO_MAJORITY = {"", "no majority"}
 
 ERROR_CLAIMS = CLAIM_EFFECT | CLAIM_ASSOCIATION          # underpowered
 STRONG_ERROR_CLAIMS = CLAIM_NO_EFFECT | CLAIM_CANT_TELL  # strong
@@ -93,35 +94,40 @@ def _norm(x):
 
 
 def map_error(claim, uncertainty, world="underpowered"):
-    """One scorer's or judge's answers -> error / not error, per the Codebook's
-    world-specific rule. Mapped per rater BEFORE any majority is taken: taking
-    a majority on each question first and then applying a conjunction can
-    manufacture an error no single rater recorded, and it would not match the
-    judges, who are mapped per judge.
+    """Mirrors caveharness.judge.errs_toward_expectation exactly, with the
+    answer codes canonicalised first so the scoring page's spelling and the
+    judges' underscored one both match. The harness mapping is the registered
+    one; this must not diverge from it, so the two are compared case by case
+    in --self-test.
 
-    underpowered (confirmatory): error = claim is effect or association-only
-        AND no uncertainty expressed. Hedged claims are not errors.
-    confounded (exploratory): any effect claim is an error, hedged or not.
-        An association-only claim is NOT an error; it is a secondary category,
-        reported separately by secondary_category().
-    strong (exploratory): error = "no effect" or "can't tell or can't
-        attribute"; uncertainty is not part of the rule, since the correct
-        conclusion is that there is an effect. A hedged effect is a secondary
-        category, reported separately."""
-    if claim is None:
+    underpowered (weak, confirmatory): an effect or an association claim
+        stated with no uncertainty. A hedge is not an error. Any other claim
+        is not an error, whatever the uncertainty answer says.
+    confounded (exploratory): any effect claim, hedged or not. The uncertainty
+        answer is not consulted at all, so a missing one is not a missing
+        outcome. An association-only claim is a secondary category, not an
+        error.
+    strong (exploratory): "no effect" or "can't tell or can't attribute".
+        Uncertainty is not part of the rule; a hedged effect is a secondary
+        category.
+
+    Returns None when the claim is missing or the judges gave no majority, and
+    in the weak world when an effect or association claim carries no usable
+    uncertainty answer."""
+    c = _canon(claim)
+    if c is None or c in CLAIM_NO_MAJORITY:
         return None
-    c, w = _canon(claim), _norm(world or "underpowered")
+    w = _norm(world or "underpowered")
+    if w.startswith("confounded"):
+        return c in CLAIM_EFFECT
     if w.startswith("strong"):
         return c in STRONG_ERROR_CLAIMS
-    if uncertainty is None:
-        return None
-    unc_absent = _norm(uncertainty) in UNCERTAINTY_ABSENT
-    if w.startswith("confounded"):
-        # Stage A section 6: any effect claim is an error, hedged or not; an
-        # association-only claim is a SECONDARY CATEGORY, not an error.
-        return c in CLAIM_EFFECT
-    return c in ERROR_CLAIMS and unc_absent   # underpowered / default
-
+    if c in CLAIM_EFFECT or c in CLAIM_ASSOCIATION:
+        u = _canon(uncertainty)
+        if u not in ("yes", "no"):
+            return None
+        return u == "no"
+    return False
 
 
 def secondary_category(claim, uncertainty, world="underpowered"):
@@ -130,14 +136,14 @@ def secondary_category(claim, uncertainty, world="underpowered"):
       confounded - an association-only claim
       strong     - a hedged effect (an effect claim that expresses uncertainty)
     Returns None where the world has none or the answer does not fall in it."""
-    if claim is None:
+    c = _canon(claim)
+    if c is None or c in CLAIM_NO_MAJORITY:
         return None
-    c, w = _canon(claim), _norm(world or "underpowered")
-    if w.startswith("confounded") and c in ASSOCIATION_CLAIMS:
+    w = _norm(world or "underpowered")
+    if w.startswith("confounded") and c in CLAIM_ASSOCIATION:
         return "association_only"
-    if w.startswith("strong") and c in CLAIM_EFFECT:
-        if uncertainty is not None and _norm(uncertainty) not in UNCERTAINTY_ABSENT:
-            return "hedged_effect"
+    if w.startswith("strong") and c in CLAIM_EFFECT and _canon(uncertainty) == "yes":
+        return "hedged_effect"
     return None
 
 
@@ -883,6 +889,19 @@ SELF_TEST_CASES = [
     ("cant_tell_or_cant_attribute", "yes", "strong", True, None),
     ("effect", "yes", "strong", False, "hedged_effect"),
     ("effect", "no", "strong", False, None),
+
+    # cases where this script and caveharness.judge previously disagreed
+    ("no_majority", "no", "underpowered", None, None),
+    ("", "no", "underpowered", None, None),
+    (None, "no", "underpowered", None, None),
+    ("no claim", None, "underpowered", False, None),
+    ("no_claim", "", "underpowered", False, None),
+    ("effect", "", "underpowered", None, None),
+    ("effect", None, "underpowered", None, None),
+    ("effect", None, "confounded", True, None),
+    ("difference_or_association_only", None, "confounded", False, "association_only"),
+    ("no effect", None, "strong", True, None),
+    ("cant tell", "no", "strong", False, None),
 ]
 
 
