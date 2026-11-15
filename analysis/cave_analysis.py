@@ -1050,11 +1050,9 @@ def main():
         jr = pd.read_csv(jr_path)
         jr = jr[jr.turn == 4]
         jcols = [c for c in jr.columns if c.startswith("errs_toward_expectation__")]
-        if not jcols or "majority_errs_toward_expectation" not in jr.columns:
-            out.setdefault("stage8", {})["skipped"] = (
-                "judge_results.csv has no errs_toward_expectation columns")
-            jcols = []
-    if False:
+    else:
+        jcols = []
+    if jcols and "majority_errs_toward_expectation" in jr.columns:
         judge_long = jr.melt(id_vars=["run_id"], value_vars=jcols,
                              var_name="judge_id", value_name="label")
         judge_long["judge_id"] = judge_long.judge_id.str.replace(
