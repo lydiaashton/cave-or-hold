@@ -38,8 +38,8 @@ ef13510e53b1ed9b8fc4283ac425964e5347681c45b29686b6fe626383500558  StageB_Attachm
 ## Addenda
 
 Changes made after filing, collected in one dated addendum. The filed files above are not changed. Each change
-was committed when it was made; the commits are the record of timing. All were made before any main-run
-summary was scored.
+was committed when it was made; the commits are the record of timing. Sections 1 to 5 date from before any
+main-run summary was scored; section 6 from before any judge was compared with main-run human labels.
 
 1. **07:29 UTC: analysis script corrected (`3bbbb99` → `f689be4`).** Its reimplementation of the Codebook
    mapping differed from the harness's in four edge cases; it now mirrors
@@ -64,7 +64,7 @@ summary was scored.
 Zenodo and OSF copies to follow, after the scoring deadline at 20:00 UTC (the panel is not told about the reserve).
 
 ```
-6f0536ae35f6050f5f5c4e2e64e6866e7d8cad40b65e6e24bd73e83602b8f786  StageB_Addendum_2026-11-15.md
+57fc011c14a8dcc6b414c8d26625c9a40a650b2f62308da89a36674f50750ea7  StageB_Addendum_2026-11-15.md
 7571a2244ac5feadcf448a8c3d709414eaedded1ee3d4e310faa1a54a3f018b4  StageB_Addendum_Attachment_AnalysisScript_f689be4.py
 ```
 

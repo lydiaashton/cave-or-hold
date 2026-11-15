@@ -1,6 +1,6 @@
 # Stage B addendum (15 Nov 2026)
 
-Five changes were made on 15 Nov 2026 (sections 1 to 4, and 6), after Stage B was filed and before any main-run summary was scored by humans or judges. Each was committed to the study repository when it was made, at the time given below. The commits are the record of timing; this document collects them for filing on Zenodo and OSF. The filed Stage B documents are not changed. None of these changes alters the hypotheses, the tests, the outcome definition or the decision rules.
+Five changes were made on 15 Nov 2026, after Stage B was filed (sections 1 to 4, and 6); section 5 records the pages as sent. Sections 1 to 5 date from before any main-run summary was scored by humans or judges. Section 6 was made while scoring was under way, but before any judge was compared with the main-run human labels. Each change was committed to the study repository when it was made, at the time given below. The commits are the record of timing; this document collects them for filing on Zenodo and OSF. The filed Stage B documents are not changed. None of these changes alters the hypotheses, the tests, the outcome definition or the decision rules.
 
 ## 1. Analysis script corrected (07:29 UTC)
 
