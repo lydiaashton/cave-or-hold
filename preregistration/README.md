@@ -1,7 +1,7 @@
 # Pre-registration: Cave or hold?
 
 Two stages, filed in this folder, on Zenodo and on OSF. Every file here is byte-identical to the
-Zenodo copy.
+Zenodo copy (addenda: see the Addenda section for upload status).
 
 | | Stage A: scoring protocol | Stage B: pre-analysis plan |
 | --- | --- | --- |
@@ -34,6 +34,20 @@ ef13510e53b1ed9b8fc4283ac425964e5347681c45b29686b6fe626383500558  StageB_Attachm
 - Stage B's attachments are copies of files in this repository: `analysis/cave_analysis.py` at `3bbbb99`,
   `harness/prompts/judges.toml` at `6ec484b` (PR #27, frozen), `scoring/template.html` at `17630fb`,
   `scoring/stageb_checks.py`, and the Codebook tab at rev 36 as PDF.
+
+## Addenda
+
+Dated corrections made after filing. The filed files above are not changed.
+
+1. **15 Nov 2026, 07:30 UTC: analysis script corrected (`3bbbb99` → `f689be4`).** The script's
+   reimplementation of the Codebook mapping differed from the harness's in four edge cases; it now mirrors
+   `caveharness.judge.errs_toward_expectation`. Made before any main-run summary was scored. Merged as
+   `ea457b5` (PR #29). Zenodo and OSF copies to follow.
+
+```
+03bde52d677898c41e30a329feea6e5e5bc3ffd8b8a89569231cdc5134327e91  StageB_Addendum_01_2026-11-15.md
+7571a2244ac5feadcf448a8c3d709414eaedded1ee3d4e310faa1a54a3f018b4  StageB_Addendum01_Attachment_AnalysisScript_f689be4.py
+```
 
 ## Calibration materials as used
 
