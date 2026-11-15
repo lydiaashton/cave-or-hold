@@ -1,6 +1,6 @@
 # Stage B addendum (15 Nov 2026)
 
-Four changes were made on 15 Nov 2026 (sections 1 to 4), after Stage B was filed and before any main-run summary was scored by humans or judges. Each was committed to the study repository when it was made, at the time given below. The commits are the record of timing; this document collects them for filing on Zenodo and OSF. The filed Stage B documents are not changed. None of the four changes alters the hypotheses, the tests, the outcome definition or the decision rules.
+Five changes were made on 15 Nov 2026 (sections 1 to 4, and 6), after Stage B was filed and before any main-run summary was scored by humans or judges. Each was committed to the study repository when it was made, at the time given below. The commits are the record of timing; this document collects them for filing on Zenodo and OSF. The filed Stage B documents are not changed. None of these changes alters the hypotheses, the tests, the outcome definition or the decision rules.
 
 ## 1. Analysis script corrected (07:29 UTC)
 
@@ -70,5 +70,15 @@ f9476bc0341d78309f0a9cf6c6486cfcd88d8caf78562cce1a4070bd94b455b3  Scoring_Round3
 ```
 
 The pages are not in the repository, because they contain the Sheet's web address.
+
+## 6. Judge fallback clarified (16:09 UTC)
+
+**Wording in Stage A section 8.** "If a judge is dropped, or the judges give no majority, the label is the one given by the first available judge in an order fixed before any validation data: GPT-6.1 Terra, then Gemma 4 31B, then DeepSeek V4 Flash."
+
+**Clarification.** "The first available judge" means the first judge in that order that passed the pass rule and returned a valid answer for that summary. A judge that failed the pass rule supplies no label, through the majority or the fallback. If no judge passes, the same rule (majority, then the fixed order) is applied over all three judges, and every judge label is reported as calibrated, not validated.
+
+**Why.** Read strictly, a judge that failed the pass rule is still "available" and could supply labels through the fallback. If no judge passes, leaving the summaries without a judge majority unlabelled would drop the hardest summaries (those the judges disagree on) while still using the failed judges' majority labels, so the same rule is kept for all summaries.
+
+**Timing.** Raised by Krish at about 10:35 UTC; decided by the study lead. Made before any judge was compared with the main-run human labels, which are not locked until after 20:00 UTC.
 
 *Filed by Lydia Ashton, study lead, 15 Nov 2026.*

@@ -57,10 +57,14 @@ summary was scored.
 5. **08:58 UTC: record of the main-run pages as sent** (export counts, labels "Main round 1/2/3", SHA-256 of
    the three pages; page 1 posted at 08:58 UTC).
 
+6. **16:09 UTC: judge fallback clarified.** "First available judge" in Stage A section 8 means the first judge in
+   the fixed order that passed the pass rule and gave a valid answer; if none passes, the same rule runs over
+   all three judges and the labels are reported as calibrated. Before any judge was compared with main-run labels.
+
 Zenodo and OSF copies to follow, after the scoring deadline at 20:00 UTC (the panel is not told about the reserve).
 
 ```
-851697d9395eafb42af98b576c2dcea58c1ce73ab051f8889e6dce3639ab0c36  StageB_Addendum_2026-11-15.md
+6f0536ae35f6050f5f5c4e2e64e6866e7d8cad40b65e6e24bd73e83602b8f786  StageB_Addendum_2026-11-15.md
 7571a2244ac5feadcf448a8c3d709414eaedded1ee3d4e310faa1a54a3f018b4  StageB_Addendum_Attachment_AnalysisScript_f689be4.py
 ```
 
