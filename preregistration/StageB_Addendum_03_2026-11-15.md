@@ -12,4 +12,4 @@
 
 **Template used for main-run scoring, from this date:** `scoring/template.html` at 8257195. This replaces the template named in addendum 2.
 
-*Filed by Lydia Ashton, study lead, 15 Nov 2026, 08:10 UTC (commit time of this file).*
+*Filed by Lydia Ashton, study lead, 15 Nov 2026, 08:14 UTC (commit time of this file).*
