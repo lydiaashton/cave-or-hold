@@ -51,12 +51,13 @@ summary was scored.
    Back kept, revisions recorded. PR #31, merged as `745d051`. Before page 1 was sent.
 4. **08:36 UTC: reserve scorer rule.** S4 scores page 1 as a reserve; at the deadline, a panel scorer with fewer
    complete round-1 blocks than S4 is treated as dropped out and S4 takes the seat (at most one; ties keep the
-   panel). Block counts only. S4 is design-aware. Recorded before page 1 was sent.
+   panel). Block counts only. S4 is design-aware. Scoring deadline moved from 18:00 to 20:00 UTC for the late
+   start. Recorded before page 1 was sent.
 
-Zenodo and OSF copies to follow, after the scoring deadline (the panel is not told about the reserve).
+Zenodo and OSF copies to follow, after the scoring deadline at 20:00 UTC (the panel is not told about the reserve).
 
 ```
-0443c21bfcd6eca9e4102dc9dd08bdae4a4ad8856bcf445434e2f42a59b8102a  StageB_Addendum_2026-11-15.md
+660f1fe9ff0f47a812352d11a692560f89cb0ee3afb21f172c696ef66fa1751c  StageB_Addendum_2026-11-15.md
 7571a2244ac5feadcf448a8c3d709414eaedded1ee3d4e310faa1a54a3f018b4  StageB_Addendum_Attachment_AnalysisScript_f689be4.py
 ```
 

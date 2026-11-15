@@ -45,9 +45,11 @@ Commit f689be4 (PR #29, Krish) makes the script mirror the harness mapping. The 
 
 ## 4. Reserve scorer rule (08:36 UTC)
 
-**Rule.** A fourth scorer, S4, scores page 1 alongside the panel (S1, S2, S3) as a reserve. At the scoring deadline (18:00 UTC, 15 Nov 2026), complete round-1 blocks are counted for each scorer from the combined scorer file. If a panel scorer has fewer complete round-1 blocks than S4, that panel scorer is treated as having dropped out and S4 takes the seat. S4 replaces at most one panel scorer: the one with the fewest complete blocks. If that scorer and S4 have the same count, the panel stays as it is. The decision uses block counts only and is made before anyone looks at the answers.
+**Rule.** A fourth scorer, S4, scores page 1 alongside the panel (S1, S2, S3) as a reserve. At the scoring deadline (20:00 UTC, 15 Nov 2026), complete round-1 blocks are counted for each scorer from the combined scorer file. If a panel scorer has fewer complete round-1 blocks than S4, that panel scorer is treated as having dropped out and S4 takes the seat. S4 replaces at most one panel scorer: the one with the fewest complete blocks. If that scorer and S4 have the same count, the panel stays as it is. The decision uses block counts only and is made before anyone looks at the answers.
 
 **Notes.** S4 knows the study design; the panel scorers do not. If S4 takes a seat, S4's labels are design-aware, and the report says so. The panel scorers are not told about the reserve. There is no second reserve: S5 withdrew from scoring to work on the literature review.
+
+**Deadline.** The scoring deadline was moved from 18:00 to 20:00 UTC, before page 1 was sent, to make up for the pages going out about two hours later than planned. Scoring still stops by time; the deadline does not depend on any answer.
 
 **Timing.** Recorded before page 1 was sent to any scorer.
 
