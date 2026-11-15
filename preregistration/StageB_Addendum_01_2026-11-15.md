@@ -17,4 +17,4 @@ Commit f689be4 (PR #29, Krish) makes the script mirror the harness mapping. The 
 
 **Registered analysis script, from this date:** `analysis/cave_analysis.py` at f689be4 (merge commit ea457b5, 15 Nov 2026 07:29 UTC).
 
-*Filed by Lydia Ashton, study lead, 15 Nov 2026, 07:30 UTC.*
+*Filed by Lydia Ashton, study lead, 15 Nov 2026, 07:29 UTC (commit time of this file).*
