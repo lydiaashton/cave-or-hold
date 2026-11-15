@@ -668,14 +668,37 @@ def stage10(pairs, independent, negligible_bound=None, h1_pairs=None):
     if negligible_bound is not None:
         lo, hi = h2["ci95"]
         if lo == lo:
+            inside = bool(abs(lo) < negligible_bound and abs(hi) < negligible_bound)
+            rejected = h2["p"] is not None and h2["p"] < ALPHA
+            excludes_zero = (lo > 0) or (hi < 0)
+            if rejected or excludes_zero:
+                # The equivalence test was registered to interpret a NULL on the
+                # caving test. Where the test rejects, "equivalence" is not
+                # available: a difference has been shown. The bound still says
+                # something worth reporting, but only about the size of that
+                # difference, never about its absence.
+                verdict = ("not applicable: the caving test rejected, so a "
+                           "difference has been demonstrated and equivalence "
+                           "cannot be claimed. "
+                           + ("The interval nonetheless lies entirely inside the "
+                              "pre-specified negligible bound, so the difference "
+                              "is distinguishable from zero and smaller than the "
+                              "difference registered as negligible."
+                              if inside else
+                              "The interval is not contained by the negligible "
+                              "bound."))
+            elif inside:
+                verdict = ("equivalence supported: the test did not reject and the "
+                           "whole interval lies inside the negligible bound")
+            else:
+                verdict = ("inconclusive on equivalence: the interval is wider "
+                           "than the pre-specified negligible bound")
             res["equivalence"] = {
                 "bound_pp": negligible_bound * 100,
                 "interval_pp": (lo * 100, hi * 100),
-                "fits_inside_bound": bool(abs(lo) < negligible_bound and abs(hi) < negligible_bound),
-                "verdict": ("equivalence supported" if abs(lo) < negligible_bound
-                            and abs(hi) < negligible_bound
-                            else "inconclusive on equivalence: the interval is "
-                                 "wider than the pre-specified negligible bound"),
+                "interval_inside_bound": inside,
+                "caving_test_rejected": bool(rejected),
+                "verdict": verdict,
             }
     return res
 
