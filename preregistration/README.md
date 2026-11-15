@@ -61,13 +61,10 @@ main-run summary was scored; section 6 from before any judge was compared with m
    the fixed order that passed the pass rule and gave a valid answer; if none passes, the same rule runs over
    all three judges and the labels are reported as calibrated. Before any judge was compared with main-run labels.
 
-7. **18:33 UTC: record of summary IDs stored as numbers by the Sheet.** `0259488e19` exports as `2.59488E+24`;
-   the combiner's `--order` option (PR #32) maps it back. No main-test block affected; raw Sheet kept unchanged.
-
 Zenodo and OSF copies to follow, after the scoring deadline at 20:00 UTC (the panel is not told about the reserve).
 
 ```
-a49e2ff1b0f0fae4ae0836f7a9ce6e3dd186bf67c68db8eae07077fc7c2b83a1  StageB_Addendum_2026-11-15.md
+57fc011c14a8dcc6b414c8d26625c9a40a650b2f62308da89a36674f50750ea7  StageB_Addendum_2026-11-15.md
 7571a2244ac5feadcf448a8c3d709414eaedded1ee3d4e310faa1a54a3f018b4  StageB_Addendum_Attachment_AnalysisScript_f689be4.py
 ```
 
