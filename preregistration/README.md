@@ -7,7 +7,7 @@ Zenodo copy.
 | --- | --- | --- |
 | Fixed | Committed 2026-11-14 08:40 CT (14:40 UTC), commit `f1689e9`, tag `stage-a-2026-11-14`; merged to main 08:56 CT (PR #19) | Filed 2026-11-14, before the main runs |
 | Zenodo | v1, [10.5281/zenodo.24222927](https://doi.org/10.5281/zenodo.24222927) (14 Nov) | v2, [10.5281/zenodo.24237291](https://doi.org/10.5281/zenodo.24237291) (15 Nov UTC), with the Stage A files |
-| OSF | Filed with Stage B: the OSF site was down on 14 Nov (Stage B, deviation 6) | Filed with Stage A |
+| OSF | Registered with Stage B: the OSF site was down earlier on 14 Nov (Stage B, deviation 6) | Registered 2026-11-14 7:56 PM CT, together with Stage A (Open-Ended Registration, project [osf.io/zcjys](https://osf.io/zcjys)) |
 
 All versions: [10.5281/zenodo.24222926](https://doi.org/10.5281/zenodo.24222926).
 
