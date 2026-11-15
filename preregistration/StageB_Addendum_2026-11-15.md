@@ -1,6 +1,6 @@
 # Stage B addendum (15 Nov 2026)
 
-Three changes were made on 15 Nov 2026, after Stage B was filed and before any main-run summary was scored by humans or judges. Each was committed to the study repository when it was made, at the time given below. The commits are the record of timing; this document collects them for filing on Zenodo and OSF. The filed Stage B documents are not changed. None of the three changes alters the hypotheses, the tests, the outcome definition or the decision rules.
+Four changes were made on 15 Nov 2026, after Stage B was filed and before any main-run summary was scored by humans or judges. Each was committed to the study repository when it was made, at the time given below. The commits are the record of timing; this document collects them for filing on Zenodo and OSF. The filed Stage B documents are not changed. None of the four changes alters the hypotheses, the tests, the outcome definition or the decision rules.
 
 ## 1. Analysis script corrected (07:29 UTC)
 
@@ -42,5 +42,13 @@ Commit f689be4 (PR #29, Krish) makes the script mirror the harness mapping. The 
 **Timing.** Before page 1 was sent to any scorer. The pages built earlier that night with the template at 5b0b14e were rebuilt and were not sent.
 
 **Template used for main-run scoring from this point:** `scoring/template.html` at 86b654a (PR #31, merged as 745d051).
+
+## 4. Reserve scorer rule (08:36 UTC)
+
+**Rule.** A fourth scorer, S4, scores page 1 alongside the panel (S1, S2, S3) as a reserve. At the scoring deadline (18:00 UTC, 15 Nov 2026), complete round-1 blocks are counted for each scorer from the combined scorer file. If a panel scorer has fewer complete round-1 blocks than S4, that panel scorer is treated as having dropped out and S4 takes the seat. S4 replaces at most one panel scorer: the one with the fewest complete blocks. If that scorer and S4 have the same count, the panel stays as it is. The decision uses block counts only and is made before anyone looks at the answers.
+
+**Notes.** S4 knows the study design; the panel scorers do not. If S4 takes a seat, S4's labels are design-aware, and the report says so. The panel scorers are not told about the reserve. There is no second reserve: S5 withdrew from scoring to work on the literature review.
+
+**Timing.** Recorded before page 1 was sent to any scorer.
 
 *Filed by Lydia Ashton, study lead, 15 Nov 2026.*

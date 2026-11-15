@@ -38,7 +38,7 @@ ef13510e53b1ed9b8fc4283ac425964e5347681c45b29686b6fe626383500558  StageB_Attachm
 ## Addenda
 
 Changes made after filing, collected in one dated addendum. The filed files above are not changed. Each change
-was committed when it was made; the commits are the record of timing. All three were made before any main-run
+was committed when it was made; the commits are the record of timing. All were made before any main-run
 summary was scored.
 
 1. **07:29 UTC: analysis script corrected (`3bbbb99` → `f689be4`).** Its reimplementation of the Codebook
@@ -49,11 +49,14 @@ summary was scored.
 3. **08:20 UTC: save status and backup download (`5b0b14e` → `86b654a`).** "All answers received" became
    "Saved: k of N"; a backup download appears while an answer is waiting to save and on the end screen;
    Back kept, revisions recorded. PR #31, merged as `745d051`. Before page 1 was sent.
+4. **08:36 UTC: reserve scorer rule.** S4 scores page 1 as a reserve; at the deadline, a panel scorer with fewer
+   complete round-1 blocks than S4 is treated as dropped out and S4 takes the seat (at most one; ties keep the
+   panel). Block counts only. S4 is design-aware. Recorded before page 1 was sent.
 
-Zenodo and OSF copies to follow.
+Zenodo and OSF copies to follow, after the scoring deadline (the panel is not told about the reserve).
 
 ```
-56284faeea4f72ba95274508ae74fddc52d02cf28f92be3f1ce02f5c15ceb89c  StageB_Addendum_2026-11-15.md
+0443c21bfcd6eca9e4102dc9dd08bdae4a4ad8856bcf445434e2f42a59b8102a  StageB_Addendum_2026-11-15.md
 7571a2244ac5feadcf448a8c3d709414eaedded1ee3d4e310faa1a54a3f018b4  StageB_Addendum_Attachment_AnalysisScript_f689be4.py
 ```
 
