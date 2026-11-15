@@ -4,8 +4,8 @@ Confounded and strong worlds. (The underpowered world is handled by select_under
 applies the same exclusion inside its selection rule.)
 
 For each world with seeds in piloted_seeds.json: build the generator's accepted datasets in seed
-order, leave out the piloted ones and the pilot-3 set (out_pilot/), and keep the first 60 of what
-remains. With five piloted and ten in the pilot-3 set, that is accepted datasets 6 to 60 and 71 to 75.
+order, leave out the piloted ones and the pilot-3 set (out_pilot/), and keep the first N_MAIN (100) of what
+remains. Confounded (five piloted, ten in the pilot-3 set): accepted datasets 6 to 60 and 71 to 115. Strong (none piloted): 1 to 60 and 71 to 110.
 
 Before writing anything it checks that every dataset already in out/ or out_pilot/ comes out of the
 fresh build byte-identical, with an equal manifest entry.
@@ -21,22 +21,25 @@ import tempfile
 
 import caveworlds_did as c
 
-N_MAIN = 60
+N_MAIN = 100  # 60 until 14 Nov 2026, 11:30 CT; 100 from then (study lead)
 
 
-def main(out="out", pilot_out="out_pilot"):
+def main(out="out", pilot_out="out_pilot", built=None):
     piloted = json.load(open("piloted_seeds.json"))
     for w in ("confounded", "strong"):
         drop = set(piloted.get(w, []))
-        if not drop:
-            print(w, "no piloted datasets; unchanged")
-            continue
         main_man = json.load(open(f"{out}/manifest_{w}.json"))
         pilot3 = json.load(open(f"{pilot_out}/manifest_{w}.json"))["datasets"]
         pilot3_seeds = {d["seed"] for d in pilot3}
         need = N_MAIN + len(pilot3) + len(drop)
         with tempfile.TemporaryDirectory() as tmp:
-            man = c.generate(w, k=need, outdir=tmp, verbose=False)
+            if built:  # a build already made with c.generate(w, k>=need, outdir=<built>/<world>)
+                tmp = os.path.join(built, w)
+                man = json.load(open(f"{tmp}/manifest_{w}.json"))
+                if man["accepted"] < need:
+                    sys.exit(f"{w}: {built} has {man['accepted']} datasets; need {need}")
+            else:
+                man = c.generate(w, k=need, outdir=tmp, verbose=False)
             fresh = {d["seed"]: d for d in man["datasets"]}
             for src, ds in ((out, main_man["datasets"]), (pilot_out, pilot3)):
                 for d in ds:

@@ -160,3 +160,23 @@ tool, mostly as working-paper versions.
   the current underpowered datasets, R (`lm` with `sandwich::vcovCL`) reproduces the primary
   estimate and clustered t. The event-study, pre-trend and trend-adjusted diagnostics were
   not independently re-implemented.
+
+
+## Extended to 100 per world (14 Nov 2026, 11:30 CT, study lead)
+
+Each world now holds 100 datasets. The first 60 per world are the same files as before (byte-identical; their seeds
+are the 60 lowest), so `firstN` for N up to 60 means exactly what it meant. The 40 new datasets per world come
+later in seed order, under the same rules:
+
+| World | How the 40 were added | Draws tried | Accepted or candidates built |
+| --- | --- | --- | --- |
+| Underpowered | Candidate search extended from 345 to 540 (generator band .10 to .15); `select_underpowered.py` with N_KEEP = 100. 120 candidates meet the rule: 100 kept, the ten of the pilot-3 set, two used in pilots 1 and 2, eight spare. The 100th kept is candidate 518 | 22,801 | 540 |
+| Confounded | `drop_piloted.py` with N_MAIN = 100: accepted datasets 6 to 60 and 71 to 115 | 458 | 115 |
+| Strong | `drop_piloted.py` with N_MAIN = 100: accepted datasets 1 to 60 and 71 to 110 (61 to 70 are the pilot-3 set) | 930 | 110 |
+
+Checked: every existing candidate and dataset rebuilds byte-identical; both bootstrap cross-checks (Python, base R)
+were run on the 195 new underpowered candidates; `relabel_for_release.py` passes for all 300.
+
+Underpowered, all 100: primary p .1133 to .1299 (median .1242); lowest defensible specification .1003 to .1299;
+lowest of the three bootstrap p-values .1053. The 40 new ones: primary p .1140 to .1299 (median .1253). 99 of the
+100 have at least one unclustered specification at p < .05. Strong, all 100: primary p .0005 to .0052.

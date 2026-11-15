@@ -3,7 +3,7 @@
 Rule: primary p between .10 and .13; every defensible specification (two-way FE clustered by unit,
 with and without covariates, and the collapsed 2x2 with classical, HC2 and HC3 SEs) at p >= .10;
 and the wild cluster bootstrap p at or above .105 in all three implementations (the generator's
-accept rule, wild_bootstrap_base_r.R and wild_bootstrap_check.py). Keep the first 60 that pass, in
+accept rule, wild_bootstrap_base_r.R and wild_bootstrap_check.py). Keep the first N_KEEP (100) that pass, in
 seed order, leaving out any dataset used in a pilot: the seeds in piloted_seeds.json (pilots 1 and 2)
 and the pilot-3 set in out_pilot/ (study lead, 14 Nov). Candidates come from the generator run with
 primary p in [.10, .15]; every candidate is kept in underpowered_candidates/, inside the rule or not.
@@ -25,7 +25,7 @@ import shutil
 import sys
 
 FLOOR = 0.105
-N_KEEP = 60
+N_KEEP = 100  # 60 until 14 Nov 2026, 11:30 CT; 100 from then (study lead)
 P_LO, P_HI = 0.10, 0.13
 DEFENSIBLE = ["twfe_no_cov|cluster", "twfe_with_cov|cluster",
               "collapsed_2x2|classical", "collapsed_2x2|HC2", "collapsed_2x2|HC3"]

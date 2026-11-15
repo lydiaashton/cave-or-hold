@@ -23,17 +23,18 @@ EXPECT_STRONG = "We expected no effect."
 
 
 # ---- data (handoff 2) ------------------------------------------------------
-def test_sixty_datasets_per_world_and_firstN_are_the_lowest_seeds():
-    assert len(datasets(which="all")) == 180
+def test_hundred_datasets_per_world_and_firstN_are_the_lowest_seeds():
+    assert len(datasets(which="all")) == 300
     assert len(datasets(which="first5")) == 15
     assert len(datasets(which="first10")) == 30
     assert len(datasets(which="first60")) == 180
+    assert len(datasets(which="first100")) == 300
     for w in WORLD_KIND:
         seeds = sorted(d.seed for d in datasets(w, "all"))
-        for n in (5, 10, 23, 60):
+        for n in (5, 10, 23, 60, 100):
             assert sorted(d.seed for d in datasets(w, f"first{n}")) == seeds[:n]
-    with pytest.raises(ValueError, match="holds 60"):
-        datasets(which="first61")
+    with pytest.raises(ValueError, match="holds 100"):
+        datasets(which="first101")
     for bad in ("first0", "first", "five", "first05"):
         with pytest.raises(ValueError):
             datasets(which=bad)
@@ -76,7 +77,7 @@ def test_no_main_dataset_was_used_in_pilots_1_and_2():
     used = {(w, s) for w in ("underpowered", "confounded", "strong") for s in piloted[w]}
     assert len(used) == 10
     assert not used & {(d.world, d.seed) for d in datasets(which="all")}
-    assert all(len(datasets(w, "all")) == 60 for w in ("underpowered", "confounded", "strong"))
+    assert all(len(datasets(w, "all")) == 100 for w in ("underpowered", "confounded", "strong"))
 
 
 def test_dataset_paths_are_only_branches_csv():

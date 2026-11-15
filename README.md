@@ -10,7 +10,7 @@ changes what an AI analyst's final write-up claims, scored against simulated dat
 
 | Path | What it is | Goes into the tested model's sandbox? |
 |---|---|---|
-| `release/<world>_seed<seed>/branches.csv` | The 180 main datasets (60 per world), with scenario column names. None was used in a pilot. How many are used is set by a pre-registered rule (below) | **Only this file**, one per run, copied in as `branches.csv` |
+| `release/<world>_seed<seed>/branches.csv` | The 300 main datasets (100 per world; 60 per world until 14 Nov, 11:30 CT, and those 60 are unchanged), with scenario column names. None was used in a pilot. How many are used is set by a pre-registered rule (below) | **Only this file**, one per run, copied in as `branches.csv` |
 | `release/README_release.md` | Column dictionary and the sandbox rule | No |
 | `release/RELABEL_CHECK.csv` | Check that relabelling changed names and week numbering only | No |
 | `release_pilot/` | Ten more datasets per world for pilot 3, with their own answer key; none is in `release/` | Only `branches.csv`, in pilot runs |

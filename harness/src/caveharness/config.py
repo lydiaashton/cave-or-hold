@@ -56,7 +56,7 @@ class Dataset:
 def datasets(world: str | None = None, which: str = "all") -> list[Dataset]:
     """Datasets in release/, ordered by seed within world.
 
-    which: "all" (every dataset in release/, sixty per world since 14 Nov) or
+    which: "all" (every dataset in release/, one hundred per world since 14 Nov, 11:30 CT; sixty before) or
     "firstN" (the N lowest seeds per world, e.g. "first5", "first20"). No
     dataset in release/ was used in a pilot (generator/piloted_seeds.json; 14 Nov).
     The underpowered world is selected by generator/select_underpowered.py (primary p .10 to .13). Which one the study
