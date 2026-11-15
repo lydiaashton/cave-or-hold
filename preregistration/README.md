@@ -49,6 +49,15 @@ Dated corrections made after filing. The filed files above are not changed.
 7571a2244ac5feadcf448a8c3d709414eaedded1ee3d4e310faa1a54a3f018b4  StageB_Addendum01_Attachment_AnalysisScript_f689be4.py
 ```
 
+2. **15 Nov 2026, 08:01 UTC: scoring page layout (display only).** More space between answers, glosses on
+   their own line, the codebook column grouped by question, a thicker progress bar. Questions, answer values,
+   codebook text and block order unchanged. Template `17630fb` → `5b0b14e` (PR #30). Made before the
+   main-run pages were built. Zenodo and OSF copies to follow.
+
+```
+d8f18f114a999740c9a067c0ee17d280d30a4f949936c4c40a50a08b76b036f6  StageB_Addendum_02_2026-11-15.md
+```
+
 ## Calibration materials as used
 
 - Draw: branch `pilot3-calibration`, commit 3753992 (`exports/pilot3/key/calibration_sets.csv`, seeds 20261114, 20261115, 20261116).
