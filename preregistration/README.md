@@ -1,7 +1,7 @@
 # Pre-registration: Cave or hold?
 
 Two stages, filed in this folder, on Zenodo and on OSF. Every file here is byte-identical to the
-Zenodo copy (the addendum: see the Addenda section for upload status).
+Zenodo copy. The Stage B addendum is in Zenodo v3 (see the Addenda section).
 
 | | Stage A: scoring protocol | Stage B: pre-analysis plan |
 | --- | --- | --- |
@@ -69,7 +69,12 @@ after the lock and before the key was released.
 8. **20:00 UTC: record of the label lock** (scoring window, complete blocks counted by question, reserve rule not
    triggered). Lock note `scoring/main/LOCK_2026-11-15.md`.
 
-Zenodo and OSF copies to follow, after the scoring deadline at 20:00 UTC (the panel is not told about the reserve).
+Filed 2026-11-15, after the scoring deadline and before the key was released and before any confirmatory test:
+
+- Zenodo: v3, [10.5281/zenodo.24261673](https://doi.org/10.5281/zenodo.24261673), with all Stage A and Stage B files
+  (MD5 of the three addendum files checked against the Zenodo listing).
+- OSF: the three files are in the project's Stage B folder ([osf.io/zcjys](https://osf.io/zcjys)); an update to the
+  registration points to them and to Zenodo v3 (the registration's file limit is reached).
 
 ```
 690d43647784cbf639e21311e0fb0bef9bdc649ef24440913a791feb42deb060  StageB_Addendum_2026-11-15.md
