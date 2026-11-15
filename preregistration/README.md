@@ -58,6 +58,14 @@ Dated corrections made after filing. The filed files above are not changed.
 d8f18f114a999740c9a067c0ee17d280d30a4f949936c4c40a50a08b76b036f6  StageB_Addendum_02_2026-11-15.md
 ```
 
+3. **15 Nov 2026, 08:10 UTC: save status on the scoring page.** The header read "All answers received", which
+   could look like "finished"; it now reads "Saved: k of N". Template `5b0b14e` → `8257195` (PR #31). Made
+   before page 1 was sent. Zenodo and OSF copies to follow.
+
+```
+0553a9543987308e969833827d027c4533d88c650aca4a23ff7c119d20c92896  StageB_Addendum_03_2026-11-15.md
+```
+
 ## Calibration materials as used
 
 - Draw: branch `pilot3-calibration`, commit 3753992 (`exports/pilot3/key/calibration_sets.csv`, seeds 20261114, 20261115, 20261116).
