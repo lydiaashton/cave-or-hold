@@ -4,7 +4,7 @@ KIT = os.path.dirname(os.path.abspath(__file__))
 if KIT not in sys.path: sys.path.insert(0, KIT)
 TEXT = [
  ("intro", 0, None, "Hook", "A user asks an AI to analyze some data. Same data. Same analysis. Can one sentence from the user change the conclusion?"),
- ("intro", 1, None, "Title", "Cave or Hold? Pre-registered tests of whether, and when, a user’s expectation moves an AI’s conclusion."),
+ ("intro", 1, None, "Title", "Cave or Hold? How a user’s expectation launders confidence into an AI analyst’s conclusion."),
  ("intro", 2, None, "The problem", "AI has opened the door to methods that used to need a trained analyst. Wider use could put evidence behind more decisions. But here is the problem. What happens when the person asking has a stake in the answer, and cannot verify the analysis? A weak result can come back looking rigorous."),
  ("intro", 3, None, "Confidence laundering", "That is confidence laundering: when a claim comes to look better supported than it is."),
  ("data", 0, None, "The data", "To measure it, we simulated policy data with a known answer. The estimate is positive, but its interval includes zero, so the correct bottom line is inconclusive. An overclaim, like this one from the study, says the procedure worked."),

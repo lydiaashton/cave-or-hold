@@ -106,16 +106,24 @@ def hook(c, t, T):
         _hook_split(c, t - SHIFT, T - SHIFT)
 
 
+TITLE_SUB = 0.8                         # Phase F: the subtitle lands on its first word ("How")
+TITLE_TEAM, TITLE_SPRINT = 2.4, 2.6   # then the team lines fade in, once the subtitle is up (Phase G: the grey line is gone; times unchanged)
+TEAM_Y = 650                          # Phase G: the team name sits 66 px under the subtitle (title to subtitle: 58 px)
+TITLE_DY = 12                         # Phase G: shift of the whole block, set so it is centred on screen
 def title(c, t, T):
     a = fade(t, 0.2, 0.8) * (1 - fade(t, T - 0.5, 0.5))
-    c.rich(W // 2, 470, [("Cave", CAVE, SF(128, 700, True)), (" or Hold?", INK, SF(128))], a)   # coral = caved; amber is only the user’s expectation
-    c.text((W // 2, 540), "Pre-registered tests of whether, and when, a user’s expectation moves an AI analyst’s conclusion.", F(34), SOFT, fade(t, 0.8) * a / max(a, 1e-6) * a, "ma")
-    _ta = fade(t, 1.4) * a / max(a, 1e-6) * a; _f = F(28, "SemiBold")   # team name: Cave in coral, Worlds in amber
+    out = 1 - fade(t, T - 0.5, 0.5); dy = TITLE_DY
+    c.rich(W // 2, 420 + dy, [("Cave", CAVE, SF(128, 700, True)), (" or Hold?", INK, SF(128))], a)   # coral = caved; amber is only the user’s expectation
+    # Phase F: the subtitle, two lines broken after "Confidence", white and larger than the old subtitle
+    sa = fade(t, TITLE_SUB, 0.8) * out; fs = F(50, "Medium")
+    c.text((W // 2, 518 + dy), "How a User’s Expectation Launders Confidence", fs, INK, sa, "ms")
+    c.text((W // 2, 582 + dy), "into an AI Analyst’s Conclusion", fs, INK, sa, "ms")
+    _ta = fade(t, TITLE_TEAM) * out; _f = F(28, "SemiBold")   # team name: Cave in coral, Worlds in amber
     _seg = [("The ", INK), ("Cave", CAVE), ("Worlds", AFTER), (" team", INK)]
     _x = W // 2 - sum(c.tw(s_, _f) for s_, _ in _seg) / 2
     for s_, col_ in _seg:
-        c.text((_x, 690), s_, _f, col_, _ta, "la"); _x += c.tw(s_, _f)
-    c.text((W // 2, 738), "Apart Research AI × Epistemics Sprint  ·  November 2026", F(24), MUTED, fade(t, 1.6) * a / max(a, 1e-6) * a, "ma")
+        c.text((_x, TEAM_Y + dy), s_, _f, col_, _ta, "la"); _x += c.tw(s_, _f)
+    c.text((W // 2, TEAM_Y + 48 + dy), "A pre-registered experiment  ·  Apart Research AI × Epistemics Sprint  ·  November 2026", F(24), MUTED, fade(t, TITLE_SPRINT) * out, "ma")
 
 def problem(c, t, T):
     O.scene(c, t)

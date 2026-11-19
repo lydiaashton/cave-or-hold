@@ -1,8 +1,8 @@
-# Cave or Hold? The video (long cut, v15)
+# Cave or Hold? The video (long cut, v17)
 
 A short animated explainer of the study: what we tested, how the bottom lines were scored, and what we found. Every frame is drawn in Python (Pillow) and encoded with ffmpeg; the music is synthesized by the kit.
 
-The MP4s are not in the repo. They are attached to the release [`video-v15`](https://github.com/lydiaashton/cave-or-hold/releases/tag/video-v15).
+The MP4s are not in the repo. They are attached to the release [`video-v17`](https://github.com/lydiaashton/cave-or-hold/releases/tag/video-v17).
 
 ## The cuts
 
@@ -10,11 +10,11 @@ All are 1920×1080, 30 fps.
 
 | File | Length | Sound | Captions |
 |---|---|---|---|
-| `LydiaAshton_CaveOrHold_LongCut_v15_Narrated.mp4` | 4:43 (283.5 s) | narration and music, −16 LUFS | none |
-| `LydiaAshton_CaveOrHold_LongCut_v15_Narrated_CC.mp4` | 4:43 | narration and music | subtitle track (English, can be turned off) |
-| `LydiaAshton_CaveOrHold_LongCut_v15_Narrated_Captioned.mp4` | 4:43 | narration and music | burned in |
-| `LydiaAshton_CaveOrHold_LongCut_v15.mp4` | 5:05 (304.7 s) | music only | on-screen caption panels |
-| `LydiaAshton_CaveOrHold_LongCut_v15_NoCaptions.mp4` | 5:05 | music only | none |
+| `LydiaAshton_CaveOrHold_LongCut_v17_Narrated.mp4` | 4:43 (282.8 s) | narration and music, −16 LUFS | none |
+| `LydiaAshton_CaveOrHold_LongCut_v17_Narrated_CC.mp4` | 4:43 | narration and music | subtitle track (English, can be turned off) |
+| `LydiaAshton_CaveOrHold_LongCut_v17_Narrated_Captioned.mp4` | 4:43 | narration and music | burned in, under the picture |
+| `LydiaAshton_CaveOrHold_LongCut_v17.mp4` | 5:05 (304.7 s) | music only | on-screen caption panels |
+| `LydiaAshton_CaveOrHold_LongCut_v17_NoCaptions.mp4` | 5:05 | music only | none |
 
 The narrated cuts follow the voice: each on-screen event is timed to the word that names it. The music-only cuts keep their own, slower reading timing, so every caption stays up long enough to read at 3 words per second or slower.
 
@@ -47,17 +47,18 @@ python cave_analysis.py --export ../exports/main --labels-locked
 python cave_analysis.py --export ../exports/main --labels-locked --labels judge
 ```
 
-## Re-rendering v15
+## Re-rendering v17
 
 Tested with Python 3.11.18, ffmpeg 9.0.2, Pillow 13.0.0, NumPy 2.4.6 and SciPy 1.17.1, on macOS.
 
-**The audio is not in the repo.** The narrated cut reads three ElevenLabs files, which `render-kit/placements_C.json` expects in an `audio/` folder at the repo root (`../../audio/` from `render-kit/`):
+**The audio is not in the repo.** The narrated cut reads four ElevenLabs files, which `render-kit/placements_C.json` expects in an `audio/` folder at the repo root (`../../audio/` from `render-kit/`):
 
 | File | Size | Used for |
 |---|---|---|
-| `narration_v2.mp3` | 3.7 MB | 42 of the 48 narration parts |
+| `narration_v2.mp3` | 3.7 MB | 41 of the 48 narration parts |
 | `newlines_v1.mp3` | 0.55 MB | 5 parts (S4 P1, S10 P1 to P3, S11 P1) |
 | `s9_p1_fix_alt.mp3` | 54 KB | S9 P1 |
+| `s2_subtitle_v1.mp3` | 0.11 MB | S2 P2 (the subtitle) |
 
 The music-only cuts need no audio files: `sound.py` synthesizes every chord and chirp.
 
@@ -65,8 +66,8 @@ The music-only cuts need no audio files: `sound.py` synthesizes every chord and 
 cd video/render-kit
 pip install -r requirements.txt          # faster-whisper is only needed for transcribing new takes
 python cavekit.py check placements_C.json # narration placements against the beat map
-python cavekit.py video --version v15     # all three pictures and both music beds -> out/
-python cavekit.py mix --version v15 --placements placements_C.json   # narrated cut and its .srt -> out/
+python cavekit.py video --version v17     # all three pictures and both music beds -> out/
+python cavekit.py mix --version v17 --placements placements_C.json   # narrated cut and its .srt -> out/
 ```
 
 A quick low-resolution check of any stretch, with sound:
@@ -77,7 +78,16 @@ python cavekit.py preview --start 0 --end 10 --placements placements_C.json
 
 Nothing overwrites an earlier output: if `out/` already holds a version, pick a new `--version`.
 
-The `_Narrated_CC` file is the narrated cut with `captions/…_Narrated_CC.srt` added as an English subtitle track; `_Narrated_Captioned` has the same captions burned in. Neither step is part of the kit.
+The two caption versions start from the narrated cut and `captions/…_Narrated_CC.srt` (re-timed captions; the kit's own `.srt` from `mix` follows the narration parts):
+
+```bash
+# subtitle track
+ffmpeg -i out/LydiaAshton_CaveOrHold_LongCut_v17_Narrated.mp4 -i ../captions/LydiaAshton_CaveOrHold_LongCut_v17_Narrated_CC.srt \
+  -map 0:v -map 0:a -map 1:0 -c:v copy -c:a copy -c:s mov_text -metadata:s:s:0 language=eng out/LydiaAshton_CaveOrHold_LongCut_v17_Narrated_CC.mp4
+# burned in: picture at 85%, captions in Inter 40 px in the band below
+CAP_SIZE=40 CAP_BASE=1040 python make_captioned.py out/LydiaAshton_CaveOrHold_LongCut_v17_Narrated.mp4 \
+  ../captions/LydiaAshton_CaveOrHold_LongCut_v17_Narrated_CC.srt out/LydiaAshton_CaveOrHold_LongCut_v17_Narrated_Captioned.mp4
+```
 
 ### What is in `render-kit/`
 
@@ -92,4 +102,5 @@ The `_Narrated_CC` file is the narrated cut with `captions/…_Narrated_CC.srt` 
 | `holds_music.json` | music-only timing |
 | `placements_C.json` | where each narration part sits (file, in/out, start, gain) |
 | `assets/land-110m.json` | world land outline for the credits map (TopoJSON, Natural Earth 1:110m, public domain) |
+| `make_captioned.py` | burns the captions into the narrated cut |
 | `fonts/` | Inter and Lora, both under the SIL Open Font License 1.1 (license texts included) |

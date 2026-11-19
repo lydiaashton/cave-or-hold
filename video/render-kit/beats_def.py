@@ -20,7 +20,7 @@ SLIDES = [
    ("Can one sentence from the user change the conclusion?", 5.5, "the headline 'Can one sentence from the user change the conclusion?'; the expectation steps aside, 'finalize' lands at the fork ({6.5}), then the expectation lands on the After branch ({6.9}); '?' at both ends ({7.2})"),
  ]), ("Title", ("intro", 1), [
    ("Cave or Hold?", 0.2, "title"),
-   ("Pre-registered tests of whether, and when, a user’s expectation moves an AI’s conclusion.", 0.8, "subtitle"),
+   ("How a user’s expectation launders confidence into an AI analyst’s conclusion.", 0.8, "subtitle (two lines); then the grey line ({1.8}) and the team lines ({2.4}, {2.6})"),
  ]),
  ("The problem", ("intro", 2), [
    ("AI has opened the door to methods that used to need a trained analyst.", 0.3, "beat 1 'Access': method labels fly out of the 'trained analysts' box ({1.0} to {3.6})"),

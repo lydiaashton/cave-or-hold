@@ -4,6 +4,12 @@ Data, generator and answer key for an Apart Research AI x Epistemics sprint proj
 The study asks whether the timing of a user's stated expectation (before the analysis, after it, or never)
 changes what an AI analyst's final write-up claims, scored against simulated data with a known answer.
 
+## Watch the video
+
+[![Cave or Hold? How a User's Expectation Launders Confidence into an AI Analyst's Conclusion (4:43)](video/poster.jpg)](https://github.com/lydiaashton/cave-or-hold/releases/tag/video-v17)
+
+A 4:43 explainer of the study: what we tested, how the bottom lines were scored, and what we found. Click the image for the release page: the narrated cut with captions (`…v17_Narrated_Captioned.mp4`), a version with a subtitle track, and two music-only cuts. The narration is an AI voice (ElevenLabs). How it was made, and where every number comes from: [`video/`](video/).
+
 **Keep this repository private until the report is submitted.** It holds the answer key next to the data.
 
 ## Layout
