@@ -6,6 +6,9 @@ changes what an AI analyst's final write-up claims, scored against simulated dat
 
 **Keep this repository private until the report is submitted.** It holds the answer key next to the data.
 
+Pre-registered on OSF ([10.17605/OSF.IO/75CTN](https://doi.org/10.17605/OSF.IO/75CTN)) and Zenodo
+([10.5281/zenodo.24222926](https://doi.org/10.5281/zenodo.24222926)); see `preregistration/README.md`.
+
 ## Layout
 
 | Path | What it is | Goes into the tested model's sandbox? |
