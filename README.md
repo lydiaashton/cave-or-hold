@@ -4,7 +4,10 @@ Data, generator and answer key for an Apart Research AI x Epistemics sprint proj
 The study asks whether the timing of a user's stated expectation (before the analysis, after it, or never)
 changes what an AI analyst's final write-up claims, scored against simulated data with a known answer.
 
-**Keep this repository private until the report is submitted.** It holds the answer key next to the data.
+**This repository is public while the sprint is judged, so the results can be checked against the code and data.** It holds the answer key next to the data on purpose. It may be made private for a period while the manuscript is drafted.
+
+Pre-registered on OSF ([10.17605/OSF.IO/75CTN](https://doi.org/10.17605/OSF.IO/75CTN)) and Zenodo
+([10.5281/zenodo.24222926](https://doi.org/10.5281/zenodo.24222926)); see `preregistration/README.md`.
 
 ## Layout
 
