@@ -12,7 +12,7 @@ All are 1920×1080, 30 fps.
 |---|---|---|---|
 | `LydiaAshton_CaveOrHold_LongCut_v17_Narrated.mp4` | 4:43 (282.8 s) | narration and music, −16 LUFS | none |
 | `LydiaAshton_CaveOrHold_LongCut_v17_Narrated_CC.mp4` | 4:43 | narration and music | subtitle track (English, can be turned off) |
-| `LydiaAshton_CaveOrHold_LongCut_v17_Narrated_Captioned.mp4` | 4:43 | narration and music | burned in, under the picture |
+| `LydiaAshton_CaveOrHold_LongCut_v17_Narrated_Captioned.mp4` | 4:43 | narration and music | burned in, in the caption band the slides keep free |
 | `LydiaAshton_CaveOrHold_LongCut_v17.mp4` | 5:05 (304.7 s) | music only | on-screen caption panels |
 | `LydiaAshton_CaveOrHold_LongCut_v17_NoCaptions.mp4` | 5:05 | music only | none |
 
@@ -84,8 +84,8 @@ The two caption versions start from the narrated cut and `captions/…_Narrated_
 # subtitle track
 ffmpeg -i out/LydiaAshton_CaveOrHold_LongCut_v17_Narrated.mp4 -i ../captions/LydiaAshton_CaveOrHold_LongCut_v17_Narrated_CC.srt \
   -map 0:v -map 0:a -map 1:0 -c:v copy -c:a copy -c:s mov_text -metadata:s:s:0 language=eng out/LydiaAshton_CaveOrHold_LongCut_v17_Narrated_CC.mp4
-# burned in: picture at 85%, captions in Inter 40 px in the band below
-CAP_SIZE=40 CAP_BASE=1040 python make_captioned.py out/LydiaAshton_CaveOrHold_LongCut_v17_Narrated.mp4 \
+# burned in: full-size picture, captions in Inter Medium 36 px in the slides' caption band (y 955 to 1080)
+python make_captioned.py out/LydiaAshton_CaveOrHold_LongCut_v17_Narrated.mp4 \
   ../captions/LydiaAshton_CaveOrHold_LongCut_v17_Narrated_CC.srt out/LydiaAshton_CaveOrHold_LongCut_v17_Narrated_Captioned.mp4
 ```
 
