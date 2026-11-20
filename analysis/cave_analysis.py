@@ -535,8 +535,9 @@ def stratified_mcnemar(pairs):
     return {"test": test, "statistic": stat, "p": p, "n_pairs": N,
             "discordant": disc, "b_after_only": B, "c_never_only": C,
             "paired_rd": rd, "ci95": ci, "ci_method": ci_method,
+            "n_after_caved": int(pairs.a_outcome.sum()),
+            "n_never_caved": int(pairs.n_outcome.sum()),
             "per_stratum": t.to_dict("records")}
-
 
 def paired_bootstrap(pairs, n_boot=10000, seed=20261114):
     """Cluster bootstrap over pairs: resample pairs with replacement and take
